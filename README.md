@@ -184,12 +184,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-## Support
-
-If you find this library useful, consider supporting its development:
-
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/rizukirr)
-
 ## Documentation
 
 - [Kemenag Calculation Method](docs/KEMENAG_METHOD.md) - Detailed mathematical documentation (Indonesian)
