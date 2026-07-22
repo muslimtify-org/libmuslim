@@ -112,6 +112,29 @@ CalcMethod method = method_from_string("isna");
 const MethodParams *params = method_params_get(method);
 ```
 
+### Iterating a Date Range
+
+`mt_days_from_civil` converts a civil (proleptic Gregorian) date to a day number counted from 1970-01-01, and `mt_civil_from_days` converts it back. They let you walk a range of dates without touching `struct tm` or `mktime`, so there are no DST or local-time hazards in the loop itself.
+
+```c
+// Print Fajr for every day in July 2026
+long start = mt_days_from_civil(2026, 7, 1);
+long end   = mt_days_from_civil(2026, 7, 31);
+
+for (long serial = start; serial <= end; serial++) {
+    int y, m, d;
+    mt_civil_from_days(serial, &y, &m, &d);
+
+    struct PrayerTimes t = calculate_prayer_times(y, m, d, -6.2851291, 106.9814968, 7.0, params);
+
+    char buffer[16];
+    format_time_hm(t.fajr, buffer, sizeof(buffer));
+    printf("%04d-%02d-%02d  Fajr: %s\n", y, m, d, buffer);
+}
+```
+
+Both are `static inline`, so they carry no link-time cost and need no `PRAYERTIMES_IMPLEMENTATION` definition. Day numbers are signed, and dates before 1970 are negative.
+
 ## Timezones & DST
 
 > **NOTE:** `prayertimes.h` does **not** handle Daylight Saving Time. The

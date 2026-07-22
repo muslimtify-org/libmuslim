@@ -1672,6 +1672,53 @@ static void test_egypt_alexandria_dec(void) {
   printf("\n");
 }
 
+// Check a single long value against an expected one
+static void check_long(long got, long want, const char *label) {
+  total++;
+  if (got == want) {
+    printf("  PASS  %-28s  got=%ld\n", label, got);
+  } else {
+    printf("  FAIL  %-28s  got=%ld  expected=%ld\n", label, got, want);
+    failures++;
+  }
+}
+
+// mt_days_from_civil / mt_civil_from_days: anchors, boundaries, round-trip.
+static void test_civil_date_helpers(void) {
+  printf("Test group: civil date helpers\n");
+
+  // The epoch itself and the days either side of it.
+  check_long(mt_days_from_civil(1970, 1, 1), 0, "epoch 1970-01-01");
+  check_long(mt_days_from_civil(1970, 1, 2), 1, "1970-01-02");
+  check_long(mt_days_from_civil(1969, 12, 31), -1, "pre-epoch 1969-12-31");
+
+  // 30 years of 365 days plus 7 leap days (1972 through 1996).
+  check_long(mt_days_from_civil(2000, 1, 1), 10957, "2000-01-01");
+
+  // A leap day must map to a distinct serial and survive the inverse.
+  long leap = mt_days_from_civil(2024, 2, 29);
+  check_long(mt_days_from_civil(2024, 3, 1) - leap, 1, "2024-02-29 precedes 03-01");
+
+  // The inverse recovers the original date.
+  int y = 0, m = 0, d = 0;
+  mt_civil_from_days(0, &y, &m, &d);
+  check_long((long)y * 10000 + m * 100 + d, 19700101L, "inverse of day 0");
+  mt_civil_from_days(leap, &y, &m, &d);
+  check_long((long)y * 10000 + m * 100 + d, 20240229L, "inverse of 2024-02-29");
+
+  // Round-trip a wide span, including pre-epoch and far-future serials. A prime
+  // step keeps the sample from landing on the same weekday or month boundary.
+  long mismatches = 0;
+  for (long serial = -400000; serial <= 400000; serial += 997) {
+    mt_civil_from_days(serial, &y, &m, &d);
+    if (mt_days_from_civil(y, m, d) != serial)
+      mismatches++;
+  }
+  check_long(mismatches, 0, "round-trip over 800k days");
+
+  printf("\n");
+}
+
 int main(void) {
   printf("=== prayertimes.h unit tests ===\n");
   printf("=== Reference: jadwalsholat.org (Kemenag method) ===\n");
@@ -1859,6 +1906,8 @@ int main(void) {
   test_egypt_alexandria_jun();
   test_egypt_alexandria_sep();
   test_egypt_alexandria_dec();
+
+  test_civil_date_helpers();
 
   printf("=== Summary ===\n");
   printf("Total checks: %d\n", total);

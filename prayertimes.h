@@ -100,17 +100,73 @@ struct PrayerTimes {
   double isha;
 };
 
+/**
+ * Format a decimal-hours time (e.g. 5.5) into "HH:MM" in outBuffer.
+ * Minutes are rounded up (Kemenag convention).
+ */
 void format_time_hm(double timeHours, char *outBuffer, size_t bufSize);
 
+/**
+ * Format a decimal-hours time (e.g. 5.5) into "HH:MM:SS" in outBuffer.
+ * Seconds are rounded to nearest; use format_time_hm for the Kemenag
+ * round-up-to-the-minute convention.
+ */
 void format_time_hms(double timeHours, char *outBuffer, size_t bufSize);
 
+/**
+ * Look up the parameter set for a calculation method.
+ * Returns: pointer to a static MethodParams, or NULL if method is out of range.
+ */
 const MethodParams *method_params_get(CalcMethod method);
+
+/**
+ * Map a method key string (e.g. "kemenag") to its CalcMethod.
+ * Returns: the matching method, or CALC_CUSTOM if name is NULL or unknown.
+ */
 CalcMethod method_from_string(const char *name);
+
+/**
+ * Map a CalcMethod back to its key string (e.g. "kemenag").
+ * Returns: the key, or "custom" if the method has no key.
+ */
 const char *method_to_string(CalcMethod method);
 
+/**
+ * Compute all prayer times for a date and location using the given method.
+ * Returns times as decimal hours in local time; high-latitude fallbacks apply.
+ */
 struct PrayerTimes calculate_prayer_times(int year, int month, int day, double latitude,
                                           double longitude, double timezone,
                                           const MethodParams *params);
+
+/**
+ * Days since 1970-01-01 for a civil (proleptic Gregorian) date, and its inverse.
+ * Howard Hinnant's public-domain algorithm. Lets callers iterate a date range or
+ * build a UTC instant without touching struct tm / mktime (no DST hazards).
+ */
+static inline long mt_days_from_civil(int y, int m, int d) {
+  y -= m <= 2;
+  long era = (y >= 0 ? y : y - 399) / 400;
+  unsigned yoe = (unsigned)(y - era * 400);
+  unsigned doy = (unsigned)((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1);
+  unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  return era * 146097L + (long)doe - 719468;
+}
+
+static inline void mt_civil_from_days(long z, int *y, int *m, int *d) {
+  z += 719468;
+  long era = (z >= 0 ? z : z - 146096) / 146097;
+  unsigned doe = (unsigned)(z - era * 146097);
+  unsigned yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+  long yy = (long)yoe + era * 400;
+  unsigned doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+  unsigned mp = (5 * doy + 2) / 153;
+  unsigned dd = doy - (153 * mp + 2) / 5 + 1;
+  unsigned mm = (mp < 10) ? (mp + 3) : (mp - 9);
+  *y = (int)(yy + (mm <= 2));
+  *m = (int)mm;
+  *d = (int)dd;
+}
 
 #ifdef PRAYERTIMES_IMPLEMENTATION
 
