@@ -10,7 +10,7 @@
 //   (-lm not required; this test uses no libm beyond fabs, which is inlined)
 
 #define MUSLIM_TIMEZONE_IMPLEMENTATION
-#include "timezone.h"
+#include "../timezone.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -24,13 +24,16 @@ static int total = 0;
 #define TS_2026_JAN_15_NOON ((time_t)1768478400) // 2026-01-15 12:00:00 UTC
 #define TS_2026_JUL_15_NOON ((time_t)1784116800) // 2026-07-15 12:00:00 UTC
 
-static void check_offset(const char *zone, time_t when, double expected, const char *label) {
+static void check_offset(const char *zone, time_t when, double expected,
+                         const char *label) {
   double got = parse_timezone_offset(zone, when);
   total++;
   if (fabs(got - expected) < 0.01) {
-    printf("  PASS  %-34s  offset=%+.2f  expected=%+.2f\n", label, got, expected);
+    printf("  PASS  %-34s  offset=%+.2f  expected=%+.2f\n", label, got,
+           expected);
   } else {
-    printf("  FAIL  %-34s  offset=%+.2f  expected=%+.2f\n", label, got, expected);
+    printf("  FAIL  %-34s  offset=%+.2f  expected=%+.2f\n", label, got,
+           expected);
     failures++;
   }
 }
@@ -43,8 +46,10 @@ static void test_fixed_offsets(void) {
   printf("Test group: fixed-offset zones (no DST)\n");
   check_offset("UTC", TS_2026_JAN_15_NOON, 0.0, "UTC (Jan)");
   check_offset("UTC", TS_2026_JUL_15_NOON, 0.0, "UTC (Jul)");
-  check_offset("Asia/Jakarta", TS_2026_JAN_15_NOON, 7.0, "Asia/Jakarta WIB (Jan)");
-  check_offset("Asia/Jakarta", TS_2026_JUL_15_NOON, 7.0, "Asia/Jakarta WIB (Jul)");
+  check_offset("Asia/Jakarta", TS_2026_JAN_15_NOON, 7.0,
+               "Asia/Jakarta WIB (Jan)");
+  check_offset("Asia/Jakarta", TS_2026_JUL_15_NOON, 7.0,
+               "Asia/Jakarta WIB (Jul)");
   check_offset("Asia/Dubai", TS_2026_JUL_15_NOON, 4.0, "Asia/Dubai (Jul)");
   check_offset("Asia/Riyadh", TS_2026_JAN_15_NOON, 3.0, "Asia/Riyadh (Jan)");
   check_offset("Asia/Karachi", TS_2026_JUL_15_NOON, 5.0, "Asia/Karachi (Jul)");
@@ -58,8 +63,10 @@ static void test_fixed_offsets(void) {
 
 static void test_fractional_offsets(void) {
   printf("Test group: fractional offsets\n");
-  check_offset("Asia/Kolkata", TS_2026_JAN_15_NOON, 5.5, "Asia/Kolkata IST (+5:30)");
-  check_offset("Asia/Kathmandu", TS_2026_JAN_15_NOON, 5.75, "Asia/Kathmandu (+5:45)");
+  check_offset("Asia/Kolkata", TS_2026_JAN_15_NOON, 5.5,
+               "Asia/Kolkata IST (+5:30)");
+  check_offset("Asia/Kathmandu", TS_2026_JAN_15_NOON, 5.75,
+               "Asia/Kathmandu (+5:45)");
   printf("\n");
 }
 
@@ -70,11 +77,15 @@ static void test_fractional_offsets(void) {
 static void test_dst_offsets(void) {
   printf("Test group: DST-aware offsets\n");
   // Europe/London: GMT in winter, BST (+1) in summer.
-  check_offset("Europe/London", TS_2026_JAN_15_NOON, 0.0, "Europe/London winter (GMT)");
-  check_offset("Europe/London", TS_2026_JUL_15_NOON, 1.0, "Europe/London summer (BST)");
+  check_offset("Europe/London", TS_2026_JAN_15_NOON, 0.0,
+               "Europe/London winter (GMT)");
+  check_offset("Europe/London", TS_2026_JUL_15_NOON, 1.0,
+               "Europe/London summer (BST)");
   // America/New_York: EST (-5) in winter, EDT (-4) in summer.
-  check_offset("America/New_York", TS_2026_JAN_15_NOON, -5.0, "America/New_York winter (EST)");
-  check_offset("America/New_York", TS_2026_JUL_15_NOON, -4.0, "America/New_York summer (EDT)");
+  check_offset("America/New_York", TS_2026_JAN_15_NOON, -5.0,
+               "America/New_York winter (EST)");
+  check_offset("America/New_York", TS_2026_JUL_15_NOON, -4.0,
+               "America/New_York summer (EDT)");
   printf("\n");
 }
 
