@@ -1,0 +1,1062 @@
+/* hijri.h -- v1.0 -- stb-style single-file astronomical Hijri calendar library
+ *
+ * Do this:
+ *      #define HIJRI_IMPLEMENTATION
+ * before you include this file in *one* C or C++ file to create the
+ * implementation.
+ *
+ *   // i.e. it should look like this in exactly one source file:
+ *   #define HIJRI_IMPLEMENTATION
+ *   #include "hijri.h"
+ *
+ * In every other file that needs the API, just:
+ *   #include "hijri.h"
+ *
+ * Optionally #define HIJRI_STATIC before including to make all functions
+ * `static` instead of externally linked (useful if you're dropping this
+ * into a single-TU project and want to avoid any symbol export at all).
+ *
+ * -----------------------------------------------------------------------
+ * WHAT THIS IS
+ *
+ * A from-scratch astronomical Hijri (Islamic lunar) calendar library:
+ * Julian Day handling, low/medium-precision Sun & Moon ephemerides,
+ * sunset/moonset/conjunction solvers, and a pluggable layer of
+ * crescent-visibility criteria used by different countries and
+ * organizations (Umm al-Qura / Saudi Arabia, MABIMS old & new / Indonesia
+ * Malaysia Brunei Singapore, Wujudul Hilal / Muhammadiyah, Turkey Diyanet
+ * & the 2016 Istanbul ICOP unified criterion, ECFR/ISNA, Egypt), plus the
+ * Yallop (1997) and Odeh (2004) quantitative visibility models. A
+ * non-astronomical fixed-cycle tabular ("Kuwaiti algorithm") calendar is
+ * included too, as a fast dependency-free fallback.
+ *
+ * -----------------------------------------------------------------------
+ * ACCURACY CAVEAT -- PLEASE READ
+ *
+ * hijri_moon_position() below uses only the ~5 largest-amplitude periodic
+ * terms of the ELP2000-82B lunar theory (accurate to roughly a few tenths
+ * of a degree), not the full ~60-term series. This is enough to exercise
+ * the whole pipeline correctly and get qualitatively right answers, but
+ * is NOT enough precision for real religious-observance decisions in
+ * genuinely borderline cases. For production use, replace the body of
+ * hijri_moon_position() with the full series from Meeus, "Astronomical
+ * Algorithms" 2nd ed., ch. 47, Tables 47.a/47.b, or link against an
+ * existing implementation such as https://github.com/mygulamali/meeus or
+ * libnova. Nothing else in this file needs to change to do that swap --
+ * every other function only depends on the HijriMoonPosition struct's
+ * contents, not on how it was computed.
+ *
+ * See the criteria table and per-country notes further down, right above
+ * the HijriCriterion enum.
+ *
+ * -----------------------------------------------------------------------
+ * LICENSE
+ *
+ * Public domain (or MIT, at your option, if your jurisdiction doesn't
+ * recognize public domain). Provided as-is, no warranty, use at your own
+ * risk -- especially for anything where getting the date wrong matters
+ * religiously; see the accuracy caveat above.
+ */
+
+#ifndef HIJRI_H
+#define HIJRI_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#ifndef HIJRIDEF
+#ifdef HIJRI_STATIC
+#define HIJRIDEF static
+#else
+#define HIJRIDEF extern
+#endif
+#endif
+
+/* ---- Common types ------------------------------------------------------ */
+
+/* Observer location. Longitude positive EAST, latitude positive NORTH,
+ * elevation in meters above sea level. */
+typedef struct {
+  double latitude_deg;
+  double longitude_deg;
+  double elevation_m;
+  const char *name; /* optional, for logging/debugging */
+} HijriLocation;
+
+/* A calculated Hijri calendar date. */
+typedef struct {
+  int year;
+  int month; /* 1 = Muharram ... 12 = Dhu al-Hijjah */
+  int day;   /* 1..30 */
+} HijriDate;
+
+/* Convenience constant: Mecca, used by the Umm al-Qura criterion. */
+static const HijriLocation HIJRI_LOCATION_MECCA = {21.4225, 39.8262, 240.0,
+                                                   "Mecca"};
+
+/* ---- Julian Day ---------------------------------------------------------
+ * Algorithms: Meeus, "Astronomical Algorithms" 2nd ed., ch. 7. */
+
+HIJRIDEF double hijri_jd_from_gregorian(int year, int month, double day);
+HIJRIDEF void hijri_gregorian_from_jd(double jd, int *year, int *month,
+                                      double *day_frac);
+HIJRIDEF int hijri_jd_weekday(double jd); /* 0 = Sunday ... 6 = Saturday */
+HIJRIDEF double
+hijri_julian_centuries(double jd); /* Julian centuries since J2000.0 */
+
+/* ---- Delta T (TT - UT) approximation ------------------------------------
+ * Coarse but adequate: at most a few arcseconds of ephemeris error, far
+ * smaller than the multi-degree thresholds every criterion here uses. */
+
+HIJRIDEF double hijri_delta_t_seconds(double jd);
+HIJRIDEF double hijri_jd_tt_from_ut(double jd_ut);
+
+/* ---- Solar position ------------------------------------------------------
+ * Meeus low-precision solar theory (ch. 25), accurate to ~0.01 degree. */
+
+typedef struct {
+  double apparent_longitude_deg; /* geocentric ecliptic longitude, apparent */
+  double right_ascension_deg;
+  double declination_deg;
+  double distance_au;
+  double obliquity_deg; /* true obliquity of the ecliptic */
+} HijriSunPosition;
+
+HIJRIDEF HijriSunPosition hijri_sun_position(double jd_tt);
+
+/* ---- Lunar position -------------------------------------------------- */
+
+typedef struct {
+  double geocentric_longitude_deg;
+  double geocentric_latitude_deg;
+  double distance_km;
+  double right_ascension_deg;
+  double declination_deg;
+  double horizontal_parallax_deg;
+} HijriMoonPosition;
+
+/* See the ACCURACY CAVEAT at the top of this file. */
+HIJRIDEF HijriMoonPosition hijri_moon_position(double jd_tt);
+
+/* Topocentric RA/Dec, correcting for parallax at a specific location. */
+HIJRIDEF void hijri_moon_topocentric(const HijriMoonPosition *geo, double jd_ut,
+                                     double latitude_deg, double longitude_deg,
+                                     double elevation_m, double *ra_topo_deg,
+                                     double *dec_topo_deg);
+
+/* ---- Rise/set/altitude solver -------------------------------------------
+ * Generic bisection root-finder on topocentric altitude, used for both
+ * sunset and moonset. */
+
+typedef enum {
+  HIJRI_EVENT_OK = 0,
+  HIJRI_EVENT_NEVER_RISES,
+  HIJRI_EVENT_NEVER_SETS
+} HijriEventStatus;
+
+HIJRIDEF double hijri_sun_altitude(double jd_ut, const HijriLocation *loc);
+HIJRIDEF double hijri_moon_altitude(double jd_ut, const HijriLocation *loc);
+
+HIJRIDEF HijriEventStatus hijri_find_sunset(double jd_local_midnight_ut,
+                                            const HijriLocation *loc,
+                                            double *result_jd);
+HIJRIDEF HijriEventStatus hijri_find_moonset(double jd_after,
+                                             const HijriLocation *loc,
+                                             double *result_jd);
+
+/* ---- Conjunction (new moon) finder --------------------------------------- */
+
+/* Nearest ascending zero-crossing of (Moon longitude - Sun longitude)
+ * within +/-20 days of jd_guess. If two conjunctions could fall in that
+ * 40-day window, this returns whichever is found first scanning forward
+ * from jd_guess-20 -- use hijri_find_previous_conjunction() instead when
+ * you specifically want "the conjunction before this date", which is
+ * unambiguous. */
+HIJRIDEF double hijri_find_conjunction(double jd_guess);
+
+/* Most recent geocentric conjunction at or before jd_before. This is what
+ * you want when asking "what new moon does this evening's month count
+ * belong to" -- unambiguous, unlike hijri_find_conjunction(). */
+HIJRIDEF double hijri_find_previous_conjunction(double jd_before);
+
+/**
+ * @brief Crescent visibility criteria supported by libhijri.
+ *
+ * Each criterion defines the astronomical conditions used to determine
+ * whether a new Hijri month may begin.
+ *
+ * Supported criteria:
+ *
+ * HIJRI_CRIT_UMM_AL_QURA
+ *     Umm al-Qura calendar (Saudi Arabia, KACST).
+ *
+ *     Rule:
+ *       - Conjunction must occur before sunset.
+ *       - Moonset must occur after sunset at Mecca.
+ *
+ * HIJRI_CRIT_MABIMS_1992
+ *     MABIMS standard used by Indonesia, Malaysia, Brunei, and Singapore
+ *     before 2021.
+ *
+ *     Rule:
+ *       - Moon altitude >= 2 degrees AND elongation >= 3 degrees,
+ *         OR moon age >= 8 hours.
+ *
+ * HIJRI_CRIT_MABIMS_2021
+ *     Updated MABIMS standard adopted since December 2021.
+ *
+ *     Rule:
+ *       - Moon altitude >= 3 degrees.
+ *       - Elongation >= 6.4 degrees.
+ *
+ * HIJRI_CRIT_WUJUDUL_HILAL
+ *     Muhammadiyah Indonesia criterion.
+ *
+ *     Rule:
+ *       - Conjunction occurs before sunset.
+ *       - Moon remains above the horizon after sunset.
+ *
+ *     Note:
+ *       This is a lunar position criterion, not a crescent visibility test.
+ *
+ * HIJRI_CRIT_TURKEY_ICOP
+ *     Turkey Diyanet / Istanbul ICOP 2016 criterion.
+ *
+ *     Rule:
+ *       - Moon altitude >= 5 degrees.
+ *       - Elongation >= 8 degrees.
+ *
+ * HIJRI_CRIT_ECFR_ISNA
+ *     ECFR / Fiqh Council of North America criterion.
+ *
+ *     Rule:
+ *       - Moon altitude >= 5 degrees.
+ *       - Elongation >= 8 degrees.
+ *
+ *     Note:
+ *       This criterion is intended for global visibility evaluation.
+ *
+ * HIJRI_CRIT_EGYPT
+ *     Egyptian criterion.
+ *
+ *     Rule:
+ *       - Moonset occurs at least 5 minutes after sunset.
+ *
+ * HIJRI_CRIT_ODEH
+ *     Odeh (2004) quantitative crescent visibility model.
+ *
+ *     Note:
+ *       This produces a visibility classification rather than a simple
+ *       yes/no result. Use hijri_odeh_classify().
+ *
+ * HIJRI_CRIT_YALLOP
+ *     Yallop (1997) quantitative crescent visibility model.
+ *
+ *     Note:
+ *       This produces a visibility classification rather than a simple
+ *       yes/no result. Use hijri_yallop_classify().
+ *
+ * @note Global visibility criteria:
+ *       ECFR/ISNA and Turkey/ICOP are commonly interpreted as global
+ *       criteria. This library evaluates only the supplied HijriLocation.
+ *
+ *       Applications requiring global sighting logic should evaluate
+ *       multiple locations and apply their own policy, such as accepting
+ *       the criterion if it succeeds at any candidate location.
+ */
+
+typedef enum {
+  HIJRI_CRIT_UMM_AL_QURA,
+  HIJRI_CRIT_MABIMS_1992,
+  HIJRI_CRIT_MABIMS_2021,
+  HIJRI_CRIT_WUJUDUL_HILAL,
+  HIJRI_CRIT_TURKEY_ICOP,
+  HIJRI_CRIT_ECFR_ISNA,
+  HIJRI_CRIT_EGYPT,
+  HIJRI_CRIT_ODEH,
+  HIJRI_CRIT_YALLOP
+} HijriCriterion;
+
+typedef struct {
+  double moon_altitude_deg;
+  double sun_altitude_deg;
+  double arcv_deg;       /* moon altitude - sun altitude ("arc of vision") */
+  double elongation_deg; /* topocentric angular separation, Moon-Sun */
+  double crescent_width_arcmin; /* approximate topocentric crescent width */
+  double moon_age_hours;        /* time since conjunction */
+  double lag_time_minutes; /* moonset time minus sunset time (NAN if moon never
+                              sets that evening) */
+  int conjunction_before_sunset;
+  int moonset_after_sunset;
+} HijriHilalParameters;
+
+HIJRIDEF HijriHilalParameters
+hijri_compute_hilal_parameters(double jd_sunset_ut, double jd_conjunction_ut,
+                               double jd_moonset_ut, const HijriLocation *loc);
+
+/* 1 if the criterion says the month begins the following day, 0 otherwise.
+ * Not valid for HIJRI_CRIT_ODEH / HIJRI_CRIT_YALLOP -- use the dedicated
+ * classifiers below for those. */
+HIJRIDEF int hijri_criterion_evaluate(HijriCriterion crit,
+                                      const HijriHilalParameters *p);
+
+typedef enum {
+  HIJRI_YALLOP_NOT_VISIBLE = 0,
+  HIJRI_YALLOP_NEEDS_OPTICAL_AID,
+  HIJRI_YALLOP_MAY_NEED_OPTICAL_AID,
+  HIJRI_YALLOP_VISIBLE_UNDER_PERFECT_CONDITIONS,
+  HIJRI_YALLOP_EASILY_VISIBLE
+} HijriYallopZone;
+
+HIJRIDEF double hijri_yallop_q(double arcv_deg, double crescent_width_arcmin);
+HIJRIDEF HijriYallopZone hijri_yallop_classify(double arcv_deg,
+                                               double crescent_width_arcmin);
+
+typedef enum {
+  HIJRI_ODEH_NOT_VISIBLE = 0,
+  HIJRI_ODEH_VISIBLE_WITH_OPTICAL_AID_ONLY,
+  HIJRI_ODEH_VISIBLE_WITH_OPTICAL_AID_COULD_BE_NAKED_EYE,
+  HIJRI_ODEH_VISIBLE_NAKED_EYE
+} HijriOdehZone;
+
+HIJRIDEF double hijri_odeh_v(double arcv_deg, double crescent_width_arcmin);
+HIJRIDEF HijriOdehZone hijri_odeh_classify(double arcv_deg,
+                                           double crescent_width_arcmin);
+
+/* ---- Tabular / arithmetic calendar (Kuwaiti algorithm) -------------------
+ * No astronomy: fixed 30-year cycle, 11 leap years of 355 days. Matches
+ * Umm al-Qura to within about +/-1-2 days. Epoch: 1 Muharram 1 AH = JD
+ * 1948439.5 (civil/"Friday" epoch convention). */
+
+HIJRIDEF double hijri_tabular_to_jd(HijriDate date);
+HIJRIDEF HijriDate hijri_tabular_from_jd(double jd);
+
+/* ---- Top-level orchestration --------------------------------------------- */
+
+typedef struct {
+  int month_starts_next_day;
+  HijriHilalParameters parameters;
+  double jd_sunset_ut;
+  double jd_conjunction_ut;
+  double jd_moonset_ut; /* NAN if the moon did not set that evening */
+} HijriMonthDecision;
+
+/* Evaluate whether the criterion triggers month-start on the evening of
+ * the given Gregorian civil date, at the given location. */
+HIJRIDEF HijriMonthDecision hijri_evaluate_evening(int gy, int gm, int gd,
+                                                   const HijriLocation *loc,
+                                                   HijriCriterion crit);
+
+/* Full Gregorian -> Hijri conversion for a given criterion and location.
+ * Returns 1 on success (writes *out), 0 on failure (e.g. an astronomical
+ * edge case, or HIJRI_CRIT_ODEH/HIJRI_CRIT_YALLOP which are graded rather
+ * than boolean -- call hijri_evaluate_evening() directly for those and
+ * apply your own threshold via hijri_odeh_classify()/hijri_yallop_classify()).
+ */
+HIJRIDEF int hijri_from_gregorian(int gy, int gm, int gd,
+                                  const HijriLocation *loc, HijriCriterion crit,
+                                  HijriDate *out);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* HIJRI_H */
+
+/* =========================================================================
+ *  IMPLEMENTATION
+ * ========================================================================= */
+#ifdef HIJRI_IMPLEMENTATION
+
+#include <math.h>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+#define HIJRI__DEG2RAD(x) ((x) * M_PI / 180.0)
+#define HIJRI__RAD2DEG(x) ((x) * 180.0 / M_PI)
+
+#ifndef NAN
+#define NAN (0.0 / 0.0)
+#endif
+
+/* ---- shared internal helpers -------------------------------------------- */
+
+static double hijri__norm_deg(double d) {
+  d = fmod(d, 360.0);
+  if (d < 0)
+    d += 360.0;
+  return d;
+}
+
+static double hijri__gmst_deg(double jd_ut) {
+  /* Greenwich Mean Sidereal Time, Meeus ch. 12. */
+  double T = (jd_ut - 2451545.0) / 36525.0;
+  double gmst = 280.46061837 + 360.98564736629 * (jd_ut - 2451545.0) +
+                0.000387933 * T * T - T * T * T / 38710000.0;
+  return hijri__norm_deg(gmst);
+}
+
+static double hijri__hour_angle_deg(double jd_ut, double longitude_deg,
+                                    double ra_deg) {
+  double lst = hijri__norm_deg(hijri__gmst_deg(jd_ut) + longitude_deg);
+  return hijri__norm_deg(lst - ra_deg);
+}
+
+static double hijri__altitude_deg(double ra_deg, double dec_deg, double jd_ut,
+                                  const HijriLocation *loc) {
+  double H =
+      HIJRI__DEG2RAD(hijri__hour_angle_deg(jd_ut, loc->longitude_deg, ra_deg));
+  double phi = HIJRI__DEG2RAD(loc->latitude_deg);
+  double dec = HIJRI__DEG2RAD(dec_deg);
+  double sin_alt = sin(phi) * sin(dec) + cos(phi) * cos(dec) * cos(H);
+  return HIJRI__RAD2DEG(asin(sin_alt));
+}
+
+static double hijri__angular_separation_deg(double ra1, double dec1, double ra2,
+                                            double dec2) {
+  double r1 = HIJRI__DEG2RAD(ra1), d1 = HIJRI__DEG2RAD(dec1);
+  double r2 = HIJRI__DEG2RAD(ra2), d2 = HIJRI__DEG2RAD(dec2);
+  double cos_sep = sin(d1) * sin(d2) + cos(d1) * cos(d2) * cos(r1 - r2);
+  if (cos_sep > 1.0)
+    cos_sep = 1.0;
+  if (cos_sep < -1.0)
+    cos_sep = -1.0;
+  return HIJRI__RAD2DEG(acos(cos_sep));
+}
+
+/* ---- Julian Day ---------------------------------------------------------- */
+
+HIJRIDEF double hijri_jd_from_gregorian(int year, int month, double day) {
+  if (month <= 2) {
+    year -= 1;
+    month += 12;
+  }
+  int A = year / 100;
+  int B = 2 - A + A / 4;
+  return floor(365.25 * (year + 4716)) + floor(30.6001 * (month + 1)) + day +
+         B - 1524.5;
+}
+
+HIJRIDEF void hijri_gregorian_from_jd(double jd, int *year, int *month,
+                                      double *day_frac) {
+  double jd_shift = jd + 0.5;
+  double Z = floor(jd_shift);
+  double F = jd_shift - Z;
+  double A;
+  if (Z < 2299161.0) {
+    A = Z;
+  } else {
+    double alpha = floor((Z - 1867216.25) / 36524.25);
+    A = Z + 1 + alpha - floor(alpha / 4);
+  }
+  double B = A + 1524;
+  double C = floor((B - 122.1) / 365.25);
+  double D = floor(365.25 * C);
+  double E = floor((B - D) / 30.6001);
+
+  *day_frac = B - D - floor(30.6001 * E) + F;
+  *month = (int)((E < 14) ? (E - 1) : (E - 13));
+  *year = (int)((*month > 2) ? (C - 4716) : (C - 4715));
+}
+
+HIJRIDEF int hijri_jd_weekday(double jd) {
+  long day_num = (long)floor(jd + 1.5);
+  int wd = (int)(day_num % 7);
+  if (wd < 0)
+    wd += 7;
+  return wd;
+}
+
+HIJRIDEF double hijri_julian_centuries(double jd) {
+  return (jd - 2451545.0) / 36525.0;
+}
+
+/* ---- Delta T ---------------------------------------------------------------
+ */
+
+HIJRIDEF double hijri_delta_t_seconds(double jd) {
+  int year, month;
+  double day;
+  hijri_gregorian_from_jd(jd, &year, &month, &day);
+  double y = year + (month - 0.5) / 12.0;
+
+  if (y >= 1986.0 && y <= 2050.0) {
+    double u = y - 2000.0;
+    return 62.92 + 0.32217 * u + 0.005589 * u * u;
+  }
+
+  double u = (y - 1820.0) / 100.0;
+  return -20.0 + 32.0 * u * u;
+}
+
+HIJRIDEF double hijri_jd_tt_from_ut(double jd_ut) {
+  return jd_ut + hijri_delta_t_seconds(jd_ut) / 86400.0;
+}
+
+/* ---- Solar position (Meeus low-precision solar theory) ---------------------
+ */
+
+HIJRIDEF HijriSunPosition hijri_sun_position(double jd_tt) {
+  double T = hijri_julian_centuries(jd_tt);
+
+  double L0 = hijri__norm_deg(280.46646 + 36000.76983 * T + 0.0003032 * T * T);
+  double M = hijri__norm_deg(357.52911 + 35999.05029 * T - 0.0001537 * T * T);
+  double Mr = HIJRI__DEG2RAD(M);
+
+  double C = (1.914602 - 0.004817 * T - 0.000014 * T * T) * sin(Mr) +
+             (0.019993 - 0.000101 * T) * sin(2 * Mr) + 0.000289 * sin(3 * Mr);
+
+  double true_longitude = L0 + C;
+
+  double omega = 125.04 - 1934.136 * T;
+  double apparent_longitude =
+      true_longitude - 0.00569 - 0.00478 * sin(HIJRI__DEG2RAD(omega));
+
+  double eps0 =
+      23.439291 - 0.0130042 * T - 0.00000016 * T * T + 0.000000504 * T * T * T;
+  double eps = eps0 + 0.00256 * cos(HIJRI__DEG2RAD(omega));
+
+  double lambda_r = HIJRI__DEG2RAD(apparent_longitude);
+  double eps_r = HIJRI__DEG2RAD(eps);
+
+  double ra = atan2(cos(eps_r) * sin(lambda_r), cos(lambda_r));
+  double dec = asin(sin(eps_r) * sin(lambda_r));
+
+  double e = 0.016708634 - 0.000042037 * T - 0.0000001267 * T * T;
+  double R = (1.000001018 * (1 - e * e)) / (1 + e * cos(Mr));
+
+  HijriSunPosition pos;
+  pos.apparent_longitude_deg = hijri__norm_deg(apparent_longitude);
+  pos.right_ascension_deg = hijri__norm_deg(HIJRI__RAD2DEG(ra));
+  pos.declination_deg = HIJRI__RAD2DEG(dec);
+  pos.distance_au = R;
+  pos.obliquity_deg = eps;
+  return pos;
+}
+
+/* ---- Lunar position (leading periodic terms only -- see accuracy caveat) ---
+ */
+
+HIJRIDEF HijriMoonPosition hijri_moon_position(double jd_tt) {
+  double T = hijri_julian_centuries(jd_tt);
+  double T2 = T * T, T3 = T2 * T, T4 = T3 * T;
+
+  double Lp = hijri__norm_deg(218.3164477 + 481267.88123421 * T -
+                              0.0015786 * T2 + T3 / 538841.0 - T4 / 65194000.0);
+  double D = hijri__norm_deg(297.8501921 + 445267.1114034 * T - 0.0018819 * T2 +
+                             T3 / 545868.0 - T4 / 113065000.0);
+  double M = hijri__norm_deg(357.5291092 + 35999.0502909 * T - 0.0001536 * T2 +
+                             T3 / 24490000.0);
+  double Mp = hijri__norm_deg(134.9633964 + 477198.8675055 * T +
+                              0.0087414 * T2 + T3 / 69699.0 - T4 / 14712000.0);
+  double F = hijri__norm_deg(93.2720950 + 483202.0175233 * T - 0.0036539 * T2 -
+                             T3 / 3526000.0 + T4 / 863310000.0);
+
+  double Dr = HIJRI__DEG2RAD(D), Mr = HIJRI__DEG2RAD(M),
+         Mpr = HIJRI__DEG2RAD(Mp), Fr = HIJRI__DEG2RAD(F);
+
+  double dLon = 6.288774 * sin(Mpr) + 1.274027 * sin(2 * Dr - Mpr) +
+                0.658314 * sin(2 * Dr) + 0.213618 * sin(2 * Mpr) -
+                0.185116 * sin(Mr) - 0.114332 * sin(2 * Fr);
+
+  double dLat = 5.128122 * sin(Fr) + 0.280602 * sin(Mpr + Fr) +
+                0.277693 * sin(Mpr - Fr) + 0.173237 * sin(2 * Dr - Fr);
+
+  double dDist = -20905.355 * cos(Mpr) - 3699.111 * cos(2 * Dr - Mpr) -
+                 2955.968 * cos(2 * Dr) - 569.925 * cos(2 * Mpr);
+
+  double longitude = hijri__norm_deg(Lp + dLon);
+  double latitude = dLat;
+  double distance_km = 385000.56 + dDist;
+
+  double eps0 = 23.439291 - 0.0130042 * T;
+  double eps_r = HIJRI__DEG2RAD(eps0);
+  double lon_r = HIJRI__DEG2RAD(longitude);
+  double lat_r = HIJRI__DEG2RAD(latitude);
+
+  double sin_dec =
+      sin(lat_r) * cos(eps_r) + cos(lat_r) * sin(eps_r) * sin(lon_r);
+  double dec = asin(sin_dec);
+  double y = sin(lon_r) * cos(eps_r) - tan(lat_r) * sin(eps_r);
+  double x = cos(lon_r);
+  double ra = atan2(y, x);
+
+  double hp = asin(6378.14 / distance_km);
+
+  HijriMoonPosition pos;
+  pos.geocentric_longitude_deg = longitude;
+  pos.geocentric_latitude_deg = latitude;
+  pos.distance_km = distance_km;
+  pos.right_ascension_deg = hijri__norm_deg(HIJRI__RAD2DEG(ra));
+  pos.declination_deg = HIJRI__RAD2DEG(dec);
+  pos.horizontal_parallax_deg = HIJRI__RAD2DEG(hp);
+  return pos;
+}
+
+HIJRIDEF void hijri_moon_topocentric(const HijriMoonPosition *geo, double jd_ut,
+                                     double latitude_deg, double longitude_deg,
+                                     double elevation_m, double *ra_topo_deg,
+                                     double *dec_topo_deg) {
+  double H = HIJRI__DEG2RAD(
+      hijri__hour_angle_deg(jd_ut, longitude_deg, geo->right_ascension_deg));
+  double phi = HIJRI__DEG2RAD(latitude_deg);
+  double dec = HIJRI__DEG2RAD(geo->declination_deg);
+  double pi_r = HIJRI__DEG2RAD(geo->horizontal_parallax_deg);
+  (void)elevation_m; /* elevation correction to parallax omitted: sub-arcsecond
+                        effect here */
+
+  double delta_ra = atan2(-cos(phi) * sin(pi_r) * sin(H),
+                          cos(dec) - cos(phi) * sin(pi_r) * cos(H));
+  double ra_topo = HIJRI__DEG2RAD(geo->right_ascension_deg) + delta_ra;
+
+  double dec_topo = atan2((sin(dec) - sin(phi) * sin(pi_r)) * cos(delta_ra),
+                          cos(dec) - cos(phi) * sin(pi_r) * cos(H));
+
+  *ra_topo_deg = hijri__norm_deg(HIJRI__RAD2DEG(ra_topo));
+  *dec_topo_deg = HIJRI__RAD2DEG(dec_topo);
+}
+
+/* ---- Rise/set solver --------------------------------------------------------
+ */
+
+#define HIJRI__REFRACTION_AT_HORIZON_DEG 0.5667
+#define HIJRI__SOLAR_SEMIDIAMETER_DEG 0.2667
+
+HIJRIDEF double hijri_sun_altitude(double jd_ut, const HijriLocation *loc) {
+  double jd_tt = hijri_jd_tt_from_ut(jd_ut);
+  HijriSunPosition sun = hijri_sun_position(jd_tt);
+  return hijri__altitude_deg(sun.right_ascension_deg, sun.declination_deg,
+                             jd_ut, loc);
+}
+
+HIJRIDEF double hijri_moon_altitude(double jd_ut, const HijriLocation *loc) {
+  double jd_tt = hijri_jd_tt_from_ut(jd_ut);
+  HijriMoonPosition geo = hijri_moon_position(jd_tt);
+  double ra_topo, dec_topo;
+  hijri_moon_topocentric(&geo, jd_ut, loc->latitude_deg, loc->longitude_deg,
+                         loc->elevation_m, &ra_topo, &dec_topo);
+  return hijri__altitude_deg(ra_topo, dec_topo, jd_ut, loc);
+}
+
+static int
+hijri__bisect_crossing(double (*altitude_fn)(double, const HijriLocation *),
+                       const HijriLocation *loc, double jd_lo, double jd_hi,
+                       double target_alt_deg, double *result_jd) {
+  double a_lo = altitude_fn(jd_lo, loc) - target_alt_deg;
+  double a_hi = altitude_fn(jd_hi, loc) - target_alt_deg;
+  if (a_lo * a_hi > 0.0)
+    return 0;
+
+  for (int i = 0; i < 40; i++) {
+    double jd_mid = 0.5 * (jd_lo + jd_hi);
+    double a_mid = altitude_fn(jd_mid, loc) - target_alt_deg;
+    if ((a_lo < 0 && a_mid < 0) || (a_lo > 0 && a_mid > 0)) {
+      jd_lo = jd_mid;
+      a_lo = a_mid;
+    } else {
+      jd_hi = jd_mid;
+    }
+  }
+  *result_jd = 0.5 * (jd_lo + jd_hi);
+  return 1;
+}
+
+HIJRIDEF HijriEventStatus hijri_find_sunset(double jd_local_midnight_ut,
+                                            const HijriLocation *loc,
+                                            double *result_jd) {
+  double target =
+      -(HIJRI__REFRACTION_AT_HORIZON_DEG + HIJRI__SOLAR_SEMIDIAMETER_DEG);
+  double step = 1.0 / 24.0;
+  double prev_jd = jd_local_midnight_ut;
+  double prev_alt = hijri_sun_altitude(prev_jd, loc) - target;
+  for (int h = 1; h <= 24; h++) {
+    double jd = jd_local_midnight_ut + h * step;
+    double alt = hijri_sun_altitude(jd, loc) - target;
+    if (prev_alt > 0 && alt <= 0) {
+      if (hijri__bisect_crossing(hijri_sun_altitude, loc, prev_jd, jd, target,
+                                 result_jd)) {
+        return HIJRI_EVENT_OK;
+      }
+    }
+    prev_jd = jd;
+    prev_alt = alt;
+  }
+  double mean_alt = hijri_sun_altitude(jd_local_midnight_ut + 0.5, loc);
+  return (mean_alt > target) ? HIJRI_EVENT_NEVER_SETS : HIJRI_EVENT_NEVER_RISES;
+}
+
+HIJRIDEF HijriEventStatus hijri_find_moonset(double jd_after,
+                                             const HijriLocation *loc,
+                                             double *result_jd) {
+  double target = -HIJRI__REFRACTION_AT_HORIZON_DEG;
+  double step = 1.0 / 24.0;
+  double prev_jd = jd_after;
+  double prev_alt = hijri_moon_altitude(prev_jd, loc) - target;
+  for (int h = 1; h <= 24; h++) {
+    double jd = jd_after + h * step;
+    double alt = hijri_moon_altitude(jd, loc) - target;
+    if (prev_alt > 0 && alt <= 0) {
+      if (hijri__bisect_crossing(hijri_moon_altitude, loc, prev_jd, jd, target,
+                                 result_jd)) {
+        return HIJRI_EVENT_OK;
+      }
+    }
+    prev_jd = jd;
+    prev_alt = alt;
+  }
+  double mean_alt = hijri_moon_altitude(jd_after + 0.5, loc);
+  return (mean_alt > target) ? HIJRI_EVENT_NEVER_SETS : HIJRI_EVENT_NEVER_RISES;
+}
+
+/* ---- Conjunction finder
+ * ------------------------------------------------------ */
+
+static double hijri__moon_sun_wrapped_diff(double jd_ut) {
+  double jd_tt = hijri_jd_tt_from_ut(jd_ut);
+  double moon_lon = hijri_moon_position(jd_tt).geocentric_longitude_deg;
+  double sun_lon = hijri_sun_position(jd_tt).apparent_longitude_deg;
+  double diff = moon_lon - sun_lon;
+  diff = fmod(diff + 180.0, 360.0);
+  if (diff < 0)
+    diff += 360.0;
+  return diff - 180.0;
+}
+
+HIJRIDEF double hijri_find_conjunction(double jd_guess) {
+  double step = 0.5;
+  double jd_start = jd_guess - 20.0;
+  double prev_jd = jd_start;
+  double prev_diff = hijri__moon_sun_wrapped_diff(prev_jd);
+
+  for (double jd = jd_start + step; jd <= jd_guess + 20.0; jd += step) {
+    double diff = hijri__moon_sun_wrapped_diff(jd);
+    if (prev_diff < 0 && diff >= 0) {
+      double lo = prev_jd, hi = jd;
+      double dlo = prev_diff;
+      for (int i = 0; i < 40; i++) {
+        double mid = 0.5 * (lo + hi);
+        double dmid = hijri__moon_sun_wrapped_diff(mid);
+        if ((dlo < 0 && dmid < 0) || (dlo >= 0 && dmid >= 0)) {
+          lo = mid;
+          dlo = dmid;
+        } else {
+          hi = mid;
+        }
+      }
+      return 0.5 * (lo + hi);
+    }
+    prev_jd = jd;
+    prev_diff = diff;
+  }
+  return jd_guess;
+}
+
+HIJRIDEF double hijri_find_previous_conjunction(double jd_before) {
+  double step = 0.5;
+  double jd_start = jd_before - 33.0;
+  double prev_jd = jd_start;
+  double prev_diff = hijri__moon_sun_wrapped_diff(prev_jd);
+  double found_jd = jd_before;
+
+  for (double jd = jd_start + step; jd <= jd_before; jd += step) {
+    double diff = hijri__moon_sun_wrapped_diff(jd);
+    if (prev_diff < 0 && diff >= 0) {
+      double lo = prev_jd, hi = jd;
+      double dlo = prev_diff;
+      for (int i = 0; i < 40; i++) {
+        double mid = 0.5 * (lo + hi);
+        double dmid = hijri__moon_sun_wrapped_diff(mid);
+        if ((dlo < 0 && dmid < 0) || (dlo >= 0 && dmid >= 0)) {
+          lo = mid;
+          dlo = dmid;
+        } else {
+          hi = mid;
+        }
+      }
+      found_jd = 0.5 * (lo + hi);
+    }
+    prev_jd = jd;
+    prev_diff = diff;
+  }
+  return found_jd;
+}
+
+/* ---- Hilal parameters and criteria
+ * -------------------------------------------- */
+
+HIJRIDEF HijriHilalParameters
+hijri_compute_hilal_parameters(double jd_sunset_ut, double jd_conjunction_ut,
+                               double jd_moonset_ut, const HijriLocation *loc) {
+  HijriHilalParameters p;
+
+  double jd_tt = hijri_jd_tt_from_ut(jd_sunset_ut);
+  HijriSunPosition sun = hijri_sun_position(jd_tt);
+  HijriMoonPosition moon_geo = hijri_moon_position(jd_tt);
+
+  double moon_ra, moon_dec;
+  hijri_moon_topocentric(&moon_geo, jd_sunset_ut, loc->latitude_deg,
+                         loc->longitude_deg, loc->elevation_m, &moon_ra,
+                         &moon_dec);
+
+  p.sun_altitude_deg = hijri__altitude_deg(
+      sun.right_ascension_deg, sun.declination_deg, jd_sunset_ut, loc);
+  p.moon_altitude_deg =
+      hijri__altitude_deg(moon_ra, moon_dec, jd_sunset_ut, loc);
+  p.arcv_deg = p.moon_altitude_deg - p.sun_altitude_deg;
+  p.elongation_deg = hijri__angular_separation_deg(
+      moon_ra, moon_dec, sun.right_ascension_deg, sun.declination_deg);
+
+  double sd_arcmin = 0.2725076 * (moon_geo.horizontal_parallax_deg * 60.0);
+  p.crescent_width_arcmin =
+      sd_arcmin * (1.0 - cos(HIJRI__DEG2RAD(p.elongation_deg)));
+
+  p.moon_age_hours = (jd_sunset_ut - jd_conjunction_ut) * 24.0;
+  p.conjunction_before_sunset = (jd_conjunction_ut < jd_sunset_ut);
+
+  if (isnan(jd_moonset_ut)) {
+    p.lag_time_minutes = NAN;
+    p.moonset_after_sunset = 0;
+  } else {
+    p.lag_time_minutes = (jd_moonset_ut - jd_sunset_ut) * 24.0 * 60.0;
+    p.moonset_after_sunset = (jd_moonset_ut > jd_sunset_ut);
+  }
+
+  return p;
+}
+
+HIJRIDEF int hijri_criterion_evaluate(HijriCriterion crit,
+                                      const HijriHilalParameters *p) {
+  switch (crit) {
+  case HIJRI_CRIT_UMM_AL_QURA:
+    return p->conjunction_before_sunset && p->moonset_after_sunset;
+
+  case HIJRI_CRIT_MABIMS_1992:
+    return (p->moon_altitude_deg >= 2.0 && p->elongation_deg >= 3.0) ||
+           (p->moon_age_hours >= 8.0);
+
+  case HIJRI_CRIT_MABIMS_2021:
+    return (p->moon_altitude_deg >= 3.0 && p->elongation_deg >= 6.4);
+
+  case HIJRI_CRIT_WUJUDUL_HILAL:
+    return p->conjunction_before_sunset && (p->moon_altitude_deg > 0.0);
+
+  case HIJRI_CRIT_TURKEY_ICOP:
+    return (p->moon_altitude_deg >= 5.0 && p->elongation_deg >= 8.0);
+
+  case HIJRI_CRIT_ECFR_ISNA:
+    return (p->moon_altitude_deg >= 5.0 && p->elongation_deg >= 8.0);
+
+  case HIJRI_CRIT_EGYPT:
+    return !isnan(p->lag_time_minutes) && (p->lag_time_minutes >= 5.0);
+
+  case HIJRI_CRIT_ODEH:
+  case HIJRI_CRIT_YALLOP:
+  default:
+    return 0;
+  }
+}
+
+HIJRIDEF double hijri_yallop_q(double arcv_deg, double w) {
+  return (arcv_deg -
+          (11.8371 - 6.3226 * w + 0.7319 * w * w - 0.1018 * w * w * w)) /
+         10.0;
+}
+
+HIJRIDEF HijriYallopZone hijri_yallop_classify(double arcv_deg, double w) {
+  double q = hijri_yallop_q(arcv_deg, w);
+  if (q > 0.216)
+    return HIJRI_YALLOP_EASILY_VISIBLE;
+  if (q > -0.014)
+    return HIJRI_YALLOP_VISIBLE_UNDER_PERFECT_CONDITIONS;
+  if (q > -0.160)
+    return HIJRI_YALLOP_MAY_NEED_OPTICAL_AID;
+  if (q > -0.232)
+    return HIJRI_YALLOP_NEEDS_OPTICAL_AID;
+  return HIJRI_YALLOP_NOT_VISIBLE;
+}
+
+HIJRIDEF double hijri_odeh_v(double arcv_deg, double w) {
+  return arcv_deg -
+         (-0.1018 * w * w * w + 0.7319 * w * w - 6.3226 * w + 7.1651);
+}
+
+HIJRIDEF HijriOdehZone hijri_odeh_classify(double arcv_deg, double w) {
+  double v = hijri_odeh_v(arcv_deg, w);
+  if (v >= 5.65)
+    return HIJRI_ODEH_VISIBLE_NAKED_EYE;
+  if (v >= 2.0)
+    return HIJRI_ODEH_VISIBLE_WITH_OPTICAL_AID_COULD_BE_NAKED_EYE;
+  if (v >= -0.96)
+    return HIJRI_ODEH_VISIBLE_WITH_OPTICAL_AID_ONLY;
+  return HIJRI_ODEH_NOT_VISIBLE;
+}
+
+/* ---- Tabular calendar
+ * --------------------------------------------------------- */
+
+#define HIJRI__TABULAR_EPOCH_JD 1948439.5
+
+static int hijri__is_leap_year(int year) {
+  long y = year;
+  long m = ((11 * y + 14) % 30 + 30) % 30;
+  return m < 11;
+}
+
+static int hijri__year_length(int year) {
+  return hijri__is_leap_year(year) ? 355 : 354;
+}
+
+static int hijri__month_length(int year, int month) {
+  if (month == 12)
+    return hijri__is_leap_year(year) ? 30 : 29;
+  return (month % 2 == 1) ? 30 : 29;
+}
+
+HIJRIDEF double hijri_tabular_to_jd(HijriDate date) {
+  long days = 0;
+
+  if (date.year >= 1) {
+    for (int y = 1; y < date.year; y++)
+      days += hijri__year_length(y);
+  } else {
+    for (int y = date.year; y < 1; y++)
+      days -= hijri__year_length(y);
+  }
+
+  for (int m = 1; m < date.month; m++)
+    days += hijri__month_length(date.year, m);
+  days += date.day - 1;
+
+  return HIJRI__TABULAR_EPOCH_JD + (double)days;
+}
+
+HIJRIDEF HijriDate hijri_tabular_from_jd(double jd) {
+  long days_elapsed = (long)floor(jd - HIJRI__TABULAR_EPOCH_JD + 0.5);
+
+  int year = 1;
+  if (days_elapsed >= 0) {
+    while (days_elapsed >= hijri__year_length(year)) {
+      days_elapsed -= hijri__year_length(year);
+      year++;
+    }
+  } else {
+    while (days_elapsed < 0) {
+      year--;
+      days_elapsed += hijri__year_length(year);
+    }
+  }
+
+  int month = 1;
+  while (days_elapsed >= hijri__month_length(year, month)) {
+    days_elapsed -= hijri__month_length(year, month);
+    month++;
+  }
+
+  HijriDate result;
+  result.year = year;
+  result.month = month;
+  result.day = (int)days_elapsed + 1;
+  return result;
+}
+
+/* ---- Top-level orchestration
+ * ---------------------------------------------------- */
+
+HIJRIDEF HijriMonthDecision hijri_evaluate_evening(int gy, int gm, int gd,
+                                                   const HijriLocation *loc,
+                                                   HijriCriterion crit) {
+  HijriMonthDecision result;
+  result.month_starts_next_day = 0;
+  result.jd_conjunction_ut = NAN;
+  result.jd_moonset_ut = NAN;
+
+  double jd_midnight = hijri_jd_from_gregorian(gy, gm, (double)gd);
+
+  double jd_sunset;
+  HijriEventStatus sunset_status =
+      hijri_find_sunset(jd_midnight, loc, &jd_sunset);
+  if (sunset_status != HIJRI_EVENT_OK) {
+    result.jd_sunset_ut = NAN;
+    return result;
+  }
+  result.jd_sunset_ut = jd_sunset;
+
+  double jd_conjunction = hijri_find_previous_conjunction(jd_sunset);
+  result.jd_conjunction_ut = jd_conjunction;
+
+  double jd_moonset;
+  HijriEventStatus moonset_status =
+      hijri_find_moonset(jd_sunset, loc, &jd_moonset);
+  double jd_moonset_or_nan =
+      (moonset_status == HIJRI_EVENT_OK) ? jd_moonset : NAN;
+  result.jd_moonset_ut = jd_moonset_or_nan;
+
+  HijriHilalParameters params = hijri_compute_hilal_parameters(
+      jd_sunset, jd_conjunction, jd_moonset_or_nan, loc);
+  result.parameters = params;
+
+  result.month_starts_next_day = hijri_criterion_evaluate(crit, &params);
+  return result;
+}
+
+static double hijri__find_month_start_after_conjunction(
+    double jd_conj, const HijriLocation *loc, HijriCriterion crit) {
+  const int MAX_FORWARD_DAYS = 5;
+  for (int k = 0; k < MAX_FORWARD_DAYS; k++) {
+    double eve_jd = floor(jd_conj) + (double)k;
+    int ey, em;
+    double ed_frac;
+    hijri_gregorian_from_jd(eve_jd, &ey, &em, &ed_frac);
+    int ed = (int)floor(ed_frac + 0.5);
+
+    HijriMonthDecision decision = hijri_evaluate_evening(ey, em, ed, loc, crit);
+    if (!isnan(decision.jd_sunset_ut) && decision.month_starts_next_day) {
+      return eve_jd + 1.0;
+    }
+  }
+  return NAN;
+}
+
+HIJRIDEF int hijri_from_gregorian(int gy, int gm, int gd,
+                                  const HijriLocation *loc, HijriCriterion crit,
+                                  HijriDate *out) {
+  if (crit == HIJRI_CRIT_ODEH || crit == HIJRI_CRIT_YALLOP) {
+    return 0;
+  }
+
+  double target_jd = floor(hijri_jd_from_gregorian(gy, gm, (double)gd));
+
+  double jd_conj = hijri_find_previous_conjunction(target_jd + 1.0);
+  double jd_month_start =
+      hijri__find_month_start_after_conjunction(jd_conj, loc, crit);
+
+  if (isnan(jd_month_start) || target_jd < jd_month_start) {
+    double jd_conj_prev = hijri_find_previous_conjunction(jd_conj - 1.0);
+    jd_month_start =
+        hijri__find_month_start_after_conjunction(jd_conj_prev, loc, crit);
+    if (isnan(jd_month_start) || target_jd < jd_month_start) {
+      return 0;
+    }
+  }
+
+  int day_number = (int)(target_jd - jd_month_start) + 1;
+  if (day_number < 1 || day_number > 30) {
+    return 0;
+  }
+
+  /* Sample the tabular calendar a few days *into* the month, not on the
+   * boundary day itself -- the tabular calendar's own boundary can sit
+   * a day off from the astronomically-resolved one, which would
+   * otherwise misassign the month number (see README/commit notes). */
+  HijriDate approx = hijri_tabular_from_jd(jd_month_start + 5.0);
+
+  out->year = approx.year;
+  out->month = approx.month;
+  out->day = day_number;
+  return 1;
+}
+
+#endif /* HIJRI_IMPLEMENTATION */

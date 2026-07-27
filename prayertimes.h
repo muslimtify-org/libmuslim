@@ -135,14 +135,16 @@ const char *method_to_string(CalcMethod method);
  * Compute all prayer times for a date and location using the given method.
  * Returns times as decimal hours in local time; high-latitude fallbacks apply.
  */
-struct PrayerTimes calculate_prayer_times(int year, int month, int day, double latitude,
-                                          double longitude, double timezone,
+struct PrayerTimes calculate_prayer_times(int year, int month, int day,
+                                          double latitude, double longitude,
+                                          double timezone,
                                           const MethodParams *params);
 
 /**
- * Days since 1970-01-01 for a civil (proleptic Gregorian) date, and its inverse.
- * Howard Hinnant's public-domain algorithm. Lets callers iterate a date range or
- * build a UTC instant without touching struct tm / mktime (no DST hazards).
+ * Days since 1970-01-01 for a civil (proleptic Gregorian) date, and its
+ * inverse. Howard Hinnant's public-domain algorithm. Lets callers iterate a
+ * date range or build a UTC instant without touching struct tm / mktime (no DST
+ * hazards).
  */
 static inline long mt_days_from_civil(int y, int m, int d) {
   y -= m <= 2;
@@ -185,36 +187,50 @@ static double normalize_deg(double angle) {
 /* ── Method parameter table ─────────────────────────────────────────── */
 
 static const MethodParams METHOD_TABLE[CALC_COUNT] = {
-    [CALC_MWL] = {"Muslim World League", 18.0, 17.0, 0, 0, ASR_STANDARD, MIDNIGHT_STANDARD, 0},
-    [CALC_MAKKAH] = {"Umm al-Qura, Makkah", 18.5, 0, 90, 0, ASR_STANDARD, MIDNIGHT_STANDARD, 0},
-    [CALC_ISNA] = {"ISNA", 15.0, 15.0, 0, 0, ASR_STANDARD, MIDNIGHT_STANDARD, 0},
-    [CALC_EGYPT] = {"Egyptian General Authority", 19.5, 17.5, 0, 0, ASR_STANDARD, MIDNIGHT_STANDARD,
-                    0},
-    [CALC_KARACHI] = {"Univ. Islamic Sciences, Karachi", 18.0, 18.0, 0, 0, ASR_STANDARD,
+    [CALC_MWL] = {"Muslim World League", 18.0, 17.0, 0, 0, ASR_STANDARD,
+                  MIDNIGHT_STANDARD, 0},
+    [CALC_MAKKAH] = {"Umm al-Qura, Makkah", 18.5, 0, 90, 0, ASR_STANDARD,
+                     MIDNIGHT_STANDARD, 0},
+    [CALC_ISNA] = {"ISNA", 15.0, 15.0, 0, 0, ASR_STANDARD, MIDNIGHT_STANDARD,
+                   0},
+    [CALC_EGYPT] = {"Egyptian General Authority", 19.5, 17.5, 0, 0,
+                    ASR_STANDARD, MIDNIGHT_STANDARD, 0},
+    [CALC_KARACHI] = {"Univ. Islamic Sciences, Karachi", 18.0, 18.0, 0, 0,
+                      ASR_STANDARD, MIDNIGHT_STANDARD, 0},
+    [CALC_TURKEY] = {"Diyanet, Turkey", 18.0, 17.0, 0, 0, ASR_STANDARD,
+                     MIDNIGHT_STANDARD, 0},
+    [CALC_SINGAPORE] = {"MUIS, Singapore", 20.0, 18.0, 0, 0, ASR_STANDARD,
+                        MIDNIGHT_STANDARD, 0},
+    [CALC_JAKIM] = {"JAKIM, Malaysia", 20.0, 18.0, 0, 0, ASR_STANDARD,
+                    MIDNIGHT_STANDARD, 0},
+    [CALC_KEMENAG] = {"KEMENAG, Indonesia", 20.0, 18.0, 0, 0, ASR_STANDARD,
+                      MIDNIGHT_STANDARD, 2},
+    [CALC_FRANCE] = {"UOIF, France", 12.0, 12.0, 0, 0, ASR_STANDARD,
+                     MIDNIGHT_STANDARD, 0},
+    [CALC_RUSSIA] = {"Spiritual Admin., Russia", 16.0, 15.0, 0, 0, ASR_STANDARD,
+                     MIDNIGHT_STANDARD, 0},
+    [CALC_DUBAI] = {"GAIAE, Dubai", 18.2, 18.2, 0, 0, ASR_STANDARD,
+                    MIDNIGHT_STANDARD, 0},
+    [CALC_QATAR] = {"Min. of Awqaf, Qatar", 18.0, 0, 90, 0, ASR_STANDARD,
+                    MIDNIGHT_STANDARD, 0},
+    [CALC_KUWAIT] = {"Min. of Awqaf, Kuwait", 18.0, 17.5, 0, 0, ASR_STANDARD,
+                     MIDNIGHT_STANDARD, 0},
+    [CALC_JORDAN] = {"Min. of Awqaf, Jordan", 18.0, 18.0, 0, 0, ASR_STANDARD,
+                     MIDNIGHT_STANDARD, 5},
+    [CALC_GULF] = {"Gulf Region", 19.5, 0, 90, 0, ASR_STANDARD,
+                   MIDNIGHT_STANDARD, 0},
+    [CALC_TUNISIA] = {"Min. of Religious Affairs, Tunisia", 18.0, 18.0, 0, 0,
+                      ASR_STANDARD, MIDNIGHT_STANDARD, 0},
+    [CALC_ALGERIA] = {"Min. of Religious Affairs, Algeria", 18.0, 17.0, 0, 0,
+                      ASR_STANDARD, MIDNIGHT_STANDARD, 0},
+    [CALC_MOROCCO] = {"Min. of Habous, Morocco", 19.0, 17.0, 0, 0, ASR_STANDARD,
                       MIDNIGHT_STANDARD, 0},
-    [CALC_TURKEY] = {"Diyanet, Turkey", 18.0, 17.0, 0, 0, ASR_STANDARD, MIDNIGHT_STANDARD, 0},
-    [CALC_SINGAPORE] = {"MUIS, Singapore", 20.0, 18.0, 0, 0, ASR_STANDARD, MIDNIGHT_STANDARD, 0},
-    [CALC_JAKIM] = {"JAKIM, Malaysia", 20.0, 18.0, 0, 0, ASR_STANDARD, MIDNIGHT_STANDARD, 0},
-    [CALC_KEMENAG] = {"KEMENAG, Indonesia", 20.0, 18.0, 0, 0, ASR_STANDARD, MIDNIGHT_STANDARD, 2},
-    [CALC_FRANCE] = {"UOIF, France", 12.0, 12.0, 0, 0, ASR_STANDARD, MIDNIGHT_STANDARD, 0},
-    [CALC_RUSSIA] = {"Spiritual Admin., Russia", 16.0, 15.0, 0, 0, ASR_STANDARD, MIDNIGHT_STANDARD,
-                     0},
-    [CALC_DUBAI] = {"GAIAE, Dubai", 18.2, 18.2, 0, 0, ASR_STANDARD, MIDNIGHT_STANDARD, 0},
-    [CALC_QATAR] = {"Min. of Awqaf, Qatar", 18.0, 0, 90, 0, ASR_STANDARD, MIDNIGHT_STANDARD, 0},
-    [CALC_KUWAIT] = {"Min. of Awqaf, Kuwait", 18.0, 17.5, 0, 0, ASR_STANDARD, MIDNIGHT_STANDARD, 0},
-    [CALC_JORDAN] = {"Min. of Awqaf, Jordan", 18.0, 18.0, 0, 0, ASR_STANDARD, MIDNIGHT_STANDARD, 5},
-    [CALC_GULF] = {"Gulf Region", 19.5, 0, 90, 0, ASR_STANDARD, MIDNIGHT_STANDARD, 0},
-    [CALC_TUNISIA] = {"Min. of Religious Affairs, Tunisia", 18.0, 18.0, 0, 0, ASR_STANDARD,
-                      MIDNIGHT_STANDARD, 0},
-    [CALC_ALGERIA] = {"Min. of Religious Affairs, Algeria", 18.0, 17.0, 0, 0, ASR_STANDARD,
-                      MIDNIGHT_STANDARD, 0},
-    [CALC_MOROCCO] = {"Min. of Habous, Morocco", 19.0, 17.0, 0, 0, ASR_STANDARD, MIDNIGHT_STANDARD,
-                      0},
-    [CALC_PORTUGAL] = {"Comunidade Islamica de Lisboa", 18.0, 0, 77, 3, ASR_STANDARD,
-                       MIDNIGHT_STANDARD, 0},
-    [CALC_MOONSIGHTING] = {"Moonsighting Committee", 18.0, 18.0, 0, 3, ASR_STANDARD,
-                           MIDNIGHT_STANDARD, 0},
-    [CALC_CUSTOM] = {"Custom", 18.0, 17.0, 0, 0, ASR_STANDARD, MIDNIGHT_STANDARD, 0},
+    [CALC_PORTUGAL] = {"Comunidade Islamica de Lisboa", 18.0, 0, 77, 3,
+                       ASR_STANDARD, MIDNIGHT_STANDARD, 0},
+    [CALC_MOONSIGHTING] = {"Moonsighting Committee", 18.0, 18.0, 0, 3,
+                           ASR_STANDARD, MIDNIGHT_STANDARD, 0},
+    [CALC_CUSTOM] = {"Custom", 18.0, 17.0, 0, 0, ASR_STANDARD,
+                     MIDNIGHT_STANDARD, 0},
 };
 
 const MethodParams *method_params_get(CalcMethod method) {
@@ -282,7 +298,8 @@ static double julian_day(int year, int month, int day) {
   }
   int A = year / 100;
   int B = 2 - A + (A / 4);
-  double jd = floor(365.25 * (year + 4716)) + floor(30.6001 * (month + 1)) + day + B - 1524.5;
+  double jd = floor(365.25 * (year + 4716)) + floor(30.6001 * (month + 1)) +
+              day + B - 1524.5;
   return jd;
 }
 
@@ -291,17 +308,22 @@ static void sun_position(double jd, double *decl, double *eqt) {
   double D = jd - JULIAN_EPOCH;
 
   double g = normalize_deg(SUN_MEAN_ANOMALY_OFFSET + SUN_MEAN_ANOMALY_RATE * D);
-  double q = normalize_deg(SUN_MEAN_LONGITUDE_OFFSET + SUN_MEAN_LONGITUDE_RATE * D);
+  double q =
+      normalize_deg(SUN_MEAN_LONGITUDE_OFFSET + SUN_MEAN_LONGITUDE_RATE * D);
 
-  double L = normalize_deg(q + SUN_ECCENTRICITY_AMPLITUDE1 * sin(g * DEG_TO_RAD) +
-                           SUN_ECCENTRICITY_AMPLITUDE2 * sin(2 * g * DEG_TO_RAD));
+  double L =
+      normalize_deg(q + SUN_ECCENTRICITY_AMPLITUDE1 * sin(g * DEG_TO_RAD) +
+                    SUN_ECCENTRICITY_AMPLITUDE2 * sin(2 * g * DEG_TO_RAD));
 
   double e = OBLIQUITY_COEFF - OBLIQUITY_RATE * D;
 
-  double RA = atan2(cos(e * DEG_TO_RAD) * sin(L * DEG_TO_RAD), cos(L * DEG_TO_RAD)) * RAD_TO_DEG;
+  double RA =
+      atan2(cos(e * DEG_TO_RAD) * sin(L * DEG_TO_RAD), cos(L * DEG_TO_RAD)) *
+      RAD_TO_DEG;
   RA = normalize_deg(RA);
 
-  // Normalize difference to [-180, 180] to handle wrap-around near 0/360 boundary
+  // Normalize difference to [-180, 180] to handle wrap-around near 0/360
+  // boundary
   double diff = fmod(q - RA + 180.0, 360.0);
   if (diff < 0)
     diff += 360.0;
@@ -330,7 +352,8 @@ static double hour_angle(double lat, double decl, double angle) {
 }
 
 // Safe version that checks cos_ha bounds for high-latitude locations
-static double hour_angle_safe(double lat, double decl, double angle, bool *failed) {
+static double hour_angle_safe(double lat, double decl, double angle,
+                              bool *failed) {
   double lat_rad = lat * DEG_TO_RAD;
   double decl_rad = decl * DEG_TO_RAD;
   double angle_rad = angle * DEG_TO_RAD;
@@ -384,8 +407,9 @@ void format_time_hms(double timeHours, char *outBuffer, size_t bufSize) {
   snprintf(outBuffer, bufSize, "%02d:%02d:%02d", hours, minutes, seconds);
 }
 
-struct PrayerTimes calculate_prayer_times(int year, int month, int day, double latitude,
-                                          double longitude, double timezone,
+struct PrayerTimes calculate_prayer_times(int year, int month, int day,
+                                          double latitude, double longitude,
+                                          double timezone,
                                           const MethodParams *params) {
   double jd = julian_day(year, month, day);
   double decl, eqt;
@@ -403,7 +427,8 @@ struct PrayerTimes calculate_prayer_times(int year, int month, int day, double l
 
   /* Fajr */
   bool fajr_failed = false;
-  double ha_fajr = hour_angle_safe(latitude, decl, params->fajr_angle, &fajr_failed);
+  double ha_fajr =
+      hour_angle_safe(latitude, decl, params->fajr_angle, &fajr_failed);
   double fajr = noon - ha_fajr;
   if (fajr_failed) {
     /* Angle-based high-latitude fallback */
@@ -420,7 +445,8 @@ struct PrayerTimes calculate_prayer_times(int year, int month, int day, double l
   double isha;
   if (params->isha_angle > 0.0) {
     bool isha_failed = false;
-    double ha_isha = hour_angle_safe(latitude, decl, params->isha_angle, &isha_failed);
+    double ha_isha =
+        hour_angle_safe(latitude, decl, params->isha_angle, &isha_failed);
     isha = noon + ha_isha;
     if (isha_failed) {
       isha = sunset + (params->isha_angle / 60.0) * night;
@@ -431,9 +457,9 @@ struct PrayerTimes calculate_prayer_times(int year, int month, int day, double l
   }
 
   /* Asr */
-  double asr_angle =
-      atan(1.0 / ((double)params->asr_shadow + tan(fabs(latitude - decl) * DEG_TO_RAD))) *
-      RAD_TO_DEG;
+  double asr_angle = atan(1.0 / ((double)params->asr_shadow +
+                                 tan(fabs(latitude - decl) * DEG_TO_RAD))) *
+                     RAD_TO_DEG;
   double ha_asr = hour_angle(latitude, decl, -asr_angle);
   double asr = noon + ha_asr;
 
