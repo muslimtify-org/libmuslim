@@ -46,7 +46,7 @@ Modified:
 **Files:**
 - Create: `tests/test_hijri.c`
 
-- [ ] **Step 1: Write the exact arithmetic test executable**
+- [x] **Step 1: Write the exact arithmetic test executable**
 
 Create `tests/test_hijri.c` with this complete content:
 
@@ -154,7 +154,7 @@ int main(void) {
 }
 ```
 
-- [ ] **Step 2: Compile and run the C99 test**
+- [x] **Step 2: Compile and run the C99 test**
 
 Run:
 
@@ -165,7 +165,7 @@ gcc -std=c99 -Wall -Wextra -Wpedantic -O2 tests/test_hijri.c -lm -o /tmp/libmusl
 
 Expected: exit code `0` and the line `Hijri tests: 19 checks, 0 failures`.
 
-- [ ] **Step 3: Compile and run the same source as C++17**
+- [x] **Step 3: Compile and run the same source as C++17**
 
 Run:
 
@@ -176,7 +176,7 @@ g++ -std=c++17 -Wall -Wextra -Wpedantic -O2 -x c++ tests/test_hijri.c -lm -o /tm
 
 Expected: exit code `0` and the line `Hijri tests: 19 checks, 0 failures`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/test_hijri.c
