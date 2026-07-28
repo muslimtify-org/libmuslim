@@ -1,7 +1,7 @@
 ---
 title: Comprehensive Hijri Test Suite
 date: 2026-07-28
-status: draft
+status: approved
 ---
 
 # Comprehensive Hijri Test Suite — Design
