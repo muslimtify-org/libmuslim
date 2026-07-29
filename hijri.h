@@ -236,16 +236,28 @@ HIJRIDEF int hijri_umm_al_qura_from_gregorian(int gy, int gm, int gd,
                                                HijriDate *out);
 
 typedef enum {
-  HIJRI_YALLOP_NOT_VISIBLE = 0,
-  HIJRI_YALLOP_NEEDS_OPTICAL_AID,
-  HIJRI_YALLOP_MAY_NEED_OPTICAL_AID,
-  HIJRI_YALLOP_VISIBLE_UNDER_PERFECT_CONDITIONS,
-  HIJRI_YALLOP_EASILY_VISIBLE
+  HIJRI_YALLOP_A_EASILY_VISIBLE,
+  HIJRI_YALLOP_B_VISIBLE_PERFECT_CONDITIONS,
+  HIJRI_YALLOP_C_MAY_NEED_OPTICAL_AID,
+  HIJRI_YALLOP_D_NEEDS_OPTICAL_AID,
+  HIJRI_YALLOP_E_NOT_VISIBLE_TELESCOPE,
+  HIJRI_YALLOP_F_NOT_VISIBLE_BELOW_LIMIT
 } HijriYallopZone;
+
+typedef struct {
+  double jd_best_time_ut;
+  double arcv_deg;
+  double crescent_width_arcmin;
+  double q;
+  HijriYallopZone zone;
+} HijriYallopResult;
 
 HIJRIDEF double hijri_yallop_q(double arcv_deg, double crescent_width_arcmin);
 HIJRIDEF HijriYallopZone hijri_yallop_classify(double arcv_deg,
                                                double crescent_width_arcmin);
+HIJRIDEF HijriYallopResult
+hijri_yallop_evaluate_evening(int gy, int gm, int gd,
+                              const HijriLocation *loc);
 
 typedef enum {
   HIJRI_ODEH_NOT_VISIBLE = 0,
@@ -254,9 +266,20 @@ typedef enum {
   HIJRI_ODEH_VISIBLE_NAKED_EYE
 } HijriOdehZone;
 
+typedef struct {
+  double jd_best_time_ut;
+  double arcv_deg;
+  double crescent_width_arcmin;
+  double v;
+  HijriOdehZone zone;
+} HijriOdehResult;
+
 HIJRIDEF double hijri_odeh_v(double arcv_deg, double crescent_width_arcmin);
 HIJRIDEF HijriOdehZone hijri_odeh_classify(double arcv_deg,
                                            double crescent_width_arcmin);
+HIJRIDEF HijriOdehResult
+hijri_odeh_evaluate_evening(int gy, int gm, int gd,
+                            const HijriLocation *loc);
 
 /* ---- Tabular / arithmetic calendar (Kuwaiti algorithm) -------------------
  * No astronomy: fixed 30-year cycle, 11 leap years of 355 days. Matches
@@ -821,14 +844,16 @@ HIJRIDEF double hijri_yallop_q(double arcv_deg, double w) {
 HIJRIDEF HijriYallopZone hijri_yallop_classify(double arcv_deg, double w) {
   double q = hijri_yallop_q(arcv_deg, w);
   if (q > 0.216)
-    return HIJRI_YALLOP_EASILY_VISIBLE;
+    return HIJRI_YALLOP_A_EASILY_VISIBLE;
   if (q > -0.014)
-    return HIJRI_YALLOP_VISIBLE_UNDER_PERFECT_CONDITIONS;
+    return HIJRI_YALLOP_B_VISIBLE_PERFECT_CONDITIONS;
   if (q > -0.160)
-    return HIJRI_YALLOP_MAY_NEED_OPTICAL_AID;
+    return HIJRI_YALLOP_C_MAY_NEED_OPTICAL_AID;
   if (q > -0.232)
-    return HIJRI_YALLOP_NEEDS_OPTICAL_AID;
-  return HIJRI_YALLOP_NOT_VISIBLE;
+    return HIJRI_YALLOP_D_NEEDS_OPTICAL_AID;
+  if (q > -0.293)
+    return HIJRI_YALLOP_E_NOT_VISIBLE_TELESCOPE;
+  return HIJRI_YALLOP_F_NOT_VISIBLE_BELOW_LIMIT;
 }
 
 HIJRIDEF double hijri_odeh_v(double arcv_deg, double w) {
@@ -845,6 +870,133 @@ HIJRIDEF HijriOdehZone hijri_odeh_classify(double arcv_deg, double w) {
   if (v >= -0.96)
     return HIJRI_ODEH_VISIBLE_WITH_OPTICAL_AID_ONLY;
   return HIJRI_ODEH_NOT_VISIBLE;
+}
+
+static double
+hijri__topocentric_crescent_width_arcmin(const HijriMoonPosition *moon,
+                                         double moon_geocentric_altitude_deg,
+                                         double elongation_deg,
+                                         const HijriLocation *loc) {
+  double earth_radii = moon->distance_km / 6378.14;
+  double observer_radii = 1.0 + loc->elevation_m / (6378.14 * 1000.0);
+  double topocentric_distance =
+      sqrt(earth_radii * earth_radii +
+           observer_radii * observer_radii -
+           2.0 * earth_radii * observer_radii *
+               sin(HIJRI__DEG2RAD(moon_geocentric_altitude_deg)));
+  double geocentric_semidiameter_deg =
+      0.2725076 * moon->horizontal_parallax_deg;
+  double topocentric_semidiameter_deg =
+      geocentric_semidiameter_deg * earth_radii / topocentric_distance;
+  return 60.0 * topocentric_semidiameter_deg *
+         (1.0 - cos(HIJRI__DEG2RAD(elongation_deg)));
+}
+
+HIJRIDEF HijriYallopResult
+hijri_yallop_evaluate_evening(int gy, int gm, int gd,
+                              const HijriLocation *loc) {
+  HijriEveningParameters p =
+      hijri_compute_evening_parameters(gy, gm, gd, loc);
+  HijriYallopResult result;
+  result.jd_best_time_ut = NAN;
+  result.arcv_deg = NAN;
+  result.crescent_width_arcmin = NAN;
+  result.q = NAN;
+  result.zone = HIJRI_YALLOP_F_NOT_VISIBLE_BELOW_LIMIT;
+
+  if (p.sunset_status == HIJRI_EVENT_OK &&
+      p.moonset_status == HIJRI_EVENT_OK) {
+    double jd_tt;
+    HijriSunPosition sun;
+    HijriMoonPosition moon;
+    double sun_altitude;
+    double moon_geocentric_altitude;
+    double moon_ra_topocentric;
+    double moon_dec_topocentric;
+    double elongation_topocentric;
+
+    result.jd_best_time_ut =
+        p.jd_sunset_ut + (p.lag_time_minutes * 4.0 / 9.0) / 1440.0;
+    jd_tt = hijri_jd_tt_from_ut(result.jd_best_time_ut);
+    sun = hijri_sun_position(jd_tt);
+    moon = hijri_moon_position(jd_tt);
+    sun_altitude =
+        hijri__altitude_deg(sun.right_ascension_deg, sun.declination_deg,
+                            result.jd_best_time_ut, loc);
+    moon_geocentric_altitude =
+        hijri__altitude_deg(moon.right_ascension_deg, moon.declination_deg,
+                            result.jd_best_time_ut, loc);
+    hijri_moon_topocentric(
+        &moon, result.jd_best_time_ut, loc->latitude_deg, loc->longitude_deg,
+        loc->elevation_m, &moon_ra_topocentric, &moon_dec_topocentric);
+    elongation_topocentric = hijri__angular_separation_deg(
+        moon_ra_topocentric, moon_dec_topocentric, sun.right_ascension_deg,
+        sun.declination_deg);
+    result.arcv_deg = moon_geocentric_altitude - sun_altitude;
+    result.crescent_width_arcmin =
+        hijri__topocentric_crescent_width_arcmin(
+            &moon, moon_geocentric_altitude, elongation_topocentric, loc);
+    result.q = hijri_yallop_q(result.arcv_deg,
+                              result.crescent_width_arcmin);
+    result.zone = hijri_yallop_classify(result.arcv_deg,
+                                         result.crescent_width_arcmin);
+  }
+  return result;
+}
+
+HIJRIDEF HijriOdehResult
+hijri_odeh_evaluate_evening(int gy, int gm, int gd,
+                            const HijriLocation *loc) {
+  HijriEveningParameters p =
+      hijri_compute_evening_parameters(gy, gm, gd, loc);
+  HijriOdehResult result;
+  result.jd_best_time_ut = NAN;
+  result.arcv_deg = NAN;
+  result.crescent_width_arcmin = NAN;
+  result.v = NAN;
+  result.zone = HIJRI_ODEH_NOT_VISIBLE;
+
+  if (p.sunset_status == HIJRI_EVENT_OK &&
+      p.moonset_status == HIJRI_EVENT_OK) {
+    double jd_tt;
+    HijriSunPosition sun;
+    HijriMoonPosition moon;
+    double sun_altitude;
+    double moon_geocentric_altitude;
+    double moon_ra_topocentric;
+    double moon_dec_topocentric;
+    double moon_topocentric_altitude;
+    double elongation_topocentric;
+
+    result.jd_best_time_ut =
+        p.jd_sunset_ut + (p.lag_time_minutes * 4.0 / 9.0) / 1440.0;
+    jd_tt = hijri_jd_tt_from_ut(result.jd_best_time_ut);
+    sun = hijri_sun_position(jd_tt);
+    moon = hijri_moon_position(jd_tt);
+    sun_altitude =
+        hijri__altitude_deg(sun.right_ascension_deg, sun.declination_deg,
+                            result.jd_best_time_ut, loc);
+    moon_geocentric_altitude =
+        hijri__altitude_deg(moon.right_ascension_deg, moon.declination_deg,
+                            result.jd_best_time_ut, loc);
+    hijri_moon_topocentric(
+        &moon, result.jd_best_time_ut, loc->latitude_deg, loc->longitude_deg,
+        loc->elevation_m, &moon_ra_topocentric, &moon_dec_topocentric);
+    moon_topocentric_altitude = hijri__altitude_deg(
+        moon_ra_topocentric, moon_dec_topocentric, result.jd_best_time_ut, loc);
+    elongation_topocentric = hijri__angular_separation_deg(
+        moon_ra_topocentric, moon_dec_topocentric, sun.right_ascension_deg,
+        sun.declination_deg);
+    result.arcv_deg = moon_topocentric_altitude - sun_altitude;
+    result.crescent_width_arcmin =
+        hijri__topocentric_crescent_width_arcmin(
+            &moon, moon_geocentric_altitude, elongation_topocentric, loc);
+    result.v =
+        hijri_odeh_v(result.arcv_deg, result.crescent_width_arcmin);
+    result.zone =
+        hijri_odeh_classify(result.arcv_deg, result.crescent_width_arcmin);
+  }
+  return result;
 }
 
 /* ---- Tabular calendar

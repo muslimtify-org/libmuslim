@@ -173,53 +173,83 @@ static void test_binary_criteria(void) {
 
 static void test_yallop(void) {
   const double base = 11.8371;
+  static const struct {
+    double q;
+    HijriYallopZone zone;
+  } yallop_cases[] = {
+      {0.217, HIJRI_YALLOP_A_EASILY_VISIBLE},
+      {0.000, HIJRI_YALLOP_B_VISIBLE_PERFECT_CONDITIONS},
+      {-0.100, HIJRI_YALLOP_C_MAY_NEED_OPTICAL_AID},
+      {-0.200, HIJRI_YALLOP_D_NEEDS_OPTICAL_AID},
+      {-0.250, HIJRI_YALLOP_E_NOT_VISIBLE_TELESCOPE},
+      {-0.300, HIJRI_YALLOP_F_NOT_VISIBLE_BELOW_LIMIT}};
+  const HijriLocation jakarta = {-6.2088, 106.8456, 8.0, "Jakarta"};
+  const HijriLocation north_pole = {90.0, 0.0, 0.0, "North Pole"};
+  HijriEveningParameters evening =
+      hijri_compute_evening_parameters(2025, 2, 28, &jakarta);
+  HijriYallopResult result =
+      hijri_yallop_evaluate_evening(2025, 2, 28, &jakarta);
+  HijriYallopResult unavailable =
+      hijri_yallop_evaluate_evening(2025, 6, 21, &north_pole);
+  size_t index;
+
   check_close("yallop_q_zero", hijri_yallop_q(base, 0.0), 0.0, 1e-12);
-  check_int("yallop_not_visible",
-            hijri_yallop_classify(base + 10.0 * -0.232, 0.0),
-            HIJRI_YALLOP_NOT_VISIBLE);
-  check_int("yallop_needs_optical",
-            hijri_yallop_classify(base + 10.0 * -0.231, 0.0),
-            HIJRI_YALLOP_NEEDS_OPTICAL_AID);
-  check_int("yallop_may_need_boundary",
-            hijri_yallop_classify(
-                nextafter(base + 10.0 * -0.160, -INFINITY), 0.0),
-            HIJRI_YALLOP_NEEDS_OPTICAL_AID);
-  check_int("yallop_may_need",
-            hijri_yallop_classify(base + 10.0 * -0.159, 0.0),
-            HIJRI_YALLOP_MAY_NEED_OPTICAL_AID);
-  check_int("yallop_perfect_boundary",
-            hijri_yallop_classify(base + 10.0 * -0.014, 0.0),
-            HIJRI_YALLOP_MAY_NEED_OPTICAL_AID);
-  check_int("yallop_perfect",
-            hijri_yallop_classify(base + 10.0 * -0.013, 0.0),
-            HIJRI_YALLOP_VISIBLE_UNDER_PERFECT_CONDITIONS);
-  check_int("yallop_easy_boundary",
-            hijri_yallop_classify(
-                nextafter(base + 10.0 * 0.216, -INFINITY), 0.0),
-            HIJRI_YALLOP_VISIBLE_UNDER_PERFECT_CONDITIONS);
-  check_int("yallop_easy",
-            hijri_yallop_classify(base + 10.0 * 0.217, 0.0),
-            HIJRI_YALLOP_EASILY_VISIBLE);
+  for (index = 0; index < sizeof(yallop_cases) / sizeof(yallop_cases[0]);
+       index++) {
+    char name[48];
+    snprintf(name, sizeof(name), "yallop_zone_%lu", (unsigned long)index);
+    check_int(name,
+              hijri_yallop_classify(base + 10.0 * yallop_cases[index].q, 0.0),
+              yallop_cases[index].zone);
+  }
+  check_close("yallop_best_time_relation",
+              (result.jd_best_time_ut - evening.jd_sunset_ut) * 1440.0,
+              evening.lag_time_minutes * 4.0 / 9.0, 1e-5);
+  check_true("yallop_unavailable_best_time_nan",
+             isnan(unavailable.jd_best_time_ut));
+  check_true("yallop_unavailable_arcv_nan", isnan(unavailable.arcv_deg));
+  check_true("yallop_unavailable_width_nan",
+             isnan(unavailable.crescent_width_arcmin));
+  check_true("yallop_unavailable_q_nan", isnan(unavailable.q));
 }
 
 static void test_odeh(void) {
   const double base = 7.1651;
+  static const struct {
+    double v;
+    HijriOdehZone zone;
+  } odeh_cases[] = {
+      {6.0, HIJRI_ODEH_VISIBLE_NAKED_EYE},
+      {3.0, HIJRI_ODEH_VISIBLE_WITH_OPTICAL_AID_COULD_BE_NAKED_EYE},
+      {0.0, HIJRI_ODEH_VISIBLE_WITH_OPTICAL_AID_ONLY},
+      {-2.0, HIJRI_ODEH_NOT_VISIBLE}};
+  const HijriLocation jakarta = {-6.2088, 106.8456, 8.0, "Jakarta"};
+  const HijriLocation north_pole = {90.0, 0.0, 0.0, "North Pole"};
+  HijriEveningParameters evening =
+      hijri_compute_evening_parameters(2025, 2, 28, &jakarta);
+  HijriOdehResult result =
+      hijri_odeh_evaluate_evening(2025, 2, 28, &jakarta);
+  HijriOdehResult unavailable =
+      hijri_odeh_evaluate_evening(2025, 6, 21, &north_pole);
+  size_t index;
+
   check_close("odeh_v_zero", hijri_odeh_v(base, 0.0), 0.0, 1e-12);
-  check_int("odeh_not_visible",
-            hijri_odeh_classify(base - 0.961, 0.0),
-            HIJRI_ODEH_NOT_VISIBLE);
-  check_int("odeh_optical_equal",
-            hijri_odeh_classify(base - 0.960, 0.0),
-            HIJRI_ODEH_VISIBLE_WITH_OPTICAL_AID_ONLY);
-  check_int("odeh_possible_naked_equal",
-            hijri_odeh_classify(nextafter(base + 2.0, INFINITY), 0.0),
-            HIJRI_ODEH_VISIBLE_WITH_OPTICAL_AID_COULD_BE_NAKED_EYE);
-  check_int("odeh_naked_equal",
-            hijri_odeh_classify(base + 5.65, 0.0),
-            HIJRI_ODEH_VISIBLE_NAKED_EYE);
-  check_int("odeh_naked_above",
-            hijri_odeh_classify(base + 5.651, 0.0),
-            HIJRI_ODEH_VISIBLE_NAKED_EYE);
+  for (index = 0; index < sizeof(odeh_cases) / sizeof(odeh_cases[0]);
+       index++) {
+    char name[48];
+    snprintf(name, sizeof(name), "odeh_zone_%lu", (unsigned long)index);
+    check_int(name, hijri_odeh_classify(base + odeh_cases[index].v, 0.0),
+              odeh_cases[index].zone);
+  }
+  check_close("odeh_best_time_relation",
+              (result.jd_best_time_ut - evening.jd_sunset_ut) * 1440.0,
+              evening.lag_time_minutes * 4.0 / 9.0, 1e-5);
+  check_true("odeh_unavailable_best_time_nan",
+             isnan(unavailable.jd_best_time_ut));
+  check_true("odeh_unavailable_arcv_nan", isnan(unavailable.arcv_deg));
+  check_true("odeh_unavailable_width_nan",
+             isnan(unavailable.crescent_width_arcmin));
+  check_true("odeh_unavailable_v_nan", isnan(unavailable.v));
 }
 
 static void test_relevant_conjunction(void) {
