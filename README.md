@@ -218,14 +218,51 @@ Contributions are welcome! Please ensure any changes to calculation methods are 
 
 ## Hijri verification
 
-Run the deterministic arithmetic, criterion, and visibility-model tests:
+The Hijri API is intentionally layered. `HijriEveningParameters` exposes
+explicit astronomical quantities, `HijriLocalPredicate` evaluates a condition
+at one observer location, and calendar-policy functions perform conversion.
+A local predicate is not a national or global authority decision: applications
+must add any required geographic aggregation, observation, or administrative
+policy themselves.
+
+This is a breaking API. `HijriCriterion` and the `HIJRI_CRIT_*` constants were
+removed. Use `HijriLocalPredicate`, the `HIJRI_PREDICATE_*` constants,
+`hijri_compute_evening_parameters()`, and `hijri_evaluate_evening()` instead.
+For example:
+
+```c
+HijriLocation jakarta = {-6.2088, 106.8456, 8.0, "Jakarta"};
+HijriMonthDecision local = hijri_evaluate_evening(
+    2026, 2, 17, &jakarta, HIJRI_PREDICATE_WUJUDUL_HILAL);
+```
+
+MABIMS 1992 and 2021 conversions use the supplied location and their explicit
+local predicates. Umm al-Qura is opt-in through the dedicated
+Mecca-only function, which intentionally accepts no consumer location:
+
+```c
+HijriDate date;
+int ok = hijri_umm_al_qura_from_gregorian(2026, 7, 27, &date);
+```
+
+Yallop and Odeh are graded visibility models, not binary calendar policies.
+Use `hijri_yallop_evaluate_evening()` and
+`hijri_odeh_evaluate_evening()` for their dedicated best-time parameters,
+scores, and zones, then define any zone-acceptance policy explicitly.
+
+The solar and lunar calculations are compact, dependency-free
+approximations. In particular, the lunar ephemeris remains approximate and is
+not a substitute for an observational-grade ephemeris or an official
+published calendar.
+
+Compile the example and run the deterministic arithmetic, predicate, policy,
+and visibility-model tests under C11:
 
 ```sh
+gcc -std=c11 -Wall -Wextra -Wpedantic -O2 examples/hijri_example.c -lm -o /tmp/libmuslim-hijri-example
 gcc -std=c11 -Wall -Wextra -Wpedantic -O2 tests/test_hijri.c -lm -o /tmp/libmuslim-test-hijri
 /tmp/libmuslim-test-hijri
 ```
-
-The suite prints `Hijri tests: 56 checks, 0 failures`.
 
 Regenerate the research baseline:
 
