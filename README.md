@@ -215,3 +215,29 @@ limitations under the License.
 ## Contributing
 
 Contributions are welcome! Please ensure any changes to calculation methods are verified against official data sources.
+
+## Hijri verification
+
+Run the deterministic arithmetic, criterion, and visibility-model tests:
+
+```sh
+gcc -std=c11 -Wall -Wextra -Wpedantic -O2 tests/test_hijri.c -lm -o /tmp/libmuslim-test-hijri
+/tmp/libmuslim-test-hijri
+```
+
+The suite prints `Hijri tests: 56 checks, 0 failures`.
+
+Regenerate the research baseline:
+
+```sh
+gcc -std=c11 -Wall -Wextra -Wpedantic -O2 tests/hijri_research_probe.c -lm -o /tmp/libmuslim-hijri-probe
+/tmp/libmuslim-hijri-probe > /tmp/hijri-2020-2025-baseline.csv
+cmp /tmp/hijri-2020-2025-baseline.csv docs/research/hijri-2020-2025-baseline.csv
+```
+
+The baseline CSV and research report under `docs/research/` are local, ignored
+research artifacts. They are diagnostic evidence, not authoritative oracles.
+The permanent tracked tests are `tests/test_hijri.c` and
+`tests/hijri_research_probe.c`. Reference sources, conventions,
+discrepancies, and fixture admission decisions are recorded locally in
+`docs/research/hijri-2020-2025-sources.md`.
