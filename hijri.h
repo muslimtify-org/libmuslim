@@ -21,12 +21,11 @@
  *
  * A from-scratch astronomical Hijri (Islamic lunar) calendar library:
  * Julian Day handling, low/medium-precision Sun & Moon ephemerides,
- * sunset/moonset/conjunction solvers, and a pluggable layer of
- * crescent-visibility criteria used by different countries and
- * organizations (Umm al-Qura / Saudi Arabia, MABIMS old & new / Indonesia
- * Malaysia Brunei Singapore, Wujudul Hilal / Muhammadiyah, Turkey Diyanet
- * & the 2016 Istanbul ICOP unified criterion, ECFR/ISNA, Egypt), plus the
- * Yallop (1997) and Odeh (2004) quantitative visibility models. A
+ * sunset/moonset/conjunction solvers, explicit local evening parameters,
+ * documented MABIMS and Wujudul Hilal local predicates, neutral research
+ * predicates, dedicated Yallop (1997) and Odeh (2004) visibility models,
+ * and an opt-in Mecca-based Umm al-Qura policy. Local predicate results are
+ * not, by themselves, complete national or global authority decisions. A
  * non-astronomical fixed-cycle tabular ("Kuwaiti algorithm") calendar is
  * included too, as a fast dependency-free fallback.
  *

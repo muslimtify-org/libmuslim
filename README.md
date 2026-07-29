@@ -225,28 +225,32 @@ A local predicate is not a national or global authority decision: applications
 must add any required geographic aggregation, observation, or administrative
 policy themselves.
 
-This is a breaking API. `HijriCriterion` and the `HIJRI_CRIT_*` constants were
-removed. Use `HijriLocalPredicate`, the `HIJRI_PREDICATE_*` constants,
+This is a breaking API. `HijriCriterion`, the `HIJRI_CRIT_*` constants, and
+the former generic Gregorian-to-Hijri conversion function were removed; there
+is no compatibility alias. Use `HijriLocalPredicate`, the
+`HIJRI_PREDICATE_*` constants,
 `hijri_compute_evening_parameters()`, and `hijri_evaluate_evening()` instead.
-For example:
+The replacement conversion builds a calendar from one predicate at one
+observer location:
 
 ```c
 HijriLocation jakarta = {-6.2088, 106.8456, 8.0, "Jakarta"};
-HijriMonthDecision local = hijri_evaluate_evening(
-    2026, 2, 17, &jakarta, HIJRI_PREDICATE_WUJUDUL_HILAL);
+HijriDate date;
+int ok = hijri_from_gregorian_with_local_predicate(
+    2026, 7, 27, &jakarta, HIJRI_PREDICATE_MABIMS_2021, &date);
 ```
 
-MABIMS 1992 and 2021 conversions use the supplied location and their explicit
-local predicates. Umm al-Qura is opt-in through the dedicated
-Mecca-only function, which intentionally accepts no consumer location:
+This local conversion does not claim an official MABIMS national aggregation.
+Umm al-Qura remains a separate opt-in Mecca-based function, which
+intentionally accepts no consumer location:
 
 ```c
 HijriDate date;
 int ok = hijri_umm_al_qura_from_gregorian(2026, 7, 27, &date);
 ```
 
-Yallop and Odeh are graded visibility models, not binary calendar policies.
-Use `hijri_yallop_evaluate_evening()` and
+Yallop and Odeh remain graded visibility classifications, not calendar
+policies. Use `hijri_yallop_evaluate_evening()` and
 `hijri_odeh_evaluate_evening()` for their dedicated best-time parameters,
 scores, and zones, then define any zone-acceptance policy explicitly.
 

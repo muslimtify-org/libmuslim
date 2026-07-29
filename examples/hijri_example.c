@@ -25,12 +25,12 @@ int main(void) {
   print_date("2026-07-27 (tabular)", 1, result);
 
   printf("\n=== Local calendar predicates for Jakarta ===\n");
-  ok = hijri_from_gregorian(2026, 7, 27, &jakarta,
-                            HIJRI_PREDICATE_MABIMS_1992, &result);
-  print_date("MABIMS 1992", ok, result);
-  ok = hijri_from_gregorian(2026, 7, 27, &jakarta,
-                            HIJRI_PREDICATE_MABIMS_2021, &result);
-  print_date("MABIMS 2021", ok, result);
+  ok = hijri_from_gregorian_with_local_predicate(
+      2026, 7, 27, &jakarta, HIJRI_PREDICATE_MABIMS_1992, &result);
+  print_date("MABIMS 1992 local calendar", ok, result);
+  ok = hijri_from_gregorian_with_local_predicate(
+      2026, 7, 27, &jakarta, HIJRI_PREDICATE_MABIMS_2021, &result);
+  print_date("MABIMS 2021 local calendar", ok, result);
 
   wujud = hijri_evaluate_evening(2026, 2, 17, &jakarta,
                                  HIJRI_PREDICATE_WUJUDUL_HILAL);
