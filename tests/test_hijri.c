@@ -44,13 +44,22 @@ static void check_true(const char *name, int condition) {
   }
 }
 
-static HijriHilalParameters parameters(double altitude, double elongation,
-                                       double age, double lag,
-                                       int conjunction_before,
-                                       int moonset_after) {
-  HijriHilalParameters value = {0};
-  value.moon_altitude_deg = altitude;
-  value.elongation_deg = elongation;
+static HijriEveningParameters parameters(double center_altitude,
+                                          double upper_limb_altitude,
+                                          double geocentric_elongation,
+                                          double topocentric_elongation,
+                                          double age, double lag,
+                                          int conjunction_before,
+                                          int moonset_after) {
+  HijriEveningParameters value = {
+      0.0, 0.0, 0.0, HIJRI_EVENT_OK, HIJRI_EVENT_OK, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0,              0};
+  value.sunset_status = HIJRI_EVENT_OK;
+  value.moonset_status = HIJRI_EVENT_OK;
+  value.moon_center_geometric_altitude_deg = center_altitude;
+  value.moon_upper_limb_apparent_altitude_deg = upper_limb_altitude;
+  value.geocentric_elongation_deg = geocentric_elongation;
+  value.topocentric_elongation_deg = topocentric_elongation;
   value.moon_age_hours = age;
   value.lag_time_minutes = lag;
   value.conjunction_before_sunset = conjunction_before;
@@ -115,60 +124,51 @@ static void test_tabular_calendar(void) {
   }
 }
 
-static void check_criterion(const char *name, HijriCriterion criterion,
-                            HijriHilalParameters value, int expected) {
-  check_int(name, hijri_criterion_evaluate(criterion, &value), expected);
+static void check_predicate(const char *name, HijriLocalPredicate predicate,
+                            HijriEveningParameters value, int expected) {
+  check_int(name, hijri_local_predicate_evaluate(predicate, &value), expected);
 }
 
 static void test_binary_criteria(void) {
-  check_criterion("umm_both", HIJRI_CRIT_UMM_AL_QURA,
-                  parameters(0, 0, 0, 0, 1, 1), 1);
-  check_criterion("umm_no_conjunction", HIJRI_CRIT_UMM_AL_QURA,
-                  parameters(0, 0, 0, 0, 0, 1), 0);
-  check_criterion("umm_no_moonset", HIJRI_CRIT_UMM_AL_QURA,
-                  parameters(0, 0, 0, 0, 1, 0), 0);
+  HijriEveningParameters unavailable_moonset =
+      parameters(0, 0, 0, 0, 0, 5.0, 0, 0);
+  unavailable_moonset.moonset_status = HIJRI_EVENT_NEVER_SETS;
 
-  check_criterion("mabims_1992_below", HIJRI_CRIT_MABIMS_1992,
-                  parameters(1.999, 2.999, 7.999, 0, 0, 0), 0);
-  check_criterion("mabims_1992_geometry_equal", HIJRI_CRIT_MABIMS_1992,
-                  parameters(2.0, 3.0, 0, 0, 0, 0), 1);
-  check_criterion("mabims_1992_age_equal", HIJRI_CRIT_MABIMS_1992,
-                  parameters(0, 0, 8.0, 0, 0, 0), 1);
-
-  check_criterion("mabims_2021_below_altitude", HIJRI_CRIT_MABIMS_2021,
-                  parameters(2.999, 6.4, 0, 0, 0, 0), 0);
-  check_criterion("mabims_2021_below_elongation", HIJRI_CRIT_MABIMS_2021,
-                  parameters(3.0, 6.399, 0, 0, 0, 0), 0);
-  check_criterion("mabims_2021_equal", HIJRI_CRIT_MABIMS_2021,
-                  parameters(3.0, 6.4, 0, 0, 0, 0), 1);
-
-  check_criterion("wujud_zero", HIJRI_CRIT_WUJUDUL_HILAL,
-                  parameters(0.0, 0, 0, 0, 1, 0), 0);
-  check_criterion("wujud_positive", HIJRI_CRIT_WUJUDUL_HILAL,
-                  parameters(0.001, 0, 0, 0, 1, 0), 1);
-  check_criterion("wujud_no_conjunction", HIJRI_CRIT_WUJUDUL_HILAL,
-                  parameters(1.0, 0, 0, 0, 0, 0), 0);
-
-  check_criterion("turkey_below", HIJRI_CRIT_TURKEY_ICOP,
-                  parameters(4.999, 8.0, 0, 0, 0, 0), 0);
-  check_criterion("turkey_equal", HIJRI_CRIT_TURKEY_ICOP,
-                  parameters(5.0, 8.0, 0, 0, 0, 0), 1);
-  check_criterion("ecfr_below", HIJRI_CRIT_ECFR_ISNA,
-                  parameters(5.0, 7.999, 0, 0, 0, 0), 0);
-  check_criterion("ecfr_equal", HIJRI_CRIT_ECFR_ISNA,
-                  parameters(5.0, 8.0, 0, 0, 0, 0), 1);
-
-  check_criterion("egypt_below", HIJRI_CRIT_EGYPT,
-                  parameters(0, 0, 0, 4.999, 0, 0), 0);
-  check_criterion("egypt_equal", HIJRI_CRIT_EGYPT,
-                  parameters(0, 0, 0, 5.0, 0, 0), 1);
-  check_criterion("egypt_nan", HIJRI_CRIT_EGYPT,
-                  parameters(0, 0, 0, NAN, 0, 0), 0);
-
-  check_criterion("odeh_not_boolean", HIJRI_CRIT_ODEH,
-                  parameters(99, 99, 99, 99, 1, 1), 0);
-  check_criterion("yallop_not_boolean", HIJRI_CRIT_YALLOP,
-                  parameters(99, 99, 99, 99, 1, 1), 0);
+  check_predicate("mabims_1992_below", HIJRI_PREDICATE_MABIMS_1992,
+                  parameters(1.999, 0, 2.999, 99, 7.999, 0, 0, 0), 0);
+  check_predicate("mabims_1992_geocentric_equal",
+                  HIJRI_PREDICATE_MABIMS_1992,
+                  parameters(2.0, 0, 3.0, 2.0, 0, 0, 0, 0), 1);
+  check_predicate("mabims_1992_age_equal", HIJRI_PREDICATE_MABIMS_1992,
+                  parameters(0, 0, 0, 0, 8.0, 0, 0, 0), 1);
+  check_predicate("mabims_2021_below_altitude",
+                  HIJRI_PREDICATE_MABIMS_2021,
+                  parameters(2.999, 0, 6.4, 99, 0, 0, 0, 0), 0);
+  check_predicate("mabims_2021_below_geocentric",
+                  HIJRI_PREDICATE_MABIMS_2021,
+                  parameters(3.0, 0, 6.399, 99, 0, 0, 0, 0), 0);
+  check_predicate("mabims_2021_geocentric_equal",
+                  HIJRI_PREDICATE_MABIMS_2021,
+                  parameters(3.0, 0, 6.4, 5.0, 0, 0, 0, 0), 1);
+  check_predicate("wujud_upper_limb_zero", HIJRI_PREDICATE_WUJUDUL_HILAL,
+                  parameters(1.0, 0.0, 0, 0, 0, 0, 1, 0), 0);
+  check_predicate("wujud_upper_limb_positive",
+                  HIJRI_PREDICATE_WUJUDUL_HILAL,
+                  parameters(-0.5, 0.001, 0, 0, 0, 0, 1, 0), 1);
+  check_predicate("wujud_no_conjunction", HIJRI_PREDICATE_WUJUDUL_HILAL,
+                  parameters(1.0, 1.0, 0, 0, 0, 0, 0, 0), 0);
+  check_predicate("lag_below", HIJRI_PREDICATE_LAG_AT_LEAST_5_MINUTES,
+                  parameters(0, 0, 0, 0, 0, 4.999, 0, 0), 0);
+  check_predicate("lag_equal", HIJRI_PREDICATE_LAG_AT_LEAST_5_MINUTES,
+                  parameters(0, 0, 0, 0, 0, 5.0, 0, 0), 1);
+  check_predicate("lag_unavailable", HIJRI_PREDICATE_LAG_AT_LEAST_5_MINUTES,
+                  unavailable_moonset, 0);
+  check_predicate("altitude_5_elongation_8_below",
+                  HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8,
+                  parameters(4.999, 0, 8.0, 99, 0, 0, 0, 0), 0);
+  check_predicate("altitude_5_elongation_8_equal",
+                  HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8,
+                  parameters(5.0, 0, 8.0, 7.0, 0, 0, 0, 0), 1);
 }
 
 static void test_yallop(void) {
@@ -251,8 +251,11 @@ int main(void) {
   test_yallop();
   test_odeh();
   test_relevant_conjunction();
-  check_true("all_criterion_enums_represented",
-             HIJRI_CRIT_YALLOP - HIJRI_CRIT_UMM_AL_QURA + 1 == 9);
+  check_true("all_predicate_enums_represented",
+             HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8 -
+                         HIJRI_PREDICATE_MABIMS_1992 +
+                     1 ==
+                 5);
   printf("Hijri tests: %d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }
