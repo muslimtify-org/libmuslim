@@ -222,12 +222,35 @@ static void test_odeh(void) {
             HIJRI_ODEH_VISIBLE_NAKED_EYE);
 }
 
+static void test_relevant_conjunction(void) {
+  const HijriLocation jakarta = {-6.2088, 106.8456, 8.0, "Jakarta"};
+  HijriEveningParameters before =
+      hijri_compute_evening_parameters(2026, 2, 17, &jakarta);
+  HijriEveningParameters after =
+      hijri_compute_evening_parameters(2025, 2, 28, &jakarta);
+
+  check_true("before_conjunction_sunset_ok",
+             before.sunset_status == HIJRI_EVENT_OK);
+  check_true("before_conjunction_negative_age", before.moon_age_hours < 0.0);
+  check_int("before_conjunction_order",
+            before.conjunction_before_sunset, 0);
+  check_true("before_conjunction_not_previous_lunation",
+             before.moon_age_hours > -24.0);
+
+  check_true("after_conjunction_sunset_ok",
+             after.sunset_status == HIJRI_EVENT_OK);
+  check_true("after_conjunction_small_positive_age",
+             after.moon_age_hours >= 0.0 && after.moon_age_hours < 24.0);
+  check_int("after_conjunction_order", after.conjunction_before_sunset, 1);
+}
+
 int main(void) {
   test_julian_day();
   test_tabular_calendar();
   test_binary_criteria();
   test_yallop();
   test_odeh();
+  test_relevant_conjunction();
   check_true("all_criterion_enums_represented",
              HIJRI_CRIT_YALLOP - HIJRI_CRIT_UMM_AL_QURA + 1 == 9);
   printf("Hijri tests: %d checks, %d failures\n", checks, failures);

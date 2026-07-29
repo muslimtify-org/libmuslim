@@ -179,6 +179,8 @@ HIJRIDEF double hijri_find_conjunction(double jd_guess);
  * you want when asking "what new moon does this evening's month count
  * belong to" -- unambiguous, unlike hijri_find_conjunction(). */
 HIJRIDEF double hijri_find_previous_conjunction(double jd_before);
+HIJRIDEF double hijri_find_next_conjunction(double jd_after);
+HIJRIDEF double hijri_find_relevant_conjunction(double jd_evening);
 
 /**
  * @brief Crescent visibility criteria supported by libhijri.
@@ -290,6 +292,27 @@ typedef struct {
   int conjunction_before_sunset;
   int moonset_after_sunset;
 } HijriHilalParameters;
+
+typedef struct {
+  double jd_sunset_ut;
+  double jd_relevant_conjunction_ut;
+  double jd_moonset_ut;
+  HijriEventStatus sunset_status;
+  HijriEventStatus moonset_status;
+  double sun_center_geometric_altitude_deg;
+  double moon_center_geometric_altitude_deg;
+  double moon_upper_limb_apparent_altitude_deg;
+  double geocentric_elongation_deg;
+  double topocentric_elongation_deg;
+  double moon_age_hours;
+  double lag_time_minutes;
+  int conjunction_before_sunset;
+  int moonset_after_sunset;
+} HijriEveningParameters;
+
+HIJRIDEF HijriEveningParameters
+hijri_compute_evening_parameters(int gy, int gm, int gd,
+                                 const HijriLocation *loc);
 
 HIJRIDEF HijriHilalParameters
 hijri_compute_hilal_parameters(double jd_sunset_ut, double jd_conjunction_ut,
@@ -784,8 +807,96 @@ HIJRIDEF double hijri_find_previous_conjunction(double jd_before) {
   return found_jd;
 }
 
+HIJRIDEF double hijri_find_next_conjunction(double jd_after) {
+  double candidate = hijri_find_conjunction(jd_after + 15.0);
+  if (candidate <= jd_after)
+    candidate = hijri_find_conjunction(jd_after + 30.0);
+  return candidate;
+}
+
+HIJRIDEF double hijri_find_relevant_conjunction(double jd_evening) {
+  double previous = hijri_find_previous_conjunction(jd_evening);
+  double next = hijri_find_next_conjunction(jd_evening);
+  return fabs(jd_evening - previous) <= fabs(next - jd_evening) ? previous
+                                                               : next;
+}
+
 /* ---- Hilal parameters and criteria
  * -------------------------------------------- */
+
+HIJRIDEF HijriEveningParameters
+hijri_compute_evening_parameters(int gy, int gm, int gd,
+                                 const HijriLocation *loc) {
+  HijriEveningParameters p;
+  double jd_midnight = hijri_jd_from_gregorian(gy, gm, (double)gd);
+
+  p.jd_sunset_ut = NAN;
+  p.jd_relevant_conjunction_ut = NAN;
+  p.jd_moonset_ut = NAN;
+  p.sunset_status = hijri_find_sunset(jd_midnight, loc, &p.jd_sunset_ut);
+  p.moonset_status = p.sunset_status;
+  p.sun_center_geometric_altitude_deg = NAN;
+  p.moon_center_geometric_altitude_deg = NAN;
+  p.moon_upper_limb_apparent_altitude_deg = NAN;
+  p.geocentric_elongation_deg = NAN;
+  p.topocentric_elongation_deg = NAN;
+  p.moon_age_hours = NAN;
+  p.lag_time_minutes = NAN;
+  p.conjunction_before_sunset = 0;
+  p.moonset_after_sunset = 0;
+
+  if (p.sunset_status != HIJRI_EVENT_OK) {
+    p.jd_sunset_ut = NAN;
+    return p;
+  }
+
+  {
+    double jd_tt = hijri_jd_tt_from_ut(p.jd_sunset_ut);
+    HijriSunPosition sun = hijri_sun_position(jd_tt);
+    HijriMoonPosition moon = hijri_moon_position(jd_tt);
+    double moon_ra_topo;
+    double moon_dec_topo;
+    double semidiameter_deg = 0.2725076 * moon.horizontal_parallax_deg;
+
+    hijri_moon_topocentric(&moon, p.jd_sunset_ut, loc->latitude_deg,
+                           loc->longitude_deg, loc->elevation_m,
+                           &moon_ra_topo, &moon_dec_topo);
+
+    p.sun_center_geometric_altitude_deg =
+        hijri__altitude_deg(sun.right_ascension_deg, sun.declination_deg,
+                            p.jd_sunset_ut, loc);
+    p.moon_center_geometric_altitude_deg =
+        hijri__altitude_deg(moon_ra_topo, moon_dec_topo, p.jd_sunset_ut, loc);
+    p.moon_upper_limb_apparent_altitude_deg =
+        p.moon_center_geometric_altitude_deg + semidiameter_deg +
+        HIJRI__REFRACTION_AT_HORIZON_DEG;
+    p.geocentric_elongation_deg = hijri__angular_separation_deg(
+        moon.right_ascension_deg, moon.declination_deg,
+        sun.right_ascension_deg, sun.declination_deg);
+    p.topocentric_elongation_deg = hijri__angular_separation_deg(
+        moon_ra_topo, moon_dec_topo, sun.right_ascension_deg,
+        sun.declination_deg);
+  }
+
+  p.jd_relevant_conjunction_ut =
+      hijri_find_relevant_conjunction(p.jd_sunset_ut);
+  p.moon_age_hours =
+      (p.jd_sunset_ut - p.jd_relevant_conjunction_ut) * 24.0;
+  p.conjunction_before_sunset =
+      (p.jd_relevant_conjunction_ut < p.jd_sunset_ut);
+
+  p.moonset_status =
+      hijri_find_moonset(p.jd_sunset_ut, loc, &p.jd_moonset_ut);
+  if (p.moonset_status == HIJRI_EVENT_OK) {
+    p.lag_time_minutes =
+        (p.jd_moonset_ut - p.jd_sunset_ut) * 24.0 * 60.0;
+    p.moonset_after_sunset = (p.jd_moonset_ut > p.jd_sunset_ut);
+  } else {
+    p.jd_moonset_ut = NAN;
+  }
+
+  return p;
+}
 
 HIJRIDEF HijriHilalParameters
 hijri_compute_hilal_parameters(double jd_sunset_ut, double jd_conjunction_ut,
