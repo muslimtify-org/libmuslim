@@ -1067,8 +1067,7 @@ HIJRIDEF HijriDate hijri_tabular_from_jd(double jd) {
   return result;
 }
 
-/* ---- Top-level orchestration
- * ---------------------------------------------------- */
+/* ---- Top-level orchestration ----------------------------------------- */
 
 HIJRIDEF HijriMonthDecision
 hijri_evaluate_evening(int gy, int gm, int gd, const HijriLocation *loc,
