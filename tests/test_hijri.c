@@ -141,6 +141,15 @@ static void test_binary_criteria(void) {
                   parameters(2.0, 0, 3.0, 2.0, 0, 0, 0, 0), 1);
   check_predicate("mabims_1992_age_equal", HIJRI_PREDICATE_MABIMS_1992,
                   parameters(0, 0, 0, 0, 8.0, 0, 0, 0), 1);
+  check_predicate("mabims_1992_altitude_above",
+                  HIJRI_PREDICATE_MABIMS_1992,
+                  parameters(2.001, 0, 3.0, 0, 0, 0, 0, 0), 1);
+  check_predicate("mabims_1992_elongation_above",
+                  HIJRI_PREDICATE_MABIMS_1992,
+                  parameters(2.0, 0, 3.001, 0, 0, 0, 0, 0), 1);
+  check_predicate("mabims_1992_age_above",
+                  HIJRI_PREDICATE_MABIMS_1992,
+                  parameters(0, 0, 0, 0, 8.001, 0, 0, 0), 1);
   check_predicate("mabims_2021_below_altitude",
                   HIJRI_PREDICATE_MABIMS_2021,
                   parameters(2.999, 0, 6.4, 99, 0, 0, 0, 0), 0);
@@ -150,6 +159,12 @@ static void test_binary_criteria(void) {
   check_predicate("mabims_2021_geocentric_equal",
                   HIJRI_PREDICATE_MABIMS_2021,
                   parameters(3.0, 0, 6.4, 5.0, 0, 0, 0, 0), 1);
+  check_predicate("mabims_2021_altitude_above",
+                  HIJRI_PREDICATE_MABIMS_2021,
+                  parameters(3.001, 0, 6.4, 0, 0, 0, 0, 0), 1);
+  check_predicate("mabims_2021_elongation_above",
+                  HIJRI_PREDICATE_MABIMS_2021,
+                  parameters(3.0, 0, 6.401, 0, 0, 0, 0, 0), 1);
   check_predicate("wujud_upper_limb_zero", HIJRI_PREDICATE_WUJUDUL_HILAL,
                   parameters(1.0, 0.0, 0, 0, 0, 0, 1, 0), 0);
   check_predicate("wujud_upper_limb_positive",
@@ -183,6 +198,22 @@ static void test_yallop(void) {
       {-0.200, HIJRI_YALLOP_D_NEEDS_OPTICAL_AID},
       {-0.250, HIJRI_YALLOP_E_NOT_VISIBLE_TELESCOPE},
       {-0.300, HIJRI_YALLOP_F_NOT_VISIBLE_BELOW_LIMIT}};
+  static const struct {
+    const char *name;
+    double boundary;
+    HijriYallopZone above;
+    HijriYallopZone below;
+  } yallop_boundaries[] = {
+      {"a_b", 0.216, HIJRI_YALLOP_A_EASILY_VISIBLE,
+       HIJRI_YALLOP_B_VISIBLE_PERFECT_CONDITIONS},
+      {"b_c", -0.014, HIJRI_YALLOP_B_VISIBLE_PERFECT_CONDITIONS,
+       HIJRI_YALLOP_C_MAY_NEED_OPTICAL_AID},
+      {"c_d", -0.160, HIJRI_YALLOP_C_MAY_NEED_OPTICAL_AID,
+       HIJRI_YALLOP_D_NEEDS_OPTICAL_AID},
+      {"d_e", -0.232, HIJRI_YALLOP_D_NEEDS_OPTICAL_AID,
+       HIJRI_YALLOP_E_NOT_VISIBLE_TELESCOPE},
+      {"e_f", -0.293, HIJRI_YALLOP_E_NOT_VISIBLE_TELESCOPE,
+       HIJRI_YALLOP_F_NOT_VISIBLE_BELOW_LIMIT}};
   const HijriLocation jakarta = {-6.2088, 106.8456, 8.0, "Jakarta"};
   const HijriLocation north_pole = {90.0, 0.0, 0.0, "North Pole"};
   HijriEveningParameters evening =
@@ -201,6 +232,26 @@ static void test_yallop(void) {
     check_int(name,
               hijri_yallop_classify(base + 10.0 * yallop_cases[index].q, 0.0),
               yallop_cases[index].zone);
+  }
+  for (index = 0;
+       index < sizeof(yallop_boundaries) / sizeof(yallop_boundaries[0]);
+       index++) {
+    char above_name[64];
+    char below_name[64];
+    snprintf(above_name, sizeof(above_name), "yallop_boundary_%s_above",
+             yallop_boundaries[index].name);
+    snprintf(below_name, sizeof(below_name), "yallop_boundary_%s_below",
+             yallop_boundaries[index].name);
+    check_int(above_name,
+              hijri_yallop_classify(
+                  base + 10.0 * (yallop_boundaries[index].boundary + 1e-6),
+                  0.0),
+              yallop_boundaries[index].above);
+    check_int(below_name,
+              hijri_yallop_classify(
+                  base + 10.0 * (yallop_boundaries[index].boundary - 1e-6),
+                  0.0),
+              yallop_boundaries[index].below);
   }
   check_close("yallop_best_time_relation",
               (result.jd_best_time_ut - evening.jd_sunset_ut) * 1440.0,
@@ -272,6 +323,44 @@ static void test_relevant_conjunction(void) {
   check_true("after_conjunction_small_positive_age",
              after.moon_age_hours >= 0.0 && after.moon_age_hours < 24.0);
   check_int("after_conjunction_order", after.conjunction_before_sunset, 1);
+
+  {
+    double jd_tt = hijri_jd_tt_from_ut(after.jd_sunset_ut);
+    HijriSunPosition sun = hijri_sun_position(jd_tt);
+    HijriMoonPosition moon = hijri_moon_position(jd_tt);
+    double moon_ra_topo;
+    double moon_dec_topo;
+    double expected_geocentric;
+    double expected_topocentric;
+    double expected_center;
+    double expected_upper_limb;
+
+    hijri_moon_topocentric(&moon, after.jd_sunset_ut, jakarta.latitude_deg,
+                           jakarta.longitude_deg, jakarta.elevation_m,
+                           &moon_ra_topo, &moon_dec_topo);
+    expected_geocentric = hijri__angular_separation_deg(
+        moon.right_ascension_deg, moon.declination_deg,
+        sun.right_ascension_deg, sun.declination_deg);
+    expected_topocentric = hijri__angular_separation_deg(
+        moon_ra_topo, moon_dec_topo,
+        sun.right_ascension_deg, sun.declination_deg);
+    expected_center = hijri__altitude_deg(
+        moon_ra_topo, moon_dec_topo, after.jd_sunset_ut, &jakarta);
+    expected_upper_limb =
+        expected_center + 0.2725076 * moon.horizontal_parallax_deg +
+        HIJRI__REFRACTION_AT_HORIZON_DEG;
+
+    check_close("geocentric_elongation_reproduced",
+                after.geocentric_elongation_deg, expected_geocentric, 1e-12);
+    check_close("topocentric_elongation_reproduced",
+                after.topocentric_elongation_deg, expected_topocentric, 1e-12);
+    check_close("moon_center_altitude_reproduced",
+                after.moon_center_geometric_altitude_deg, expected_center,
+                1e-12);
+    check_close("moon_upper_limb_reproduced",
+                after.moon_upper_limb_apparent_altitude_deg,
+                expected_upper_limb, 1e-12);
+  }
 }
 
 static void test_orchestration(void) {
@@ -307,7 +396,7 @@ static void test_orchestration(void) {
          predicate_index++) {
       HijriDate out;
       char name[96];
-      int ok = hijri_from_gregorian(
+      int ok = hijri_from_gregorian_with_local_predicate(
           dates[date_index].year, dates[date_index].month,
           dates[date_index].day, &jakarta,
           predicates[predicate_index].predicate, &out);
@@ -337,7 +426,7 @@ static void test_umm_al_qura_policy(void) {
   HijriDate direct;
   int dedicated_ok =
       hijri_umm_al_qura_from_gregorian(2025, 3, 1, &dedicated);
-  int direct_ok = hijri_from_gregorian(
+  int direct_ok = hijri_from_gregorian_with_local_predicate(
       2025, 3, 1, &HIJRI_LOCATION_MECCA,
       HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET, &direct);
   check_int("umm_dedicated_status", dedicated_ok, direct_ok);

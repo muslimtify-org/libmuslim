@@ -227,10 +227,11 @@ HIJRIDEF HijriMonthDecision
 hijri_evaluate_evening(int gy, int gm, int gd, const HijriLocation *loc,
                        HijriLocalPredicate predicate);
 
-HIJRIDEF int hijri_from_gregorian(int gy, int gm, int gd,
-                                  const HijriLocation *loc,
-                                  HijriLocalPredicate predicate,
-                                  HijriDate *out);
+/* Builds a calendar from one local predicate at one observer location.
+ * This is not, by itself, a national or global authority policy. */
+HIJRIDEF int hijri_from_gregorian_with_local_predicate(
+    int gy, int gm, int gd, const HijriLocation *loc,
+    HijriLocalPredicate predicate, HijriDate *out);
 
 HIJRIDEF int hijri_umm_al_qura_from_gregorian(int gy, int gm, int gd,
                                                HijriDate *out);
@@ -1067,7 +1068,8 @@ HIJRIDEF HijriDate hijri_tabular_from_jd(double jd) {
   return result;
 }
 
-/* ---- Top-level orchestration ----------------------------------------- */
+/* ---- Top-level orchestration
+ * ---------------------------------------------------- */
 
 HIJRIDEF HijriMonthDecision
 hijri_evaluate_evening(int gy, int gm, int gd, const HijriLocation *loc,
@@ -1084,36 +1086,28 @@ hijri_evaluate_evening(int gy, int gm, int gd, const HijriLocation *loc,
 }
 
 static double hijri__find_month_start_after_conjunction(
-    double jd_conjunction, const HijriLocation *loc,
-    HijriLocalPredicate predicate) {
-  const int max_forward_days = 5;
-  int k;
+    double jd_conj, const HijriLocation *loc, HijriLocalPredicate predicate) {
+  const int MAX_FORWARD_DAYS = 5;
+  for (int k = 0; k < MAX_FORWARD_DAYS; k++) {
+    double eve_jd = floor(jd_conj) + (double)k;
+    int ey, em;
+    double ed_frac;
+    hijri_gregorian_from_jd(eve_jd, &ey, &em, &ed_frac);
+    int ed = (int)floor(ed_frac + 0.5);
 
-  for (k = 0; k < max_forward_days; k++) {
-    double evening_jd = floor(jd_conjunction) + (double)k;
-    int evening_year;
-    int evening_month;
-    double evening_day_fraction;
-    int evening_day;
-    HijriMonthDecision decision;
-
-    hijri_gregorian_from_jd(evening_jd, &evening_year, &evening_month,
-                            &evening_day_fraction);
-    evening_day = (int)floor(evening_day_fraction + 0.5);
-    decision = hijri_evaluate_evening(evening_year, evening_month, evening_day,
-                                      loc, predicate);
+    HijriMonthDecision decision =
+        hijri_evaluate_evening(ey, em, ed, loc, predicate);
     if (decision.parameters.sunset_status == HIJRI_EVENT_OK &&
         decision.month_starts_next_day) {
-      return evening_jd + 1.0;
+      return eve_jd + 1.0;
     }
   }
   return NAN;
 }
 
-HIJRIDEF int hijri_from_gregorian(int gy, int gm, int gd,
-                                  const HijriLocation *loc,
-                                  HijriLocalPredicate predicate,
-                                  HijriDate *out) {
+HIJRIDEF int hijri_from_gregorian_with_local_predicate(
+    int gy, int gm, int gd, const HijriLocation *loc,
+    HijriLocalPredicate predicate, HijriDate *out) {
   double target_jd =
       floor(hijri_jd_from_gregorian(gy, gm, (double)gd));
   double jd_conjunction =
@@ -1121,31 +1115,37 @@ HIJRIDEF int hijri_from_gregorian(int gy, int gm, int gd,
   double jd_month_start = hijri__find_month_start_after_conjunction(
       jd_conjunction, loc, predicate);
   int day_number;
-  HijriDate approximate;
 
   if (isnan(jd_month_start) || target_jd < jd_month_start) {
     jd_conjunction =
         hijri_find_previous_conjunction(jd_conjunction - 1.0);
     jd_month_start = hijri__find_month_start_after_conjunction(
         jd_conjunction, loc, predicate);
-    if (isnan(jd_month_start) || target_jd < jd_month_start)
+    if (isnan(jd_month_start) || target_jd < jd_month_start) {
       return 0;
+    }
   }
 
   day_number = (int)(target_jd - jd_month_start) + 1;
-  if (day_number < 1 || day_number > 30)
+  if (day_number < 1 || day_number > 30) {
     return 0;
+  }
 
-  approximate = hijri_tabular_from_jd(jd_month_start + 5.0);
-  out->year = approximate.year;
-  out->month = approximate.month;
+  /* Sample the tabular calendar a few days *into* the month, not on the
+   * boundary day itself -- the tabular calendar's own boundary can sit
+   * a day off from the astronomically-resolved one, which would
+   * otherwise misassign the month number (see README/commit notes). */
+  HijriDate approx = hijri_tabular_from_jd(jd_month_start + 5.0);
+
+  out->year = approx.year;
+  out->month = approx.month;
   out->day = day_number;
   return 1;
 }
 
 HIJRIDEF int hijri_umm_al_qura_from_gregorian(int gy, int gm, int gd,
                                                HijriDate *out) {
-  return hijri_from_gregorian(
+  return hijri_from_gregorian_with_local_predicate(
       gy, gm, gd, &HIJRI_LOCATION_MECCA,
       HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET, out);
 }
