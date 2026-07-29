@@ -276,18 +276,59 @@ static void test_relevant_conjunction(void) {
 
 static void test_orchestration(void) {
   const HijriLocation jakarta = {-6.2088, 106.8456, 8.0, "Jakarta"};
-  HijriLocalPredicate predicate;
+  const HijriLocation north_pole = {90.0, 0.0, 0.0, "North Pole"};
+  static const struct {
+    const char *name;
+    int year;
+    int month;
+    int day;
+  } dates[] = {
+      {"before_conjunction", 2025, 2, 27},
+      {"on_conjunction", 2025, 2, 28},
+      {"after_conjunction", 2025, 3, 1}};
+  static const struct {
+    const char *name;
+    HijriLocalPredicate predicate;
+  } predicates[] = {
+      {"mabims_1992", HIJRI_PREDICATE_MABIMS_1992},
+      {"mabims_2021", HIJRI_PREDICATE_MABIMS_2021},
+      {"wujudul_hilal", HIJRI_PREDICATE_WUJUDUL_HILAL},
+      {"lag_at_least_5_minutes", HIJRI_PREDICATE_LAG_AT_LEAST_5_MINUTES},
+      {"altitude_5_elongation_8", HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8},
+      {"conjunction_and_moonset",
+       HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET}};
+  size_t date_index;
+  size_t predicate_index;
 
-  for (predicate = HIJRI_PREDICATE_MABIMS_1992;
-       predicate <= HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET;
-       predicate = (HijriLocalPredicate)(predicate + 1)) {
-    HijriDate date;
-    int ok =
-        hijri_from_gregorian(2025, 3, 1, &jakarta, predicate, &date);
-    if (ok) {
-      check_true("orchestration_day_in_range",
-                 date.day >= 1 && date.day <= 30);
+  for (date_index = 0; date_index < sizeof(dates) / sizeof(dates[0]);
+       date_index++) {
+    for (predicate_index = 0;
+         predicate_index < sizeof(predicates) / sizeof(predicates[0]);
+         predicate_index++) {
+      HijriDate out;
+      char name[96];
+      int ok = hijri_from_gregorian(
+          dates[date_index].year, dates[date_index].month,
+          dates[date_index].day, &jakarta,
+          predicates[predicate_index].predicate, &out);
+      if (ok) {
+        snprintf(name, sizeof(name), "orchestration_%s_%s_month_in_range",
+                 dates[date_index].name, predicates[predicate_index].name);
+        check_true(name, out.month >= 1 && out.month <= 12);
+        snprintf(name, sizeof(name), "orchestration_%s_%s_day_in_range",
+                 dates[date_index].name, predicates[predicate_index].name);
+        check_true(name, out.day >= 1 && out.day <= 30);
+      }
     }
+  }
+
+  {
+    HijriMonthDecision unavailable = hijri_evaluate_evening(
+        2025, 6, 21, &north_pole, HIJRI_PREDICATE_MABIMS_1992);
+    check_true("orchestration_high_latitude_sunset_unavailable",
+               unavailable.parameters.sunset_status != HIJRI_EVENT_OK);
+    check_int("orchestration_unavailable_sunset_cannot_start_month",
+              unavailable.month_starts_next_day, 0);
   }
 }
 
