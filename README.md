@@ -215,3 +215,75 @@ limitations under the License.
 ## Contributing
 
 Contributions are welcome! Please ensure any changes to calculation methods are verified against official data sources.
+
+## Hijri verification
+
+The Hijri API is intentionally layered. `HijriEveningParameters` exposes
+explicit astronomical quantities, `HijriLocalPredicate` evaluates a condition
+at one observer location, and calendar-policy functions perform conversion.
+A local predicate is not a national or global authority decision: applications
+must add any required geographic aggregation, observation, or administrative
+policy themselves.
+
+This is a breaking API. `HijriCriterion`, the `HIJRI_CRIT_*` constants, and
+the former generic Gregorian-to-Hijri conversion function were removed; there
+is no compatibility alias. Use `HijriLocalPredicate`, the
+`HIJRI_PREDICATE_*` constants,
+`hijri_compute_evening_parameters()`, and `hijri_evaluate_evening()` instead.
+The replacement conversion builds a calendar from one predicate at one
+observer location:
+
+```c
+HijriLocation jakarta = {-6.2088, 106.8456, 8.0, "Jakarta"};
+HijriDate date;
+int ok = hijri_from_gregorian_with_local_predicate(
+    2026, 7, 27, &jakarta, HIJRI_PREDICATE_MABIMS_2021, &date);
+```
+
+This local conversion does not claim an official MABIMS national aggregation.
+Umm al-Qura remains a separate opt-in Mecca-based function, which
+intentionally accepts no consumer location:
+
+```c
+HijriDate date;
+int ok = hijri_umm_al_qura_from_gregorian(2026, 7, 27, &date);
+```
+
+Yallop and Odeh remain graded visibility classifications, not calendar
+policies. Use `hijri_yallop_evaluate_evening()` and
+`hijri_odeh_evaluate_evening()` for their dedicated best-time parameters,
+scores, and zones, then define any zone-acceptance policy explicitly.
+
+The solar and lunar calculations are compact, dependency-free
+approximations. In particular, the lunar ephemeris remains approximate and is
+not a substitute for an observational-grade ephemeris or an official
+published calendar.
+
+Compile the example and run the deterministic arithmetic, predicate, policy,
+and visibility-model tests under C11:
+
+```sh
+gcc -std=c11 -Wall -Wextra -Wpedantic -O2 examples/hijri_example.c -lm -o /tmp/libmuslim-hijri-example
+gcc -std=c11 -Wall -Wextra -Wpedantic -O2 tests/test_hijri.c -lm -o /tmp/libmuslim-test-hijri
+/tmp/libmuslim-test-hijri
+```
+
+Regenerate the research baseline:
+
+```sh
+gcc -std=c11 -Wall -Wextra -Wpedantic -O2 tests/hijri_research_probe.c -lm -o /tmp/libmuslim-hijri-probe
+/tmp/libmuslim-hijri-probe > /tmp/hijri-2020-2025-baseline.csv
+test "$(wc -l < /tmp/hijri-2020-2025-baseline.csv)" -eq 133
+if [ -f docs/research/hijri-2020-2025-baseline.csv ]; then
+  cmp /tmp/hijri-2020-2025-baseline.csv docs/research/hijri-2020-2025-baseline.csv
+fi
+```
+
+The baseline CSV and research report under `docs/research/` are local, ignored
+research artifacts. They are diagnostic evidence, not authoritative oracles.
+The comparison is optional and runs only when the local baseline exists; CSV
+generation and the 133-line completeness check work in a fresh clone.
+The permanent tracked tests are `tests/test_hijri.c` and
+`tests/hijri_research_probe.c`. Reference sources, conventions,
+discrepancies, and fixture admission decisions are recorded locally in
+`docs/research/hijri-2020-2025-sources.md`.

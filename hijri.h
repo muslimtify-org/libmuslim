@@ -21,12 +21,11 @@
  *
  * A from-scratch astronomical Hijri (Islamic lunar) calendar library:
  * Julian Day handling, low/medium-precision Sun & Moon ephemerides,
- * sunset/moonset/conjunction solvers, and a pluggable layer of
- * crescent-visibility criteria used by different countries and
- * organizations (Umm al-Qura / Saudi Arabia, MABIMS old & new / Indonesia
- * Malaysia Brunei Singapore, Wujudul Hilal / Muhammadiyah, Turkey Diyanet
- * & the 2016 Istanbul ICOP unified criterion, ECFR/ISNA, Egypt), plus the
- * Yallop (1997) and Odeh (2004) quantitative visibility models. A
+ * sunset/moonset/conjunction solvers, explicit local evening parameters,
+ * documented MABIMS and Wujudul Hilal local predicates, neutral research
+ * predicates, dedicated Yallop (1997) and Odeh (2004) visibility models,
+ * and an opt-in Mecca-based Umm al-Qura policy. Local predicate results are
+ * not, by themselves, complete national or global authority decisions. A
  * non-astronomical fixed-cycle tabular ("Kuwaiti algorithm") calendar is
  * included too, as a fast dependency-free fallback.
  *
@@ -46,8 +45,7 @@
  * every other function only depends on the HijriMoonPosition struct's
  * contents, not on how it was computed.
  *
- * See the criteria table and per-country notes further down, right above
- * the HijriCriterion enum.
+ * See the explicitly documented local predicates below.
  *
  * -----------------------------------------------------------------------
  * LICENSE
@@ -179,139 +177,87 @@ HIJRIDEF double hijri_find_conjunction(double jd_guess);
  * you want when asking "what new moon does this evening's month count
  * belong to" -- unambiguous, unlike hijri_find_conjunction(). */
 HIJRIDEF double hijri_find_previous_conjunction(double jd_before);
-
-/**
- * @brief Crescent visibility criteria supported by libhijri.
- *
- * Each criterion defines the astronomical conditions used to determine
- * whether a new Hijri month may begin.
- *
- * Supported criteria:
- *
- * HIJRI_CRIT_UMM_AL_QURA
- *     Umm al-Qura calendar (Saudi Arabia, KACST).
- *
- *     Rule:
- *       - Conjunction must occur before sunset.
- *       - Moonset must occur after sunset at Mecca.
- *
- * HIJRI_CRIT_MABIMS_1992
- *     MABIMS standard used by Indonesia, Malaysia, Brunei, and Singapore
- *     before 2021.
- *
- *     Rule:
- *       - Moon altitude >= 2 degrees AND elongation >= 3 degrees,
- *         OR moon age >= 8 hours.
- *
- * HIJRI_CRIT_MABIMS_2021
- *     Updated MABIMS standard adopted since December 2021.
- *
- *     Rule:
- *       - Moon altitude >= 3 degrees.
- *       - Elongation >= 6.4 degrees.
- *
- * HIJRI_CRIT_WUJUDUL_HILAL
- *     Muhammadiyah Indonesia criterion.
- *
- *     Rule:
- *       - Conjunction occurs before sunset.
- *       - Moon remains above the horizon after sunset.
- *
- *     Note:
- *       This is a lunar position criterion, not a crescent visibility test.
- *
- * HIJRI_CRIT_TURKEY_ICOP
- *     Turkey Diyanet / Istanbul ICOP 2016 criterion.
- *
- *     Rule:
- *       - Moon altitude >= 5 degrees.
- *       - Elongation >= 8 degrees.
- *
- * HIJRI_CRIT_ECFR_ISNA
- *     ECFR / Fiqh Council of North America criterion.
- *
- *     Rule:
- *       - Moon altitude >= 5 degrees.
- *       - Elongation >= 8 degrees.
- *
- *     Note:
- *       This criterion is intended for global visibility evaluation.
- *
- * HIJRI_CRIT_EGYPT
- *     Egyptian criterion.
- *
- *     Rule:
- *       - Moonset occurs at least 5 minutes after sunset.
- *
- * HIJRI_CRIT_ODEH
- *     Odeh (2004) quantitative crescent visibility model.
- *
- *     Note:
- *       This produces a visibility classification rather than a simple
- *       yes/no result. Use hijri_odeh_classify().
- *
- * HIJRI_CRIT_YALLOP
- *     Yallop (1997) quantitative crescent visibility model.
- *
- *     Note:
- *       This produces a visibility classification rather than a simple
- *       yes/no result. Use hijri_yallop_classify().
- *
- * @note Global visibility criteria:
- *       ECFR/ISNA and Turkey/ICOP are commonly interpreted as global
- *       criteria. This library evaluates only the supplied HijriLocation.
- *
- *       Applications requiring global sighting logic should evaluate
- *       multiple locations and apply their own policy, such as accepting
- *       the criterion if it succeeds at any candidate location.
- */
+HIJRIDEF double hijri_find_next_conjunction(double jd_after);
+/* Selects the conjunction associated with the candidate crescent. This is
+ * meaningful for evenings near the new-moon window; callers seeking an
+ * arbitrary nearest conjunction should use the previous/next functions. */
+HIJRIDEF double hijri_find_relevant_conjunction(double jd_evening);
 
 typedef enum {
-  HIJRI_CRIT_UMM_AL_QURA,
-  HIJRI_CRIT_MABIMS_1992,
-  HIJRI_CRIT_MABIMS_2021,
-  HIJRI_CRIT_WUJUDUL_HILAL,
-  HIJRI_CRIT_TURKEY_ICOP,
-  HIJRI_CRIT_ECFR_ISNA,
-  HIJRI_CRIT_EGYPT,
-  HIJRI_CRIT_ODEH,
-  HIJRI_CRIT_YALLOP
-} HijriCriterion;
+  HIJRI_PREDICATE_MABIMS_1992,
+  HIJRI_PREDICATE_MABIMS_2021,
+  HIJRI_PREDICATE_WUJUDUL_HILAL,
+  HIJRI_PREDICATE_LAG_AT_LEAST_5_MINUTES,
+  HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8,
+  HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET
+} HijriLocalPredicate;
 
 typedef struct {
-  double moon_altitude_deg;
-  double sun_altitude_deg;
-  double arcv_deg;       /* moon altitude - sun altitude ("arc of vision") */
-  double elongation_deg; /* topocentric angular separation, Moon-Sun */
-  double crescent_width_arcmin; /* approximate topocentric crescent width */
-  double moon_age_hours;        /* time since conjunction */
-  double lag_time_minutes; /* moonset time minus sunset time (NAN if moon never
-                              sets that evening) */
+  double jd_sunset_ut;
+  double jd_relevant_conjunction_ut;
+  double jd_moonset_ut;
+  HijriEventStatus sunset_status;
+  HijriEventStatus moonset_status;
+  double sun_center_geometric_altitude_deg;
+  double moon_center_geometric_altitude_deg;
+  double moon_upper_limb_apparent_altitude_deg;
+  double geocentric_elongation_deg;
+  double topocentric_elongation_deg;
+  double moon_age_hours;
+  double lag_time_minutes;
   int conjunction_before_sunset;
   int moonset_after_sunset;
-} HijriHilalParameters;
+} HijriEveningParameters;
 
-HIJRIDEF HijriHilalParameters
-hijri_compute_hilal_parameters(double jd_sunset_ut, double jd_conjunction_ut,
-                               double jd_moonset_ut, const HijriLocation *loc);
+HIJRIDEF HijriEveningParameters
+hijri_compute_evening_parameters(int gy, int gm, int gd,
+                                 const HijriLocation *loc);
 
-/* 1 if the criterion says the month begins the following day, 0 otherwise.
- * Not valid for HIJRI_CRIT_ODEH / HIJRI_CRIT_YALLOP -- use the dedicated
- * classifiers below for those. */
-HIJRIDEF int hijri_criterion_evaluate(HijriCriterion crit,
-                                      const HijriHilalParameters *p);
+HIJRIDEF int
+hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
+                               const HijriEveningParameters *p);
+
+typedef struct {
+  int month_starts_next_day;
+  HijriEveningParameters parameters;
+} HijriMonthDecision;
+
+HIJRIDEF HijriMonthDecision
+hijri_evaluate_evening(int gy, int gm, int gd, const HijriLocation *loc,
+                       HijriLocalPredicate predicate);
+
+/* Builds a calendar from one local predicate at one observer location.
+ * This is not, by itself, a national or global authority policy. */
+HIJRIDEF int hijri_from_gregorian_with_local_predicate(
+    int gy, int gm, int gd, const HijriLocation *loc,
+    HijriLocalPredicate predicate, HijriDate *out);
+
+HIJRIDEF int hijri_umm_al_qura_from_gregorian(int gy, int gm, int gd,
+                                               HijriDate *out);
 
 typedef enum {
-  HIJRI_YALLOP_NOT_VISIBLE = 0,
-  HIJRI_YALLOP_NEEDS_OPTICAL_AID,
-  HIJRI_YALLOP_MAY_NEED_OPTICAL_AID,
-  HIJRI_YALLOP_VISIBLE_UNDER_PERFECT_CONDITIONS,
-  HIJRI_YALLOP_EASILY_VISIBLE
+  HIJRI_YALLOP_A_EASILY_VISIBLE,
+  HIJRI_YALLOP_B_VISIBLE_PERFECT_CONDITIONS,
+  HIJRI_YALLOP_C_MAY_NEED_OPTICAL_AID,
+  HIJRI_YALLOP_D_NEEDS_OPTICAL_AID,
+  HIJRI_YALLOP_E_NOT_VISIBLE_TELESCOPE,
+  HIJRI_YALLOP_F_NOT_VISIBLE_BELOW_LIMIT
 } HijriYallopZone;
+
+typedef struct {
+  double jd_best_time_ut;
+  double arcv_deg;
+  double crescent_width_arcmin;
+  double q;
+  HijriYallopZone zone;
+} HijriYallopResult;
 
 HIJRIDEF double hijri_yallop_q(double arcv_deg, double crescent_width_arcmin);
 HIJRIDEF HijriYallopZone hijri_yallop_classify(double arcv_deg,
                                                double crescent_width_arcmin);
+HIJRIDEF HijriYallopResult
+hijri_yallop_evaluate_evening(int gy, int gm, int gd,
+                              const HijriLocation *loc);
 
 typedef enum {
   HIJRI_ODEH_NOT_VISIBLE = 0,
@@ -320,9 +266,20 @@ typedef enum {
   HIJRI_ODEH_VISIBLE_NAKED_EYE
 } HijriOdehZone;
 
+typedef struct {
+  double jd_best_time_ut;
+  double arcv_deg;
+  double crescent_width_arcmin;
+  double v;
+  HijriOdehZone zone;
+} HijriOdehResult;
+
 HIJRIDEF double hijri_odeh_v(double arcv_deg, double crescent_width_arcmin);
 HIJRIDEF HijriOdehZone hijri_odeh_classify(double arcv_deg,
                                            double crescent_width_arcmin);
+HIJRIDEF HijriOdehResult
+hijri_odeh_evaluate_evening(int gy, int gm, int gd,
+                            const HijriLocation *loc);
 
 /* ---- Tabular / arithmetic calendar (Kuwaiti algorithm) -------------------
  * No astronomy: fixed 30-year cycle, 11 leap years of 355 days. Matches
@@ -331,32 +288,6 @@ HIJRIDEF HijriOdehZone hijri_odeh_classify(double arcv_deg,
 
 HIJRIDEF double hijri_tabular_to_jd(HijriDate date);
 HIJRIDEF HijriDate hijri_tabular_from_jd(double jd);
-
-/* ---- Top-level orchestration --------------------------------------------- */
-
-typedef struct {
-  int month_starts_next_day;
-  HijriHilalParameters parameters;
-  double jd_sunset_ut;
-  double jd_conjunction_ut;
-  double jd_moonset_ut; /* NAN if the moon did not set that evening */
-} HijriMonthDecision;
-
-/* Evaluate whether the criterion triggers month-start on the evening of
- * the given Gregorian civil date, at the given location. */
-HIJRIDEF HijriMonthDecision hijri_evaluate_evening(int gy, int gm, int gd,
-                                                   const HijriLocation *loc,
-                                                   HijriCriterion crit);
-
-/* Full Gregorian -> Hijri conversion for a given criterion and location.
- * Returns 1 on success (writes *out), 0 on failure (e.g. an astronomical
- * edge case, or HIJRI_CRIT_ODEH/HIJRI_CRIT_YALLOP which are graded rather
- * than boolean -- call hijri_evaluate_evening() directly for those and
- * apply your own threshold via hijri_odeh_classify()/hijri_yallop_classify()).
- */
-HIJRIDEF int hijri_from_gregorian(int gy, int gm, int gd,
-                                  const HijriLocation *loc, HijriCriterion crit,
-                                  HijriDate *out);
 
 #ifdef __cplusplus
 }
@@ -784,76 +715,121 @@ HIJRIDEF double hijri_find_previous_conjunction(double jd_before) {
   return found_jd;
 }
 
+HIJRIDEF double hijri_find_next_conjunction(double jd_after) {
+  double candidate = hijri_find_conjunction(jd_after + 15.0);
+  if (candidate <= jd_after)
+    candidate = hijri_find_conjunction(jd_after + 30.0);
+  return candidate;
+}
+
+HIJRIDEF double hijri_find_relevant_conjunction(double jd_evening) {
+  double previous = hijri_find_previous_conjunction(jd_evening);
+  double next = hijri_find_next_conjunction(jd_evening);
+  return fabs(jd_evening - previous) <= fabs(next - jd_evening) ? previous
+                                                               : next;
+}
+
 /* ---- Hilal parameters and criteria
  * -------------------------------------------- */
 
-HIJRIDEF HijriHilalParameters
-hijri_compute_hilal_parameters(double jd_sunset_ut, double jd_conjunction_ut,
-                               double jd_moonset_ut, const HijriLocation *loc) {
-  HijriHilalParameters p;
+HIJRIDEF HijriEveningParameters
+hijri_compute_evening_parameters(int gy, int gm, int gd,
+                                 const HijriLocation *loc) {
+  HijriEveningParameters p;
+  double jd_midnight = hijri_jd_from_gregorian(gy, gm, (double)gd);
 
-  double jd_tt = hijri_jd_tt_from_ut(jd_sunset_ut);
-  HijriSunPosition sun = hijri_sun_position(jd_tt);
-  HijriMoonPosition moon_geo = hijri_moon_position(jd_tt);
+  p.jd_sunset_ut = NAN;
+  p.jd_relevant_conjunction_ut = NAN;
+  p.jd_moonset_ut = NAN;
+  p.sunset_status = hijri_find_sunset(jd_midnight, loc, &p.jd_sunset_ut);
+  p.moonset_status = p.sunset_status;
+  p.sun_center_geometric_altitude_deg = NAN;
+  p.moon_center_geometric_altitude_deg = NAN;
+  p.moon_upper_limb_apparent_altitude_deg = NAN;
+  p.geocentric_elongation_deg = NAN;
+  p.topocentric_elongation_deg = NAN;
+  p.moon_age_hours = NAN;
+  p.lag_time_minutes = NAN;
+  p.conjunction_before_sunset = 0;
+  p.moonset_after_sunset = 0;
 
-  double moon_ra, moon_dec;
-  hijri_moon_topocentric(&moon_geo, jd_sunset_ut, loc->latitude_deg,
-                         loc->longitude_deg, loc->elevation_m, &moon_ra,
-                         &moon_dec);
+  if (p.sunset_status != HIJRI_EVENT_OK) {
+    p.jd_sunset_ut = NAN;
+    return p;
+  }
 
-  p.sun_altitude_deg = hijri__altitude_deg(
-      sun.right_ascension_deg, sun.declination_deg, jd_sunset_ut, loc);
-  p.moon_altitude_deg =
-      hijri__altitude_deg(moon_ra, moon_dec, jd_sunset_ut, loc);
-  p.arcv_deg = p.moon_altitude_deg - p.sun_altitude_deg;
-  p.elongation_deg = hijri__angular_separation_deg(
-      moon_ra, moon_dec, sun.right_ascension_deg, sun.declination_deg);
+  {
+    double jd_tt = hijri_jd_tt_from_ut(p.jd_sunset_ut);
+    HijriSunPosition sun = hijri_sun_position(jd_tt);
+    HijriMoonPosition moon = hijri_moon_position(jd_tt);
+    double moon_ra_topo;
+    double moon_dec_topo;
+    double semidiameter_deg = 0.2725076 * moon.horizontal_parallax_deg;
 
-  double sd_arcmin = 0.2725076 * (moon_geo.horizontal_parallax_deg * 60.0);
-  p.crescent_width_arcmin =
-      sd_arcmin * (1.0 - cos(HIJRI__DEG2RAD(p.elongation_deg)));
+    hijri_moon_topocentric(&moon, p.jd_sunset_ut, loc->latitude_deg,
+                           loc->longitude_deg, loc->elevation_m,
+                           &moon_ra_topo, &moon_dec_topo);
 
-  p.moon_age_hours = (jd_sunset_ut - jd_conjunction_ut) * 24.0;
-  p.conjunction_before_sunset = (jd_conjunction_ut < jd_sunset_ut);
+    p.sun_center_geometric_altitude_deg =
+        hijri__altitude_deg(sun.right_ascension_deg, sun.declination_deg,
+                            p.jd_sunset_ut, loc);
+    p.moon_center_geometric_altitude_deg =
+        hijri__altitude_deg(moon_ra_topo, moon_dec_topo, p.jd_sunset_ut, loc);
+    p.moon_upper_limb_apparent_altitude_deg =
+        p.moon_center_geometric_altitude_deg + semidiameter_deg +
+        HIJRI__REFRACTION_AT_HORIZON_DEG;
+    p.geocentric_elongation_deg = hijri__angular_separation_deg(
+        moon.right_ascension_deg, moon.declination_deg,
+        sun.right_ascension_deg, sun.declination_deg);
+    p.topocentric_elongation_deg = hijri__angular_separation_deg(
+        moon_ra_topo, moon_dec_topo, sun.right_ascension_deg,
+        sun.declination_deg);
+  }
 
-  if (isnan(jd_moonset_ut)) {
-    p.lag_time_minutes = NAN;
-    p.moonset_after_sunset = 0;
+  p.jd_relevant_conjunction_ut =
+      hijri_find_relevant_conjunction(p.jd_sunset_ut);
+  p.moon_age_hours =
+      (p.jd_sunset_ut - p.jd_relevant_conjunction_ut) * 24.0;
+  p.conjunction_before_sunset =
+      (p.jd_relevant_conjunction_ut < p.jd_sunset_ut);
+
+  p.moonset_status =
+      hijri_find_moonset(p.jd_sunset_ut, loc, &p.jd_moonset_ut);
+  if (p.moonset_status == HIJRI_EVENT_OK) {
+    p.lag_time_minutes =
+        (p.jd_moonset_ut - p.jd_sunset_ut) * 24.0 * 60.0;
+    p.moonset_after_sunset = (p.jd_moonset_ut > p.jd_sunset_ut);
   } else {
-    p.lag_time_minutes = (jd_moonset_ut - jd_sunset_ut) * 24.0 * 60.0;
-    p.moonset_after_sunset = (jd_moonset_ut > jd_sunset_ut);
+    p.jd_moonset_ut = NAN;
   }
 
   return p;
 }
 
-HIJRIDEF int hijri_criterion_evaluate(HijriCriterion crit,
-                                      const HijriHilalParameters *p) {
-  switch (crit) {
-  case HIJRI_CRIT_UMM_AL_QURA:
-    return p->conjunction_before_sunset && p->moonset_after_sunset;
-
-  case HIJRI_CRIT_MABIMS_1992:
-    return (p->moon_altitude_deg >= 2.0 && p->elongation_deg >= 3.0) ||
+HIJRIDEF int
+hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
+                               const HijriEveningParameters *p) {
+  switch (predicate) {
+  case HIJRI_PREDICATE_MABIMS_1992:
+    return (p->moon_center_geometric_altitude_deg >= 2.0 &&
+            p->geocentric_elongation_deg >= 3.0) ||
            (p->moon_age_hours >= 8.0);
-
-  case HIJRI_CRIT_MABIMS_2021:
-    return (p->moon_altitude_deg >= 3.0 && p->elongation_deg >= 6.4);
-
-  case HIJRI_CRIT_WUJUDUL_HILAL:
-    return p->conjunction_before_sunset && (p->moon_altitude_deg > 0.0);
-
-  case HIJRI_CRIT_TURKEY_ICOP:
-    return (p->moon_altitude_deg >= 5.0 && p->elongation_deg >= 8.0);
-
-  case HIJRI_CRIT_ECFR_ISNA:
-    return (p->moon_altitude_deg >= 5.0 && p->elongation_deg >= 8.0);
-
-  case HIJRI_CRIT_EGYPT:
-    return !isnan(p->lag_time_minutes) && (p->lag_time_minutes >= 5.0);
-
-  case HIJRI_CRIT_ODEH:
-  case HIJRI_CRIT_YALLOP:
+  case HIJRI_PREDICATE_MABIMS_2021:
+    return p->moon_center_geometric_altitude_deg >= 3.0 &&
+           p->geocentric_elongation_deg >= 6.4;
+  case HIJRI_PREDICATE_WUJUDUL_HILAL:
+    return p->conjunction_before_sunset &&
+           p->moon_upper_limb_apparent_altitude_deg > 0.0;
+  case HIJRI_PREDICATE_LAG_AT_LEAST_5_MINUTES:
+    return p->moonset_status == HIJRI_EVENT_OK &&
+           p->lag_time_minutes >= 5.0;
+  case HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8:
+    return p->moon_center_geometric_altitude_deg >= 5.0 &&
+           p->geocentric_elongation_deg >= 8.0;
+  case HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET:
+    return p->conjunction_before_sunset &&
+           p->moonset_status == HIJRI_EVENT_OK &&
+           p->moonset_after_sunset;
   default:
     return 0;
   }
@@ -868,14 +844,16 @@ HIJRIDEF double hijri_yallop_q(double arcv_deg, double w) {
 HIJRIDEF HijriYallopZone hijri_yallop_classify(double arcv_deg, double w) {
   double q = hijri_yallop_q(arcv_deg, w);
   if (q > 0.216)
-    return HIJRI_YALLOP_EASILY_VISIBLE;
+    return HIJRI_YALLOP_A_EASILY_VISIBLE;
   if (q > -0.014)
-    return HIJRI_YALLOP_VISIBLE_UNDER_PERFECT_CONDITIONS;
+    return HIJRI_YALLOP_B_VISIBLE_PERFECT_CONDITIONS;
   if (q > -0.160)
-    return HIJRI_YALLOP_MAY_NEED_OPTICAL_AID;
+    return HIJRI_YALLOP_C_MAY_NEED_OPTICAL_AID;
   if (q > -0.232)
-    return HIJRI_YALLOP_NEEDS_OPTICAL_AID;
-  return HIJRI_YALLOP_NOT_VISIBLE;
+    return HIJRI_YALLOP_D_NEEDS_OPTICAL_AID;
+  if (q > -0.293)
+    return HIJRI_YALLOP_E_NOT_VISIBLE_TELESCOPE;
+  return HIJRI_YALLOP_F_NOT_VISIBLE_BELOW_LIMIT;
 }
 
 HIJRIDEF double hijri_odeh_v(double arcv_deg, double w) {
@@ -892,6 +870,133 @@ HIJRIDEF HijriOdehZone hijri_odeh_classify(double arcv_deg, double w) {
   if (v >= -0.96)
     return HIJRI_ODEH_VISIBLE_WITH_OPTICAL_AID_ONLY;
   return HIJRI_ODEH_NOT_VISIBLE;
+}
+
+static double
+hijri__topocentric_crescent_width_arcmin(const HijriMoonPosition *moon,
+                                         double moon_geocentric_altitude_deg,
+                                         double elongation_deg,
+                                         const HijriLocation *loc) {
+  double earth_radii = moon->distance_km / 6378.14;
+  double observer_radii = 1.0 + loc->elevation_m / (6378.14 * 1000.0);
+  double topocentric_distance =
+      sqrt(earth_radii * earth_radii +
+           observer_radii * observer_radii -
+           2.0 * earth_radii * observer_radii *
+               sin(HIJRI__DEG2RAD(moon_geocentric_altitude_deg)));
+  double geocentric_semidiameter_deg =
+      0.2725076 * moon->horizontal_parallax_deg;
+  double topocentric_semidiameter_deg =
+      geocentric_semidiameter_deg * earth_radii / topocentric_distance;
+  return 60.0 * topocentric_semidiameter_deg *
+         (1.0 - cos(HIJRI__DEG2RAD(elongation_deg)));
+}
+
+HIJRIDEF HijriYallopResult
+hijri_yallop_evaluate_evening(int gy, int gm, int gd,
+                              const HijriLocation *loc) {
+  HijriEveningParameters p =
+      hijri_compute_evening_parameters(gy, gm, gd, loc);
+  HijriYallopResult result;
+  result.jd_best_time_ut = NAN;
+  result.arcv_deg = NAN;
+  result.crescent_width_arcmin = NAN;
+  result.q = NAN;
+  result.zone = HIJRI_YALLOP_F_NOT_VISIBLE_BELOW_LIMIT;
+
+  if (p.sunset_status == HIJRI_EVENT_OK &&
+      p.moonset_status == HIJRI_EVENT_OK) {
+    double jd_tt;
+    HijriSunPosition sun;
+    HijriMoonPosition moon;
+    double sun_altitude;
+    double moon_geocentric_altitude;
+    double moon_ra_topocentric;
+    double moon_dec_topocentric;
+    double elongation_topocentric;
+
+    result.jd_best_time_ut =
+        p.jd_sunset_ut + (p.lag_time_minutes * 4.0 / 9.0) / 1440.0;
+    jd_tt = hijri_jd_tt_from_ut(result.jd_best_time_ut);
+    sun = hijri_sun_position(jd_tt);
+    moon = hijri_moon_position(jd_tt);
+    sun_altitude =
+        hijri__altitude_deg(sun.right_ascension_deg, sun.declination_deg,
+                            result.jd_best_time_ut, loc);
+    moon_geocentric_altitude =
+        hijri__altitude_deg(moon.right_ascension_deg, moon.declination_deg,
+                            result.jd_best_time_ut, loc);
+    hijri_moon_topocentric(
+        &moon, result.jd_best_time_ut, loc->latitude_deg, loc->longitude_deg,
+        loc->elevation_m, &moon_ra_topocentric, &moon_dec_topocentric);
+    elongation_topocentric = hijri__angular_separation_deg(
+        moon_ra_topocentric, moon_dec_topocentric, sun.right_ascension_deg,
+        sun.declination_deg);
+    result.arcv_deg = moon_geocentric_altitude - sun_altitude;
+    result.crescent_width_arcmin =
+        hijri__topocentric_crescent_width_arcmin(
+            &moon, moon_geocentric_altitude, elongation_topocentric, loc);
+    result.q = hijri_yallop_q(result.arcv_deg,
+                              result.crescent_width_arcmin);
+    result.zone = hijri_yallop_classify(result.arcv_deg,
+                                         result.crescent_width_arcmin);
+  }
+  return result;
+}
+
+HIJRIDEF HijriOdehResult
+hijri_odeh_evaluate_evening(int gy, int gm, int gd,
+                            const HijriLocation *loc) {
+  HijriEveningParameters p =
+      hijri_compute_evening_parameters(gy, gm, gd, loc);
+  HijriOdehResult result;
+  result.jd_best_time_ut = NAN;
+  result.arcv_deg = NAN;
+  result.crescent_width_arcmin = NAN;
+  result.v = NAN;
+  result.zone = HIJRI_ODEH_NOT_VISIBLE;
+
+  if (p.sunset_status == HIJRI_EVENT_OK &&
+      p.moonset_status == HIJRI_EVENT_OK) {
+    double jd_tt;
+    HijriSunPosition sun;
+    HijriMoonPosition moon;
+    double sun_altitude;
+    double moon_geocentric_altitude;
+    double moon_ra_topocentric;
+    double moon_dec_topocentric;
+    double moon_topocentric_altitude;
+    double elongation_topocentric;
+
+    result.jd_best_time_ut =
+        p.jd_sunset_ut + (p.lag_time_minutes * 4.0 / 9.0) / 1440.0;
+    jd_tt = hijri_jd_tt_from_ut(result.jd_best_time_ut);
+    sun = hijri_sun_position(jd_tt);
+    moon = hijri_moon_position(jd_tt);
+    sun_altitude =
+        hijri__altitude_deg(sun.right_ascension_deg, sun.declination_deg,
+                            result.jd_best_time_ut, loc);
+    moon_geocentric_altitude =
+        hijri__altitude_deg(moon.right_ascension_deg, moon.declination_deg,
+                            result.jd_best_time_ut, loc);
+    hijri_moon_topocentric(
+        &moon, result.jd_best_time_ut, loc->latitude_deg, loc->longitude_deg,
+        loc->elevation_m, &moon_ra_topocentric, &moon_dec_topocentric);
+    moon_topocentric_altitude = hijri__altitude_deg(
+        moon_ra_topocentric, moon_dec_topocentric, result.jd_best_time_ut, loc);
+    elongation_topocentric = hijri__angular_separation_deg(
+        moon_ra_topocentric, moon_dec_topocentric, sun.right_ascension_deg,
+        sun.declination_deg);
+    result.arcv_deg = moon_topocentric_altitude - sun_altitude;
+    result.crescent_width_arcmin =
+        hijri__topocentric_crescent_width_arcmin(
+            &moon, moon_geocentric_altitude, elongation_topocentric, loc);
+    result.v =
+        hijri_odeh_v(result.arcv_deg, result.crescent_width_arcmin);
+    result.zone =
+        hijri_odeh_classify(result.arcv_deg, result.crescent_width_arcmin);
+  }
+  return result;
 }
 
 /* ---- Tabular calendar
@@ -962,48 +1067,24 @@ HIJRIDEF HijriDate hijri_tabular_from_jd(double jd) {
   return result;
 }
 
-/* ---- Top-level orchestration
- * ---------------------------------------------------- */
+/* ---- Top-level orchestration ----------------------------------------- */
 
-HIJRIDEF HijriMonthDecision hijri_evaluate_evening(int gy, int gm, int gd,
-                                                   const HijriLocation *loc,
-                                                   HijriCriterion crit) {
+HIJRIDEF HijriMonthDecision
+hijri_evaluate_evening(int gy, int gm, int gd, const HijriLocation *loc,
+                       HijriLocalPredicate predicate) {
   HijriMonthDecision result;
   result.month_starts_next_day = 0;
-  result.jd_conjunction_ut = NAN;
-  result.jd_moonset_ut = NAN;
+  result.parameters = hijri_compute_evening_parameters(gy, gm, gd, loc);
 
-  double jd_midnight = hijri_jd_from_gregorian(gy, gm, (double)gd);
-
-  double jd_sunset;
-  HijriEventStatus sunset_status =
-      hijri_find_sunset(jd_midnight, loc, &jd_sunset);
-  if (sunset_status != HIJRI_EVENT_OK) {
-    result.jd_sunset_ut = NAN;
-    return result;
+  if (result.parameters.sunset_status == HIJRI_EVENT_OK) {
+    result.month_starts_next_day =
+        hijri_local_predicate_evaluate(predicate, &result.parameters);
   }
-  result.jd_sunset_ut = jd_sunset;
-
-  double jd_conjunction = hijri_find_previous_conjunction(jd_sunset);
-  result.jd_conjunction_ut = jd_conjunction;
-
-  double jd_moonset;
-  HijriEventStatus moonset_status =
-      hijri_find_moonset(jd_sunset, loc, &jd_moonset);
-  double jd_moonset_or_nan =
-      (moonset_status == HIJRI_EVENT_OK) ? jd_moonset : NAN;
-  result.jd_moonset_ut = jd_moonset_or_nan;
-
-  HijriHilalParameters params = hijri_compute_hilal_parameters(
-      jd_sunset, jd_conjunction, jd_moonset_or_nan, loc);
-  result.parameters = params;
-
-  result.month_starts_next_day = hijri_criterion_evaluate(crit, &params);
   return result;
 }
 
 static double hijri__find_month_start_after_conjunction(
-    double jd_conj, const HijriLocation *loc, HijriCriterion crit) {
+    double jd_conj, const HijriLocation *loc, HijriLocalPredicate predicate) {
   const int MAX_FORWARD_DAYS = 5;
   for (int k = 0; k < MAX_FORWARD_DAYS; k++) {
     double eve_jd = floor(jd_conj) + (double)k;
@@ -1012,37 +1093,38 @@ static double hijri__find_month_start_after_conjunction(
     hijri_gregorian_from_jd(eve_jd, &ey, &em, &ed_frac);
     int ed = (int)floor(ed_frac + 0.5);
 
-    HijriMonthDecision decision = hijri_evaluate_evening(ey, em, ed, loc, crit);
-    if (!isnan(decision.jd_sunset_ut) && decision.month_starts_next_day) {
+    HijriMonthDecision decision =
+        hijri_evaluate_evening(ey, em, ed, loc, predicate);
+    if (decision.parameters.sunset_status == HIJRI_EVENT_OK &&
+        decision.month_starts_next_day) {
       return eve_jd + 1.0;
     }
   }
   return NAN;
 }
 
-HIJRIDEF int hijri_from_gregorian(int gy, int gm, int gd,
-                                  const HijriLocation *loc, HijriCriterion crit,
-                                  HijriDate *out) {
-  if (crit == HIJRI_CRIT_ODEH || crit == HIJRI_CRIT_YALLOP) {
-    return 0;
-  }
-
-  double target_jd = floor(hijri_jd_from_gregorian(gy, gm, (double)gd));
-
-  double jd_conj = hijri_find_previous_conjunction(target_jd + 1.0);
-  double jd_month_start =
-      hijri__find_month_start_after_conjunction(jd_conj, loc, crit);
+HIJRIDEF int hijri_from_gregorian_with_local_predicate(
+    int gy, int gm, int gd, const HijriLocation *loc,
+    HijriLocalPredicate predicate, HijriDate *out) {
+  double target_jd =
+      floor(hijri_jd_from_gregorian(gy, gm, (double)gd));
+  double jd_conjunction =
+      hijri_find_relevant_conjunction(target_jd + 1.0);
+  double jd_month_start = hijri__find_month_start_after_conjunction(
+      jd_conjunction, loc, predicate);
+  int day_number;
 
   if (isnan(jd_month_start) || target_jd < jd_month_start) {
-    double jd_conj_prev = hijri_find_previous_conjunction(jd_conj - 1.0);
-    jd_month_start =
-        hijri__find_month_start_after_conjunction(jd_conj_prev, loc, crit);
+    jd_conjunction =
+        hijri_find_previous_conjunction(jd_conjunction - 1.0);
+    jd_month_start = hijri__find_month_start_after_conjunction(
+        jd_conjunction, loc, predicate);
     if (isnan(jd_month_start) || target_jd < jd_month_start) {
       return 0;
     }
   }
 
-  int day_number = (int)(target_jd - jd_month_start) + 1;
+  day_number = (int)(target_jd - jd_month_start) + 1;
   if (day_number < 1 || day_number > 30) {
     return 0;
   }
@@ -1057,6 +1139,13 @@ HIJRIDEF int hijri_from_gregorian(int gy, int gm, int gd,
   out->month = approx.month;
   out->day = day_number;
   return 1;
+}
+
+HIJRIDEF int hijri_umm_al_qura_from_gregorian(int gy, int gm, int gd,
+                                               HijriDate *out) {
+  return hijri_from_gregorian_with_local_predicate(
+      gy, gm, gd, &HIJRI_LOCATION_MECCA,
+      HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET, out);
 }
 
 #endif /* HIJRI_IMPLEMENTATION */
