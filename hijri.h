@@ -189,7 +189,8 @@ typedef enum {
   HIJRI_PREDICATE_MABIMS_2021,
   HIJRI_PREDICATE_WUJUDUL_HILAL,
   HIJRI_PREDICATE_LAG_AT_LEAST_5_MINUTES,
-  HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8
+  HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8,
+  HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET
 } HijriLocalPredicate;
 
 typedef struct {
@@ -216,6 +217,23 @@ hijri_compute_evening_parameters(int gy, int gm, int gd,
 HIJRIDEF int
 hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
                                const HijriEveningParameters *p);
+
+typedef struct {
+  int month_starts_next_day;
+  HijriEveningParameters parameters;
+} HijriMonthDecision;
+
+HIJRIDEF HijriMonthDecision
+hijri_evaluate_evening(int gy, int gm, int gd, const HijriLocation *loc,
+                       HijriLocalPredicate predicate);
+
+HIJRIDEF int hijri_from_gregorian(int gy, int gm, int gd,
+                                  const HijriLocation *loc,
+                                  HijriLocalPredicate predicate,
+                                  HijriDate *out);
+
+HIJRIDEF int hijri_umm_al_qura_from_gregorian(int gy, int gm, int gd,
+                                               HijriDate *out);
 
 typedef enum {
   HIJRI_YALLOP_NOT_VISIBLE = 0,
@@ -785,6 +803,10 @@ hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
   case HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8:
     return p->moon_center_geometric_altitude_deg >= 5.0 &&
            p->geocentric_elongation_deg >= 8.0;
+  case HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET:
+    return p->conjunction_before_sunset &&
+           p->moonset_status == HIJRI_EVENT_OK &&
+           p->moonset_after_sunset;
   default:
     return 0;
   }
@@ -891,6 +913,89 @@ HIJRIDEF HijriDate hijri_tabular_from_jd(double jd) {
   result.month = month;
   result.day = (int)days_elapsed + 1;
   return result;
+}
+
+/* ---- Top-level orchestration ----------------------------------------- */
+
+HIJRIDEF HijriMonthDecision
+hijri_evaluate_evening(int gy, int gm, int gd, const HijriLocation *loc,
+                       HijriLocalPredicate predicate) {
+  HijriMonthDecision result;
+  result.month_starts_next_day = 0;
+  result.parameters = hijri_compute_evening_parameters(gy, gm, gd, loc);
+
+  if (result.parameters.sunset_status == HIJRI_EVENT_OK) {
+    result.month_starts_next_day =
+        hijri_local_predicate_evaluate(predicate, &result.parameters);
+  }
+  return result;
+}
+
+static double hijri__find_month_start_after_conjunction(
+    double jd_conjunction, const HijriLocation *loc,
+    HijriLocalPredicate predicate) {
+  const int max_forward_days = 5;
+  int k;
+
+  for (k = 0; k < max_forward_days; k++) {
+    double evening_jd = floor(jd_conjunction) + (double)k;
+    int evening_year;
+    int evening_month;
+    double evening_day_fraction;
+    int evening_day;
+    HijriMonthDecision decision;
+
+    hijri_gregorian_from_jd(evening_jd, &evening_year, &evening_month,
+                            &evening_day_fraction);
+    evening_day = (int)floor(evening_day_fraction + 0.5);
+    decision = hijri_evaluate_evening(evening_year, evening_month, evening_day,
+                                      loc, predicate);
+    if (decision.parameters.sunset_status == HIJRI_EVENT_OK &&
+        decision.month_starts_next_day) {
+      return evening_jd + 1.0;
+    }
+  }
+  return NAN;
+}
+
+HIJRIDEF int hijri_from_gregorian(int gy, int gm, int gd,
+                                  const HijriLocation *loc,
+                                  HijriLocalPredicate predicate,
+                                  HijriDate *out) {
+  double target_jd =
+      floor(hijri_jd_from_gregorian(gy, gm, (double)gd));
+  double jd_conjunction =
+      hijri_find_relevant_conjunction(target_jd + 1.0);
+  double jd_month_start = hijri__find_month_start_after_conjunction(
+      jd_conjunction, loc, predicate);
+  int day_number;
+  HijriDate approximate;
+
+  if (isnan(jd_month_start) || target_jd < jd_month_start) {
+    jd_conjunction =
+        hijri_find_previous_conjunction(jd_conjunction - 1.0);
+    jd_month_start = hijri__find_month_start_after_conjunction(
+        jd_conjunction, loc, predicate);
+    if (isnan(jd_month_start) || target_jd < jd_month_start)
+      return 0;
+  }
+
+  day_number = (int)(target_jd - jd_month_start) + 1;
+  if (day_number < 1 || day_number > 30)
+    return 0;
+
+  approximate = hijri_tabular_from_jd(jd_month_start + 5.0);
+  out->year = approximate.year;
+  out->month = approximate.month;
+  out->day = day_number;
+  return 1;
+}
+
+HIJRIDEF int hijri_umm_al_qura_from_gregorian(int gy, int gm, int gd,
+                                               HijriDate *out) {
+  return hijri_from_gregorian(
+      gy, gm, gd, &HIJRI_LOCATION_MECCA,
+      HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET, out);
 }
 
 #endif /* HIJRI_IMPLEMENTATION */

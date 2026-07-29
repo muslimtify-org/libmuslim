@@ -244,6 +244,39 @@ static void test_relevant_conjunction(void) {
   check_int("after_conjunction_order", after.conjunction_before_sunset, 1);
 }
 
+static void test_orchestration(void) {
+  const HijriLocation jakarta = {-6.2088, 106.8456, 8.0, "Jakarta"};
+  HijriLocalPredicate predicate;
+
+  for (predicate = HIJRI_PREDICATE_MABIMS_1992;
+       predicate <= HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET;
+       predicate = (HijriLocalPredicate)(predicate + 1)) {
+    HijriDate date;
+    int ok =
+        hijri_from_gregorian(2025, 3, 1, &jakarta, predicate, &date);
+    if (ok) {
+      check_true("orchestration_day_in_range",
+                 date.day >= 1 && date.day <= 30);
+    }
+  }
+}
+
+static void test_umm_al_qura_policy(void) {
+  HijriDate dedicated;
+  HijriDate direct;
+  int dedicated_ok =
+      hijri_umm_al_qura_from_gregorian(2025, 3, 1, &dedicated);
+  int direct_ok = hijri_from_gregorian(
+      2025, 3, 1, &HIJRI_LOCATION_MECCA,
+      HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET, &direct);
+  check_int("umm_dedicated_status", dedicated_ok, direct_ok);
+  if (dedicated_ok && direct_ok)
+    check_true("umm_dedicated_matches_mecca",
+               dedicated.year == direct.year &&
+               dedicated.month == direct.month &&
+               dedicated.day == direct.day);
+}
+
 int main(void) {
   test_julian_day();
   test_tabular_calendar();
@@ -251,11 +284,13 @@ int main(void) {
   test_yallop();
   test_odeh();
   test_relevant_conjunction();
+  test_orchestration();
+  test_umm_al_qura_policy();
   check_true("all_predicate_enums_represented",
-             HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8 -
+             HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET -
                          HIJRI_PREDICATE_MABIMS_1992 +
                      1 ==
-                 5);
+                 6);
   printf("Hijri tests: %d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }
