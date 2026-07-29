@@ -276,7 +276,7 @@ CalcMethod method_from_string(const char *name) {
     return CALC_CUSTOM;
   size_t count = sizeof(METHOD_KEYS) / sizeof(METHOD_KEYS[0]);
   for (size_t i = 0; i < count; i++) {
-    if (strcmp(name, METHOD_KEYS[i].key) == 0)
+    if (strcasecmp(name, METHOD_KEYS[i].key) == 0)
       return METHOD_KEYS[i].method;
   }
   return CALC_CUSTOM;
