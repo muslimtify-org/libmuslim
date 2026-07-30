@@ -32,18 +32,27 @@
  * -----------------------------------------------------------------------
  * ACCURACY CAVEAT -- PLEASE READ
  *
- * hijri_moon_position() below uses only the ~5 largest-amplitude periodic
- * terms of the ELP2000-82B lunar theory (accurate to roughly a few tenths
- * of a degree), not the full ~60-term series. This is enough to exercise
- * the whole pipeline correctly and get qualitatively right answers, but
- * is NOT enough precision for real religious-observance decisions in
- * genuinely borderline cases. For production use, replace the body of
- * hijri_moon_position() with the full series from Meeus, "Astronomical
- * Algorithms" 2nd ed., ch. 47, Tables 47.a/47.b, or link against an
- * existing implementation such as https://github.com/mygulamali/meeus or
- * libnova. Nothing else in this file needs to change to do that swap --
- * every other function only depends on the HijriMoonPosition struct's
- * contents, not on how it was computed.
+ * hijri_moon_position() implements the full Meeus ch. 47 lunar series --
+ * Table 47.A (60 terms, longitude and distance) and Table 47.B (60 terms,
+ * latitude), with the E eccentricity factor and the A1/A2/A3 additive
+ * corrections.
+ *
+ * Measured against 24 JPL Horizons epochs spanning 1900-2100, worst case:
+ *
+ *     longitude  0.0051 deg      latitude  0.0006 deg      distance  41.9 km
+ *
+ * It also reproduces Meeus's own printed worked Example 47.a to every digit
+ * the book gives. See tests/test_moon_meeus.c, which carries both checks.
+ *
+ * WHAT THIS STILL DOES NOT DO. No nutation and no aberration are applied, so
+ * these are geometric positions referred to the mean equinox of date. The
+ * 0.0051 deg longitude residual above is essentially that omitted nutation,
+ * not series error.
+ *
+ * Judgement is still required near a criterion boundary. This ephemeris is
+ * far tighter than the thresholds the visibility criteria in this file use,
+ * but a calculated result is not an observation, and no calculation here
+ * decides religious validity.
  *
  * See the explicitly documented local predicates below.
  *
@@ -468,8 +477,178 @@ HIJRIDEF HijriSunPosition hijri_sun_position(double jd_tt) {
   return pos;
 }
 
-/* ---- Lunar position (leading periodic terms only -- see accuracy caveat) ---
+/* ---- Lunar position (full Meeus ch. 47 series -- Tables 47.A and 47.B) ----
  */
+
+/* PROVENANCE OF THE TWO TABLES BELOW
+ *
+ * These 120 coefficients were not written from memory. They were taken from two
+ * independent published transcriptions of Meeus ch. 47 and compared row by row
+ * before use:
+ *
+ *   PyMeeus      -- architest/pymeeus, pymeeus/Moon.py
+ *   astronomia   -- commenthol/astronomia, src/moonposition.js
+ *
+ * Be precise about what was machine-checked, because this comment is the
+ * repository's tracked provenance record and overstating it would defeat its
+ * purpose. Table 47.A was compared row by row under `diff`: all 60 rows matched
+ * exactly between the two sources. Table 47.B was read from both sources and
+ * they agreed, but only one copy was retained, so the automated checks applied
+ * to it were row count, dominant term, and parity -- not a two-source diff.
+ *
+ * Both tables satisfy the parity invariant of the lunar theory -- every 47.A row
+ * has an even F multiple, every 47.B row an odd one -- which a corrupted table
+ * would be unlikely to satisfy by accident.
+ *
+ * The decisive check is not either of those, though: tests/test_moon_meeus.c
+ * asserts Meeus's own printed worked Example 47.a, and this implementation
+ * reproduces lambda, beta and Delta to every digit the book prints. That is
+ * reproducible from this repository alone and does not rely on trusting either
+ * transcription, or this comment.
+ */
+
+/* E^|M|, applied to terms involving the Sun's mean anomaly to account for the
+ * eccentricity of Earth's orbit. Meeus specifies E for |M| = 1 and E^2 for
+ * |M| = 2; no row of either table has |M| > 2. */
+static double hijri__moon_e_factor(double E, long m) {
+  if (m == 0)
+    return 1.0;
+  return (m == 1 || m == -1) ? E : E * E;
+}
+
+/* Meeus, "Astronomical Algorithms" 2nd ed., Table 47.A -- periodic terms for
+ * the Moon's longitude (sigma_l, unit 1e-6 deg) and distance (sigma_r, unit
+ * 1e-3 km). Columns: multiples of D, M, M', F, then sigma_l, sigma_r.
+ * One row per line, matching the published table 1:1 so it stays auditable.
+ * Every row has an even F multiple -- longitude and distance are even in F. */
+static const long hijri__moon_lr[60][6] = {
+  {0, 0, 1, 0, 6288774, -20905355},
+  {2, 0, -1, 0, 1274027, -3699111},
+  {2, 0, 0, 0, 658314, -2955968},
+  {0, 0, 2, 0, 213618, -569925},
+  {0, 1, 0, 0, -185116, 48888},
+  {0, 0, 0, 2, -114332, -3149},
+  {2, 0, -2, 0, 58793, 246158},
+  {2, -1, -1, 0, 57066, -152138},
+  {2, 0, 1, 0, 53322, -170733},
+  {2, -1, 0, 0, 45758, -204586},
+  {0, 1, -1, 0, -40923, -129620},
+  {1, 0, 0, 0, -34720, 108743},
+  {0, 1, 1, 0, -30383, 104755},
+  {2, 0, 0, -2, 15327, 10321},
+  {0, 0, 1, 2, -12528, 0},
+  {0, 0, 1, -2, 10980, 79661},
+  {4, 0, -1, 0, 10675, -34782},
+  {0, 0, 3, 0, 10034, -23210},
+  {4, 0, -2, 0, 8548, -21636},
+  {2, 1, -1, 0, -7888, 24208},
+  {2, 1, 0, 0, -6766, 30824},
+  {1, 0, -1, 0, -5163, -8379},
+  {1, 1, 0, 0, 4987, -16675},
+  {2, -1, 1, 0, 4036, -12831},
+  {2, 0, 2, 0, 3994, -10445},
+  {4, 0, 0, 0, 3861, -11650},
+  {2, 0, -3, 0, 3665, 14403},
+  {0, 1, -2, 0, -2689, -7003},
+  {2, 0, -1, 2, -2602, 0},
+  {2, -1, -2, 0, 2390, 10056},
+  {1, 0, 1, 0, -2348, 6322},
+  {2, -2, 0, 0, 2236, -9884},
+  {0, 1, 2, 0, -2120, 5751},
+  {0, 2, 0, 0, -2069, 0},
+  {2, -2, -1, 0, 2048, -4950},
+  {2, 0, 1, -2, -1773, 4130},
+  {2, 0, 0, 2, -1595, 0},
+  {4, -1, -1, 0, 1215, -3958},
+  {0, 0, 2, 2, -1110, 0},
+  {3, 0, -1, 0, -892, 3258},
+  {2, 1, 1, 0, -810, 2616},
+  {4, -1, -2, 0, 759, -1897},
+  {0, 2, -1, 0, -713, -2117},
+  {2, 2, -1, 0, -700, 2354},
+  {2, 1, -2, 0, 691, 0},
+  {2, -1, 0, -2, 596, 0},
+  {4, 0, 1, 0, 549, -1423},
+  {0, 0, 4, 0, 537, -1117},
+  {4, -1, 0, 0, 520, -1571},
+  {1, 0, -2, 0, -487, -1739},
+  {2, 1, 0, -2, -399, 0},
+  {0, 0, 2, -2, -381, -4421},
+  {1, 1, 1, 0, 351, 0},
+  {3, 0, -2, 0, -340, 0},
+  {4, 0, -3, 0, 330, 0},
+  {2, -1, 2, 0, 327, 0},
+  {0, 2, 1, 0, -323, 1165},
+  {1, 1, -1, 0, 299, 0},
+  {2, 0, 3, 0, 294, 0},
+  {2, 0, -1, -2, 0, 8752},
+};
+
+/* Table 47.B -- periodic terms for the Moon's latitude (sigma_b, unit 1e-6
+ * deg). Columns: multiples of D, M, M', F, then sigma_b. Every row has an odd
+ * F multiple -- latitude is odd in F. */
+static const long hijri__moon_b[60][5] = {
+  {0, 0, 0, 1, 5128122},
+  {0, 0, 1, 1, 280602},
+  {0, 0, 1, -1, 277693},
+  {2, 0, 0, -1, 173237},
+  {2, 0, -1, 1, 55413},
+  {2, 0, -1, -1, 46271},
+  {2, 0, 0, 1, 32573},
+  {0, 0, 2, 1, 17198},
+  {2, 0, 1, -1, 9266},
+  {0, 0, 2, -1, 8822},
+  {2, -1, 0, -1, 8216},
+  {2, 0, -2, -1, 4324},
+  {2, 0, 1, 1, 4200},
+  {2, 1, 0, -1, -3359},
+  {2, -1, -1, 1, 2463},
+  {2, -1, 0, 1, 2211},
+  {2, -1, -1, -1, 2065},
+  {0, 1, -1, -1, -1870},
+  {4, 0, -1, -1, 1828},
+  {0, 1, 0, 1, -1794},
+  {0, 0, 0, 3, -1749},
+  {0, 1, -1, 1, -1565},
+  {1, 0, 0, 1, -1491},
+  {0, 1, 1, 1, -1475},
+  {0, 1, 1, -1, -1410},
+  {0, 1, 0, -1, -1344},
+  {1, 0, 0, -1, -1335},
+  {0, 0, 3, 1, 1107},
+  {4, 0, 0, -1, 1021},
+  {4, 0, -1, 1, 833},
+  {0, 0, 1, -3, 777},
+  {4, 0, -2, 1, 671},
+  {2, 0, 0, -3, 607},
+  {2, 0, 2, -1, 596},
+  {2, -1, 1, -1, 491},
+  {2, 0, -2, 1, -451},
+  {0, 0, 3, -1, 439},
+  {2, 0, 2, 1, 422},
+  {2, 0, -3, -1, 421},
+  {2, 1, -1, 1, -366},
+  {2, 1, 0, 1, -351},
+  {4, 0, 0, 1, 331},
+  {2, -1, 1, 1, 315},
+  {2, -2, 0, -1, 302},
+  {0, 0, 1, 3, -283},
+  {2, 1, 1, -1, -229},
+  {1, 1, 0, -1, 223},
+  {1, 1, 0, 1, 223},
+  {0, 1, -2, -1, -220},
+  {2, 1, -1, -1, -220},
+  {1, 0, 1, 1, -185},
+  {2, -1, -2, -1, 181},
+  {0, 1, 2, 1, -177},
+  {4, 0, -2, -1, 176},
+  {4, -1, -1, -1, 166},
+  {1, 0, 1, -1, -164},
+  {4, 0, 1, -1, 132},
+  {1, 0, -1, -1, -119},
+  {4, -1, 0, -1, 115},
+  {2, -2, 0, 1, 107},
+};
 
 HIJRIDEF HijriMoonPosition hijri_moon_position(double jd_tt) {
   double T = hijri_julian_centuries(jd_tt);
@@ -486,22 +665,47 @@ HIJRIDEF HijriMoonPosition hijri_moon_position(double jd_tt) {
   double F = hijri__norm_deg(93.2720950 + 483202.0175233 * T - 0.0036539 * T2 -
                              T3 / 3526000.0 + T4 / 863310000.0);
 
-  double Dr = HIJRI__DEG2RAD(D), Mr = HIJRI__DEG2RAD(M),
-         Mpr = HIJRI__DEG2RAD(Mp), Fr = HIJRI__DEG2RAD(F);
+  double E = 1.0 - 0.002516 * T - 0.0000074 * T2;
+  double A1 = hijri__norm_deg(119.75 + 131.849 * T);
+  double A2 = hijri__norm_deg(53.09 + 479264.290 * T);
+  double A3 = hijri__norm_deg(313.45 + 481266.484 * T);
 
-  double dLon = 6.288774 * sin(Mpr) + 1.274027 * sin(2 * Dr - Mpr) +
-                0.658314 * sin(2 * Dr) + 0.213618 * sin(2 * Mpr) -
-                0.185116 * sin(Mr) - 0.114332 * sin(2 * Fr);
+  double sum_l = 0.0, sum_r = 0.0, sum_b = 0.0;
+  int i;
 
-  double dLat = 5.128122 * sin(Fr) + 0.280602 * sin(Mpr + Fr) +
-                0.277693 * sin(Mpr - Fr) + 0.173237 * sin(2 * Dr - Fr);
+  for (i = 0; i < 60; i++) {
+    double arg = HIJRI__DEG2RAD(hijri__moon_lr[i][0] * D +
+                                hijri__moon_lr[i][1] * M +
+                                hijri__moon_lr[i][2] * Mp +
+                                hijri__moon_lr[i][3] * F);
+    double e = hijri__moon_e_factor(E, hijri__moon_lr[i][1]);
+    sum_l += (double)hijri__moon_lr[i][4] * e * sin(arg);
+    sum_r += (double)hijri__moon_lr[i][5] * e * cos(arg);
+  }
 
-  double dDist = -20905.355 * cos(Mpr) - 3699.111 * cos(2 * Dr - Mpr) -
-                 2955.968 * cos(2 * Dr) - 569.925 * cos(2 * Mpr);
+  for (i = 0; i < 60; i++) {
+    double arg = HIJRI__DEG2RAD(hijri__moon_b[i][0] * D +
+                                hijri__moon_b[i][1] * M +
+                                hijri__moon_b[i][2] * Mp +
+                                hijri__moon_b[i][3] * F);
+    sum_b += (double)hijri__moon_b[i][4] *
+             hijri__moon_e_factor(E, hijri__moon_b[i][1]) * sin(arg);
+  }
 
-  double longitude = hijri__norm_deg(Lp + dLon);
-  double latitude = dLat;
-  double distance_km = 385000.56 + dDist;
+  sum_l += 3958.0 * sin(HIJRI__DEG2RAD(A1)) +
+           1962.0 * sin(HIJRI__DEG2RAD(Lp - F)) +
+           318.0 * sin(HIJRI__DEG2RAD(A2));
+
+  sum_b += -2235.0 * sin(HIJRI__DEG2RAD(Lp)) +
+           382.0 * sin(HIJRI__DEG2RAD(A3)) +
+           175.0 * sin(HIJRI__DEG2RAD(A1 - F)) +
+           175.0 * sin(HIJRI__DEG2RAD(A1 + F)) +
+           127.0 * sin(HIJRI__DEG2RAD(Lp - Mp)) -
+           115.0 * sin(HIJRI__DEG2RAD(Lp + Mp));
+
+  double longitude = hijri__norm_deg(Lp + sum_l / 1000000.0);
+  double latitude = sum_b / 1000000.0;
+  double distance_km = 385000.56 + sum_r / 1000.0;
 
   double eps0 = 23.439291 - 0.0130042 * T;
   double eps_r = HIJRI__DEG2RAD(eps0);
