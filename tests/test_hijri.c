@@ -426,6 +426,114 @@ static void test_orchestration(void) {
   }
 }
 
+/* The evening-parameter entry point takes a civil date and must return THAT
+ * date's local evening. It previously passed 0h UT into a sunset search that
+ * scans forward only 24 hours, so west of about 90 deg W -- where local sunset
+ * falls after 00:00 UT the next day -- the search returned the PREVIOUS local
+ * evening. Every predicate, both visibility models and the calendar conversion
+ * inherited a one-day error across the Americas and the Pacific, and no test
+ * saw it because every fixture site was in the eastern hemisphere.
+ *
+ * The sweep is the real guard: it fails at 7 of 25 longitudes without the fix.
+ * The named sites are there so a failure reports somewhere recognisable. */
+static void test_local_evening_date(void) {
+  static const int dates[][3] = {{2024, 3, 11}, {2024, 12, 21}};
+  static const double lats[] = {-45.0, 0.0, 45.0};
+  size_t di, li;
+  int lon;
+
+  /* Longitudes every 15 degrees, three latitudes, two dates. Latitudes are
+   * kept within +/-45 so sunset always exists and the assertion is
+   * unconditional -- an earlier revision skipped unavailable-sunset cases with
+   * a check that could never fail, which would have let a regression making
+   * sunset unavailable report success. Polar behaviour is asserted separately
+   * below. */
+  for (di = 0; di < sizeof(dates) / sizeof(dates[0]); di++) {
+    for (li = 0; li < sizeof(lats) / sizeof(lats[0]); li++) {
+      for (lon = -180; lon <= 180; lon += 15) {
+        HijriLocation loc = {lats[li], (double)lon, 0.0, "sweep"};
+        HijriEveningParameters p = hijri_compute_evening_parameters(
+            dates[di][0], dates[di][1], dates[di][2], &loc);
+        char name[80];
+        int ly, lm;
+        double ld;
+        snprintf(name, sizeof(name), "local_evening_%04d%02d%02d_lat%+d_lon%+d",
+                 dates[di][0], dates[di][1], dates[di][2], (int)lats[li], lon);
+        check_int(name, (int)p.sunset_status, (int)HIJRI_EVENT_OK);
+        hijri_gregorian_from_jd(p.jd_sunset_ut + (double)lon / 360.0, &ly, &lm,
+                                &ld);
+        check_int(name, (int)ld, dates[di][2]);
+      }
+    }
+  }
+
+  /* Named sites, so a failure names somewhere recognisable. The first three are
+   * west of 90 W, where the pre-fix code returned the previous local evening. */
+  {
+    const HijriLocation sites[] = {
+        {34.05, -118.24, 71.0, "Los Angeles"},
+        {21.31, -157.86, 6.0, "Honolulu"},
+        {39.74, -104.98, 1609.0, "Denver"},
+        {-33.87, 151.21, 58.0, "Sydney"},
+    };
+    size_t i;
+    for (i = 0; i < sizeof(sites) / sizeof(sites[0]); i++) {
+      HijriEveningParameters p =
+          hijri_compute_evening_parameters(2024, 3, 11, &sites[i]);
+      char name[80];
+      int ly, lm;
+      double ld;
+      snprintf(name, sizeof(name), "local_evening_site_%s", sites[i].name);
+      hijri_gregorian_from_jd(p.jd_sunset_ut + sites[i].longitude_deg / 360.0,
+                              &ly, &lm, &ld);
+      check_int(name, (int)ld, 11);
+    }
+  }
+
+  /* Local midnight is derived from longitude as mean solar time, not civil
+   * time, because hijri.h ships no zone database. These are the worst
+   * realistic solar-vs-civil offsets -- zones far from their solar meridian --
+   * checked at the June solstice when northern sunsets are latest and the two
+   * are most likely to land on different civil days. They do not. This encodes
+   * the evidence for that approximation rather than leaving it in prose. */
+  {
+    const struct {
+      double lat, lon, utc_offset_hours;
+      const char *name;
+    } zones[] = {
+        {43.83, 87.62, 8.0, "Urumqi"},   {39.47, 75.99, 8.0, "Kashgar"},
+        {42.24, -8.72, 2.0, "Vigo"},     {43.36, -8.41, 2.0, "ACoruna"},
+        {61.22, -149.90, -8.0, "Anchorage"}, {51.88, -176.63, -9.0, "Adak"},
+    };
+    size_t i;
+    for (i = 0; i < sizeof(zones) / sizeof(zones[0]); i++) {
+      HijriLocation loc = {zones[i].lat, zones[i].lon, 0.0, zones[i].name};
+      HijriEveningParameters p =
+          hijri_compute_evening_parameters(2024, 6, 21, &loc);
+      char name[80];
+      int sy, sm, cy, cm;
+      double sd, cd;
+      snprintf(name, sizeof(name), "solar_vs_civil_day_%s", zones[i].name);
+      check_int(name, (int)p.sunset_status, (int)HIJRI_EVENT_OK);
+      hijri_gregorian_from_jd(p.jd_sunset_ut + zones[i].lon / 360.0, &sy, &sm,
+                              &sd);
+      hijri_gregorian_from_jd(p.jd_sunset_ut + zones[i].utc_offset_hours / 24.0,
+                              &cy, &cm, &cd);
+      check_int(name, (int)sd, (int)cd);
+    }
+  }
+
+  /* Polar behaviour, asserted rather than skipped: above the Arctic circle at
+   * the June solstice the Sun does not set, and the API must say so. */
+  {
+    HijriLocation polar = {78.0, 15.0, 0.0, "Svalbard"};
+    HijriEveningParameters p =
+        hijri_compute_evening_parameters(2024, 6, 21, &polar);
+    check_true("polar_midsummer_reports_no_sunset",
+               p.sunset_status != HIJRI_EVENT_OK);
+  }
+}
+
 static void test_umm_al_qura_policy(void) {
   HijriDate dedicated;
   HijriDate direct;
@@ -450,6 +558,7 @@ int main(void) {
   test_odeh();
   test_relevant_conjunction();
   test_orchestration();
+  test_local_evening_date();
   test_umm_al_qura_policy();
   check_true("all_predicate_enums_represented",
              HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET -

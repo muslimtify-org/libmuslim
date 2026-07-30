@@ -940,7 +940,27 @@ HIJRIDEF HijriEveningParameters
 hijri_compute_evening_parameters(int gy, int gm, int gd,
                                  const HijriLocation *loc) {
   HijriEveningParameters p;
-  double jd_midnight = hijri_jd_from_gregorian(gy, gm, (double)gd);
+  /* hijri_find_sunset() scans forward 24 hours from the instant it is given
+   * and its parameter is named jd_local_midnight_ut, so it must be handed
+   * LOCAL midnight expressed in UT -- not UT midnight.
+   *
+   * This previously passed hijri_jd_from_gregorian() directly, which is 0h UT.
+   * East of Greenwich that is harmless, because local sunset still falls inside
+   * the same UT day. West of roughly 90 deg W it is not: local sunset happens
+   * after 00:00 UT the following day, outside the scan window, so the search
+   * returned the PREVIOUS local evening. Every predicate, both visibility
+   * models, and the calendar conversion inherited that off-by-one-day error
+   * across the Americas and the Pacific.
+   *
+   * Local midnight is approximated as mean solar time from longitude alone.
+   * That is deliberate: hijri.h does not depend on timezone.h and carries no
+   * zone database. Against civil time it can differ by a couple of hours at a
+   * zone's edge, which never approaches the one-day error it replaces, but it
+   * does mean the "evening of date D" is the solar-day evening rather than the
+   * civil-day one. Callers needing civil-day semantics should resolve the
+   * offset themselves and call the JD-based entry points. */
+  double jd_midnight = hijri_jd_from_gregorian(gy, gm, (double)gd) -
+                       loc->longitude_deg / 360.0;
 
   p.jd_sunset_ut = NAN;
   p.jd_relevant_conjunction_ut = NAN;
