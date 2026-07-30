@@ -1,289 +1,195 @@
 # libmuslim
 
-A lightweight C header-only library for calculating Islamic prayer times. Supports **21 international calculation methods** including MWL, ISNA, Umm al-Qura (Makkah), Egyptian General Authority, Kemenag (Indonesia), JAKIM (Malaysia), Diyanet (Turkey), and more. The default method is Kemenag.
+An stb-style collection of single-header C libraries for Muslim applications.
+Drop a header in, define its `*_IMPLEMENTATION` macro in one translation unit,
+and you are done. C11 and C++17, no build system, no package manager.
 
-## Features
+| Header | Provides | Depends on |
+|---|---|---|
+| [`prayertimes.h`](prayertimes.h) | Prayer times, 21 calculation methods | `<math.h>` |
+| [`hijri.h`](hijri.h) | Hijri calendar, crescent visibility models | `<math.h>` |
+| [`timezone.h`](timezone.h) | IANA zone name → UTC offset, DST applied | OS timezone database |
 
-- **21 calculation methods** — worldwide coverage from MWL to Moonsighting Committee
-- Astronomical calculations using Jean Meeus algorithms
-- Single-header library — easy to integrate
-- Cross-platform support (Linux, macOS, Windows)
-- Shafi'i and Hanafi Asr support
-- CLI tool for quick calculations
+`prayertimes.h` and `hijri.h` are independent and dependency-free.
+`timezone.h` is optional and is the only header that touches the OS.
 
-## Supported Methods
+## Quick start
+
+```c
+#define PRAYERTIMES_IMPLEMENTATION
+#include "prayertimes.h"
+
+const MethodParams *params = method_params_get(CALC_KEMENAG);
+
+struct PrayerTimes t = calculate_prayer_times(
+    2025, 11, 21,        // date
+    -6.2851291,          // latitude, negative = South
+    106.9814968,         // longitude, positive = East
+    7.0,                 // UTC offset in hours
+    params);
+
+char buf[16];
+format_time_hm(t.fajr, buf, sizeof buf);
+printf("Fajr: %s\n", buf);   // Fajr: 04:05
+```
+
+```sh
+gcc -std=c11 -Wall -Wextra -Wpedantic -O2 examples/prayertimes_example.c -lm -o example
+```
+
+## prayertimes.h
+
+Each method sets a Fajr angle, an Isha angle or fixed interval, a Maghrib
+offset, an Asr shadow factor (1 = Shafi'i, 2 = Hanafi), and an ihtiyat
+precautionary margin. Kemenag is the default.
 
 | Key | Method | Region |
-|-----|--------|--------|
+|---|---|---|
 | `mwl` | Muslim World League | Europe, Far East |
 | `makkah` | Umm al-Qura, Makkah | Arabian Peninsula |
 | `isna` | ISNA | North America |
 | `egypt` | Egyptian General Authority | Africa, Middle East |
 | `karachi` | Univ. Islamic Sciences, Karachi | Pakistan, India, Bangladesh |
-| `turkey` | Diyanet, Turkey | Turkey |
-| `singapore` | MUIS, Singapore | Singapore |
-| `jakim` | JAKIM, Malaysia | Malaysia |
-| `kemenag` | KEMENAG, Indonesia | Indonesia (default) |
-| `france` | UOIF, France | France |
-| `russia` | Spiritual Admin., Russia | Russia |
-| `dubai` | GAIAE, Dubai | UAE |
-| `qatar` | Min. of Awqaf, Qatar | Qatar |
-| `kuwait` | Min. of Awqaf, Kuwait | Kuwait |
-| `jordan` | Min. of Awqaf, Jordan | Jordan |
-| `gulf` | Gulf Region | Gulf states |
-| `tunisia` | Min. of Religious Affairs | Tunisia |
-| `algeria` | Min. of Religious Affairs | Algeria |
-| `morocco` | Min. of Habous, Morocco | Morocco |
-| `portugal` | Comunidade Islamica de Lisboa | Portugal |
+| `turkey` | Diyanet | Turkey |
+| `singapore` | MUIS | Singapore |
+| `jakim` | JAKIM | Malaysia |
+| `kemenag` | KEMENAG (default) | Indonesia |
+| `france` | UOIF | France |
+| `russia` | Spiritual Administration | Russia |
+| `dubai` | GAIAE | UAE |
+| `qatar` · `kuwait` · `jordan` · `gulf` | Ministries of Awqaf | Gulf states |
+| `tunisia` · `algeria` · `morocco` | Ministries of Religious Affairs | Maghreb |
+| `portugal` | Comunidade Islâmica de Lisboa | Portugal |
 | `moonsighting` | Moonsighting Committee | Worldwide |
 
-You can also use a custom method by passing `CALC_CUSTOM` with your own angles.
-
-## How It Works
-
-Each method defines a set of parameters:
-
-- **Fajr angle** — sun depression angle for Fajr
-- **Isha angle or interval** — angle-based or fixed minutes after Maghrib
-- **Maghrib interval** — offset after sunset (0 for most methods)
-- **Asr shadow factor** — 1 (Shafi'i) or 2 (Hanafi)
-- **Ihtiyat** — precautionary margin in minutes
-
-### Calculation Steps
-
-1. Convert Gregorian date to Julian Day
-2. Calculate solar position (declination and equation of time)
-3. Determine solar transit time (true noon)
-4. Compute hour angles for each prayer based on solar altitude
-5. Convert hour angles to local time
-6. Apply ihtiyat adjustments
-7. Format times with ceiling rounding
-
-For detailed mathematical formulas and worked examples, see [`docs/KEMENAG_METHOD.md`](docs/KEMENAG_METHOD.md).
-
-## Building
-
-This is a single-header library, so you can simply include `prayertimes.h` in your project.
-
-### CLI Tool
-
-```bash
-# Compile the CLI tool
-gcc -O3 -o libmuslim main.c -lm
-
-# Run example (Bekasi, November 21, 2025)
-./libmuslim 2025 11 21 -6.2851291 106.9814968 7.0
-```
-
-## Usage
-
-### C API
-
 ```c
-#include "prayertimes.h"
-
-// Use the default method (Kemenag)
-const MethodParams *params = method_params_get(CALC_KEMENAG);
-
-struct PrayerTimes times = calculate_prayer_times(
-    2025,           // year
-    11,             // month
-    21,             // day
-    -6.2851291,     // latitude (negative = South)
-    106.9814968,    // longitude (positive = East)
-    7.0,            // timezone offset (WIB = UTC+7)
-    params          // calculation method
-);
-
-char buffer[16];
-format_time_hm(times.fajr, buffer, sizeof(buffer));
-printf("Fajr: %s\n", buffer);
-```
-
-### Using a Different Method
-
-```c
-// Use MWL method
 const MethodParams *mwl = method_params_get(CALC_MWL);
-struct PrayerTimes times = calculate_prayer_times(2025, 11, 21, 51.5074, -0.1278, 0.0, mwl);
-
-// Look up method by string key
-CalcMethod method = method_from_string("isna");
-const MethodParams *params = method_params_get(method);
+CalcMethod m = method_from_string("isna");        // case-insensitive
 ```
 
-### Iterating a Date Range
+Pass `CALC_CUSTOM` with your own angles for anything not listed.
 
-`mt_days_from_civil` converts a civil (proleptic Gregorian) date to a day number counted from 1970-01-01, and `mt_civil_from_days` converts it back. They let you walk a range of dates without touching `struct tm` or `mktime`, so there are no DST or local-time hazards in the loop itself.
+To walk a date range without `struct tm` or `mktime`, and therefore without
+local-time hazards, use the `static inline` day-number helpers:
 
 ```c
-// Print Fajr for every day in July 2026
-long start = mt_days_from_civil(2026, 7, 1);
-long end   = mt_days_from_civil(2026, 7, 31);
-
-for (long serial = start; serial <= end; serial++) {
+for (long s = mt_days_from_civil(2026, 7, 1); s <= mt_days_from_civil(2026, 7, 31); s++) {
     int y, m, d;
-    mt_civil_from_days(serial, &y, &m, &d);
-
-    struct PrayerTimes t = calculate_prayer_times(y, m, d, -6.2851291, 106.9814968, 7.0, params);
-
-    char buffer[16];
-    format_time_hm(t.fajr, buffer, sizeof(buffer));
-    printf("%04d-%02d-%02d  Fajr: %s\n", y, m, d, buffer);
+    mt_civil_from_days(s, &y, &m, &d);
+    struct PrayerTimes t = calculate_prayer_times(y, m, d, lat, lon, tz, params);
 }
 ```
 
-Both are `static inline`, so they carry no link-time cost and need no `PRAYERTIMES_IMPLEMENTATION` definition. Day numbers are signed, and dates before 1970 are negative.
+Times are cross-checked against published timetables to within 1–2 minutes
+depending on method. Those references are third-party calculators, not primary
+authorities. See [`docs/KEMENAG_METHOD.md`](docs/KEMENAG_METHOD.md) for the
+worked mathematics.
 
-## Timezones & DST
+## hijri.h
 
-> **NOTE:** `prayertimes.h` does **not** handle Daylight Saving Time. The
-> `timezone` argument is a fixed numeric UTC offset in hours, and the library
-> uses it exactly as given — it has no notion of dates, zones, or DST rules.
-> This is deliberate: DST is a political rule, not an astronomical one, and
-> keeping it out leaves `prayertimes.h` a pure, dependency-free (only `<math.h>`)
-> single header. **For a DST-active date you must pass the DST-adjusted offset**
-> (e.g. `1.0` for London in summer, `0.0` in winter).
+The API is layered deliberately, and the layers mean different things:
 
-If you want libmuslim to compute the correct offset for you, use the optional
-companion header [`timezone.h`](timezone.h). It resolves an IANA zone name and
-date to a UTC offset with DST applied, using the host operating system's
-timezone database:
+- `HijriEveningParameters` — explicit astronomical quantities for one evening
+  at one location: sunset, moonset, conjunction, altitudes, both geocentric and
+  topocentric elongation, Moon age, lag.
+- `HijriLocalPredicate` — one threshold condition at one observer location.
+- Calendar functions — convert a Gregorian date to a Hijri date.
 
-```c
-#define MUSLIM_TIMEZONE_IMPLEMENTATION   // in exactly ONE translation unit
-#include "timezone.h"
-#include "prayertimes.h"
-
-char zone[64];
-get_system_timezone(zone, sizeof(zone));            // e.g. "Europe/London"
-double tz = parse_timezone_offset(zone, time(NULL)); // DST already applied
-
-const MethodParams *mwl = method_params_get(CALC_MWL);
-struct PrayerTimes times = calculate_prayer_times(2026, 7, 15, 51.5074, -0.1278, tz, mwl);
-```
-
-Unlike `prayertimes.h`, `timezone.h` touches the OS (POSIX `tzset`/`tm_gmtoff`
-or the Win32 timezone APIs), so it is **optional** — include it only if you
-want this resolution done for you. On a platform without a timezone database,
-keep supplying the offset yourself.
-
-### CLI Tool
-
-```bash
-./libmuslim <year> <month> <day> <latitude> <longitude> <timezone>
-```
-
-**Example output:**
-```
-Fajr    = 04:05
-Sunrise = 05:22
-Dhuha   = 05:50
-Dhuhr   = 11:41
-Asr     = 15:04
-Maghrib = 17:54
-Isha    = 19:07
-```
-
-## Verification
-
-The calculations have been verified against official data sources and match within ±1-2 minute accuracy depending on the method. See the worked examples in `docs/KEMENAG_METHOD.md` for detailed verification.
-
-## License
-
-```
-Copyright 2025 Rizki Rakasiwi.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-```
-
-## Documentation
-
-- [Kemenag Calculation Method](docs/KEMENAG_METHOD.md) - Detailed mathematical documentation (Indonesian)
-- [Medium - Understanding Islamic Prayer Time Calculations: The Mathematics Behind LibMuslim Library](https://medium.com/@rizkirakasiwi09/understanding-islamic-prayer-time-calculations-the-mathematics-behind-libmuslim-library-ee169e3e97c3)
-
-## Contributing
-
-Contributions are welcome! Please ensure any changes to calculation methods are verified against official data sources.
-
-## Hijri verification
-
-The Hijri API is intentionally layered. `HijriEveningParameters` exposes
-explicit astronomical quantities, `HijriLocalPredicate` evaluates a condition
-at one observer location, and calendar-policy functions perform conversion.
-A local predicate is not a national or global authority decision: applications
-must add any required geographic aggregation, observation, or administrative
-policy themselves.
-
-This is a breaking API. `HijriCriterion`, the `HIJRI_CRIT_*` constants, and
-the former generic Gregorian-to-Hijri conversion function were removed; there
-is no compatibility alias. Use `HijriLocalPredicate`, the
-`HIJRI_PREDICATE_*` constants,
-`hijri_compute_evening_parameters()`, and `hijri_evaluate_evening()` instead.
-The replacement conversion builds a calendar from one predicate at one
-observer location:
+**A local predicate is not a national or global authority decision.** Real
+authorities combine calculation with geographic aggregation, actual sighting
+reports, and administrative rulings. Applications must add that themselves.
 
 ```c
 HijriLocation jakarta = {-6.2088, 106.8456, 8.0, "Jakarta"};
 HijriDate date;
-int ok = hijri_from_gregorian_with_local_predicate(
+hijri_from_gregorian_with_local_predicate(
     2026, 7, 27, &jakarta, HIJRI_PREDICATE_MABIMS_2021, &date);
+
+hijri_umm_al_qura_from_gregorian(2026, 7, 27, &date);   // Mecca-based, takes no location
 ```
 
-This local conversion does not claim an official MABIMS national aggregation.
-Umm al-Qura remains a separate opt-in Mecca-based function, which
-intentionally accepts no consumer location:
+Yallop and Odeh are graded visibility classifications, not calendar policies —
+`hijri_yallop_evaluate_evening()` and `hijri_odeh_evaluate_evening()` return
+best-time parameters, a score, and a zone. Turning a zone into a date is an
+application policy you define.
+
+**Accuracy.** The lunar position uses the full Meeus ch. 47 series. Measured
+against 24 JPL Horizons epochs spanning 1900–2100: 0.0051° in longitude,
+0.0006° in latitude, 41.9 km in distance. Nutation and aberration are not
+applied, so these are geometric positions referred to the mean equinox of date.
+A calculated result is still not an observation, and nothing here decides
+religious validity.
+
+## timezone.h
+
+> `prayertimes.h` takes a fixed numeric UTC offset and has no notion of zones or
+> DST — deliberately, since DST is a political rule rather than an astronomical
+> one. **For a DST-active date you must pass the adjusted offset yourself**
+> (`1.0` for London in summer, `0.0` in winter).
+
+`timezone.h` will resolve it for you from the host OS timezone database:
 
 ```c
-HijriDate date;
-int ok = hijri_umm_al_qura_from_gregorian(2026, 7, 27, &date);
+#define MUSLIM_TIMEZONE_IMPLEMENTATION   // exactly one translation unit
+#include "timezone.h"
+
+char zone[64];
+get_system_timezone(zone, sizeof zone);              // "Europe/London"
+double tz = parse_timezone_offset(zone, time(NULL)); // DST applied
 ```
 
-Yallop and Odeh remain graded visibility classifications, not calendar
-policies. Use `hijri_yallop_evaluate_evening()` and
-`hijri_odeh_evaluate_evening()` for their dedicated best-time parameters,
-scores, and zones, then define any zone-acceptance policy explicitly.
+On a platform without a timezone database, keep supplying the offset yourself.
 
-The solar and lunar calculations are compact, dependency-free
-approximations. In particular, the lunar ephemeris remains approximate and is
-not a substitute for an observational-grade ephemeris or an official
-published calendar.
+## Building and tests
 
-Compile the example and run the deterministic arithmetic, predicate, policy,
-and visibility-model tests under C11:
+Everything compiles standalone. No build system.
 
 ```sh
-gcc -std=c11 -Wall -Wextra -Wpedantic -O2 examples/hijri_example.c -lm -o /tmp/libmuslim-hijri-example
-gcc -std=c11 -Wall -Wextra -Wpedantic -O2 tests/test_hijri.c -lm -o /tmp/libmuslim-test-hijri
-/tmp/libmuslim-test-hijri
+for t in tests/test_prayertimes.c tests/test_hijri.c tests/test_moon_meeus.c tests/test_timezone.c; do
+    gcc -std=c11 -Wall -Wextra -Wpedantic -O2 "$t" -lm -o /tmp/t && /tmp/t || echo "FAIL $t"
+done
 ```
 
-Regenerate the research baseline:
+`tests/test_moon_meeus.c` validates the lunar series against a vendored JPL
+Horizons fixture, Meeus's own printed worked example, and published ΔT values.
+`tests/test_hijri.c` covers calendar arithmetic, predicate thresholds, and a
+longitude sweep asserting each observer's own local evening is used.
+
+The research baseline is a generated artifact, committed so changes to it are
+visible in review:
 
 ```sh
-gcc -std=c11 -Wall -Wextra -Wpedantic -O2 tests/hijri_research_probe.c -lm -o /tmp/libmuslim-hijri-probe
-/tmp/libmuslim-hijri-probe > /tmp/hijri-2020-2025-baseline.csv
-test "$(wc -l < /tmp/hijri-2020-2025-baseline.csv)" -eq 133
-if [ -f docs/research/hijri-2020-2025-baseline.csv ]; then
-  cmp /tmp/hijri-2020-2025-baseline.csv docs/research/hijri-2020-2025-baseline.csv
-fi
+gcc -std=c11 -Wall -Wextra -Wpedantic -O2 tests/hijri_research_probe.c -lm -o /tmp/probe
+/tmp/probe > /tmp/baseline.csv
+cmp /tmp/baseline.csv docs/research/hijri-2020-2025-baseline.csv
 ```
 
-The baseline CSV and research report under `docs/research/` are local, ignored
-research artifacts. They are diagnostic evidence, not authoritative oracles.
-The comparison is optional and runs only when the local baseline exists; CSV
-generation and the 133-line completeness check work in a fresh clone.
-The permanent tracked tests are `tests/test_hijri.c` and
-`tests/hijri_research_probe.c`. Reference sources, conventions,
-discrepancies, and fixture admission decisions are recorded locally in
-`docs/research/hijri-2020-2025-sources.md`.
+Any change to the ephemeris, the predicates, or the evening calculation will
+break that `cmp` until the baseline is regenerated, and nothing in `tests/`
+enforces it — so run it after touching those areas. **No value in that CSV is
+reference truth**: it is produced by the library it is used to check, and its
+nine-decimal Julian Days imply precision the underlying accuracy does not
+support.
+
+Sources, conventions, and fixture admission decisions are recorded in
+[`docs/research/`](docs/research/).
+
+## Documentation
+
+- [`docs/KEMENAG_METHOD.md`](docs/KEMENAG_METHOD.md) — prayer-time mathematics (Indonesian)
+- [`docs/INTERNATIONAL_METHODS.md`](docs/INTERNATIONAL_METHODS.md) — method parameters
+- [`docs/HIJRI_CALCULATIONS.md`](docs/HIJRI_CALCULATIONS.md) — Hijri calculations
+- [`docs/METHOD_TOLERANCES.md`](docs/METHOD_TOLERANCES.md) — accuracy expectations
+- [`ROADMAP.md`](ROADMAP.md) — what is planned and what is deliberately not
+- [Understanding Islamic Prayer Time Calculations](https://medium.com/@rizkirakasiwi09/understanding-islamic-prayer-time-calculations-the-mathematics-behind-libmuslim-library-ee169e3e97c3)
+
+## Contributing
+
+Changes to calculation methods must be verified against a source, and the
+source recorded. `docs/research/hijri-2020-2025-sources.md` shows the standard:
+a fixture is admitted only when its value *and its conventions* are
+unambiguous, and an unknown convention is recorded as a gap rather than guessed.
+
+## License
+
+MIT. Copyright 2025 muslimtify-org.
