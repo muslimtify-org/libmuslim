@@ -126,21 +126,34 @@ static const double FIXTURE[24][4] = {
  * unit.
  *
  * MEASURED SENSITIVITY, so nobody mistakes this for a complete guarantee.
- * Single-unit mutations at this epoch:
- *   Table 47.B row 1 sigma_b  5128122 -> 5128123 : CAUGHT (err 1.1e-6 deg)
- *   Table 47.A row 59 sigma_l      294 -> 295    : CAUGHT (err 1.2e-6 deg)
- *   Table 47.A row 17 sigma_l    10675 -> 10676  : MISSED
- *   Table 47.A row 17 sigma_r   -34782 -> -34783 : MISSED
  *
- * Two limits cause the misses, and neither is fixable here. A row whose
- * argument sits near a zero of its sine on 1992 April 12 contributes almost
- * nothing at this one epoch regardless of how large its coefficient is. And
- * Sigma-r is in units of 1e-3 km, so one unit is one metre, while the book
- * prints Delta only to 0.1 km -- distance errors below about 100 units cannot
- * be seen against a published value of that precision.
+ * The book prints lambda to six decimals, and our unmutated value sits
+ * 3.15e-7 deg below the printed figure. That offset is what decides whether a
+ * given typo is caught, because a one-unit change in a Sigma-l coefficient
+ * moves lambda by at most 1e-6 deg -- the same order as the tolerance itself.
+ * So a typo is caught when it pushes the residual AWAY from zero past 1e-6,
+ * and missed when it pushes toward zero. Single-unit mutations, both
+ * directions:
  *
- * So this catches many single-digit transcription errors but not all of them.
- * Full per-coefficient coverage would need worked examples at several epochs,
+ *   47.A row 17 sigma_l  10675 -> 10676  residual +6.85e-7  MISSED
+ *   47.A row 17 sigma_l  10675 -> 10674  residual -1.31e-6  CAUGHT
+ *   47.A row 59 sigma_l    294 -> 295    residual -1.21e-6  CAUGHT
+ *   47.A row 59 sigma_l    294 -> 293    residual +5.77e-7  MISSED
+ *   47.B row  1 sigma_b 5128122 -> ...23 residual  1.06e-6  CAUGHT
+ *
+ * Note what this does NOT say. Row 17 has sin(arg) = +0.999993 at this epoch,
+ * i.e. maximum sensitivity, and it is still missed in one direction. The miss
+ * is not a property of the row; both rows above are caught one way and missed
+ * the other. Roughly half of single-unit Sigma-l typos escape, selected by
+ * sign rather than by how sensitive the coefficient is. Do not read an
+ * uncaught row as a low-sensitivity row.
+ *
+ * Sigma-r is a separate and harder case: one unit is one metre, while the book
+ * prints Delta only to 0.1 km, so distance errors below about 100 units are
+ * invisible in either direction.
+ *
+ * So this catches many single-digit transcription errors but by no means all.
+ * Real per-coefficient coverage would need worked examples at several epochs,
  * and Meeus prints only this one.
  *
  * It is also the provenance check: reproducing the publisher's own worked

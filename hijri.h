@@ -52,9 +52,7 @@
  * Judgement is still required near a criterion boundary. This ephemeris is
  * far tighter than the thresholds the visibility criteria in this file use,
  * but a calculated result is not an observation, and no calculation here
- * decides religious validity. See the documented local predicates below, and
- * note that a local predicate is not by itself a national or global authority
- * decision.
+ * decides religious validity.
  *
  * See the explicitly documented local predicates below.
  *
