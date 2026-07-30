@@ -6,5 +6,6 @@ vgcore.1618734
 build/
 libs/
 .vibe-worktrees/
-docs/
+docs/*
+!docs/research/
 interop/
