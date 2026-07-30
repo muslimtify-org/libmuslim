@@ -150,21 +150,26 @@ static void test_binary_criteria(void) {
   check_predicate("mabims_1992_age_above",
                   HIJRI_PREDICATE_MABIMS_1992,
                   parameters(0, 0, 0, 0, 8.001, 0, 0, 0), 1);
+  /* MABIMS 2021 uses the TOPOCENTRIC elongation, not the geocentric one.
+   * Every case below except the altitude test deliberately sets the geocentric
+   * elongation to a value that contradicts the expected result, so that
+   * reverting the predicate to geocentric makes these fail rather than pass
+   * silently. Argument 3 is geocentric, argument 4 is topocentric. */
   check_predicate("mabims_2021_below_altitude",
                   HIJRI_PREDICATE_MABIMS_2021,
-                  parameters(2.999, 0, 6.4, 99, 0, 0, 0, 0), 0);
-  check_predicate("mabims_2021_below_geocentric",
+                  parameters(2.999, 0, 99.0, 6.4, 0, 0, 0, 0), 0);
+  check_predicate("mabims_2021_below_topocentric",
                   HIJRI_PREDICATE_MABIMS_2021,
-                  parameters(3.0, 0, 6.399, 99, 0, 0, 0, 0), 0);
-  check_predicate("mabims_2021_geocentric_equal",
+                  parameters(3.0, 0, 99.0, 6.399, 0, 0, 0, 0), 0);
+  check_predicate("mabims_2021_topocentric_equal",
                   HIJRI_PREDICATE_MABIMS_2021,
-                  parameters(3.0, 0, 6.4, 5.0, 0, 0, 0, 0), 1);
+                  parameters(3.0, 0, 0.0, 6.4, 0, 0, 0, 0), 1);
   check_predicate("mabims_2021_altitude_above",
                   HIJRI_PREDICATE_MABIMS_2021,
-                  parameters(3.001, 0, 6.4, 0, 0, 0, 0, 0), 1);
+                  parameters(3.001, 0, 0.0, 6.4, 0, 0, 0, 0), 1);
   check_predicate("mabims_2021_elongation_above",
                   HIJRI_PREDICATE_MABIMS_2021,
-                  parameters(3.0, 0, 6.401, 0, 0, 0, 0, 0), 1);
+                  parameters(3.0, 0, 0.0, 6.401, 0, 0, 0, 0), 1);
   check_predicate("wujud_upper_limb_zero", HIJRI_PREDICATE_WUJUDUL_HILAL,
                   parameters(1.0, 0.0, 0, 0, 0, 0, 1, 0), 0);
   check_predicate("wujud_upper_limb_positive",

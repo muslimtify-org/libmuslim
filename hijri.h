@@ -810,19 +810,50 @@ HIJRIDEF int
 hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
                                const HijriEveningParameters *p) {
   switch (predicate) {
+  /* UNRESOLVED CONVENTION -- do not "clean up" without a primary source.
+   * Two things about the 1992 "2-3-8" criterion are not settled by any
+   * technical document located so far:
+   *   1. Whether the three parameters combine as (altitude AND elongation)
+   *      OR age -- as coded here -- or as all three ANDed together. Indonesian
+   *      government summaries word it with "serta" ("and"), which reads as a
+   *      conjunction, but they are press-register prose, not a specification.
+   *   2. Whether the 3 deg elongation is geocentric or topocentric. Unlike the
+   *      2021 criterion this one does not derive from Odeh, so the topocentric
+   *      argument below does not automatically carry over.
+   * Left as-is deliberately. Changing it on the strength of a news article
+   * would replace a documented gap with a guess. */
   case HIJRI_PREDICATE_MABIMS_1992:
     return (p->moon_center_geometric_altitude_deg >= 2.0 &&
             p->geocentric_elongation_deg >= 3.0) ||
            (p->moon_age_hours >= 8.0);
+  /* Both parameters are topocentric. The criterion derives from Odeh (2004),
+   * whose elongation is topocentric, and pairing a geocentric elongation with
+   * a topocentric altitude is geometrically incoherent -- the two would be
+   * measured from different origins. T. Djamaluddin, formerly head of LAPAN
+   * and a principal author of Indonesia's criteria, states it directly:
+   * "Kriteria Baru MABIMS adalah tinggi bulan toposentrik 3 derajat dan
+   * elongasi toposentrik 6,4 derajat."
+   *
+   * moon_center_geometric_altitude_deg is already topocentric -- it comes from
+   * hijri_moon_altitude(), which applies hijri_moon_topocentric(). "Geometric"
+   * here means unrefracted, not geocentric.
+   *
+   * Still undocumented by any primary source: whether the altitude is to the
+   * Moon's centre or upper limb, whether refraction applies, and whether
+   * exactly 3.0 deg passes. Centre and no-refraction are assumed. */
   case HIJRI_PREDICATE_MABIMS_2021:
     return p->moon_center_geometric_altitude_deg >= 3.0 &&
-           p->geocentric_elongation_deg >= 6.4;
+           p->topocentric_elongation_deg >= 6.4;
   case HIJRI_PREDICATE_WUJUDUL_HILAL:
     return p->conjunction_before_sunset &&
            p->moon_upper_limb_apparent_altitude_deg > 0.0;
   case HIJRI_PREDICATE_LAG_AT_LEAST_5_MINUTES:
     return p->moonset_status == HIJRI_EVENT_OK &&
            p->lag_time_minutes >= 5.0;
+  /* Neutrally named research predicate -- claims no authority, so no external
+   * convention governs it. Stated explicitly for the record: the elongation
+   * here is geocentric. That is a choice, not a requirement; a caller wanting
+   * the topocentric form should read topocentric_elongation_deg directly. */
   case HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8:
     return p->moon_center_geometric_altitude_deg >= 5.0 &&
            p->geocentric_elongation_deg >= 8.0;
