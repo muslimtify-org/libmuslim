@@ -9,6 +9,17 @@ be added merely because its name and headline thresholds are known. It should
 be added only when its geographic scope, astronomical conventions, decision
 rules, and validation references are sufficiently documented.
 
+## Scope
+
+This roadmap covers [`hijri.h`](hijri.h) only. `prayertimes.h` and
+`timezone.h` are tracked here solely as regression-isolation targets under
+testing layer 9; neither has a roadmap yet.
+
+One question must be answered before the time-scale documentation work below,
+because it decides where that documentation belongs: do the headers
+share an astronomy core, or does each carry its own solar code? Both currently
+compute solar position independently.
+
 ## Current foundation
 
 The library currently provides:
@@ -42,17 +53,144 @@ The current lunar ephemeris is intentionally compact and approximate. Results
 near a criterion boundary must not be presented as observational-grade or as
 an official calendar declaration.
 
-## Next: numerical accuracy
+## Before v1.0 — blocks the tag
+
+Items that are expensive or impossible to change after tagging.
+
+### Full Meeus ch. 47 lunar series
+
+Replace the body of `hijri_moon_position()`. It currently uses roughly six
+longitude terms, four latitude terms, and four distance terms of ELP2000-82B.
+The full series is public, introduces no dependency, and changes no public
+declaration.
+
+**Depends on:** nothing. Ranked first because it is self-contained — no new
+dependency, no API change — and because the comparison below is far more
+informative once the series it measures is the one intended to ship.
+
+**Completion criteria:**
+
+- The longitude, latitude, and distance series are complete, including the
+  eccentricity correction applied to terms in the Sun's mean anomaly and the
+  additive A1/A2/A3 terms.
+- No public struct or function signature changes.
+- The library still builds with no runtime dependency.
+- Existing synthetic threshold tests continue to pass unchanged.
+
+### Cross-engine numerical comparison
+
+Compare `hijri.h` with at least two independent astronomical implementations
+or datasets.
+
+**Depends on:** nothing mechanically. Run it twice: once against the compact
+approximation to establish a baseline, then again after the full series lands.
+The second run produces the measured error bar that near-boundary reporting
+and every fixture tolerance below require.
+
+**Completion criteria:**
+
+- Comparisons use identical input conventions.
+- Raw astronomical parameters are compared before calendar decisions.
+- Systematic offsets are investigated rather than hidden by broad tolerances.
+
+### Status-return conventions
+
+Replace failure-only returns with explicit status values where callers need to
+distinguish invalid input, unavailable events, unsupported dates, and
+numerical failure. `hijri_find_conjunction()`,
+`hijri_find_previous_conjunction()`, `hijri_find_next_conjunction()`, and
+`hijri_find_relevant_conjunction()` currently return a bare `double` with no
+failure channel.
+
+**`hijri.h` is not tagged v1.0 until this lands.** The header comment already
+reads `v1.0` while no git tag exists, and the in-repo Rust interop consumes
+only `prayertimes.h`, so the break is as cheap as it will ever be.
+
+**Completion criteria:**
+
+- Every public function that can fail reports failure through a status value,
+  not a sentinel or an unchecked out-parameter.
+- The header version string matches the tag that actually exists.
+- Examples and tests are updated to check status before using a result.
+
+### Build and compilation enforcement
+
+Testing layer 8 below claims strict C11 and C++17 compilation. The repository
+contains no build file, and no header is compiled as C++ anywhere, so the
+claim is currently unverified. Add a build entry point that checks it.
+
+**Completion criteria:**
+
+- One command builds every header, test, and example as strict C11.
+- The same command compiles `hijri.h` as C++17. Extending it to the other two
+  headers is desirable but out of scope, per Scope above.
+- The advertised language compatibility is verified by that command rather
+  than by hand-run instructions in `README.md`.
+
+## v1.0 — completes the release
+
+Additive items. Safe to land during the 1.0 cycle.
+
+### Uncertainty and near-boundary results
+
+Add a way to identify results too close to a threshold for the selected
+ephemeris accuracy.
+
+This should not silently change a criterion from pass to fail. It should expose
+the uncertainty so applications can decide how to handle it.
+
+**Depends on:** the measured error bar from cross-engine comparison. Without a
+number, "near a boundary" has no definition.
+
+**Completion criteria:**
+
+- The backend documents an accuracy estimate or uncertainty source.
+- Criterion evaluation can report that a result is near a boundary.
+- Exact synthetic threshold tests remain deterministic.
+- Documentation distinguishes numerical uncertainty from policy uncertainty.
+
+### Time-scale and reference-frame documentation
+
+Document UT, TT, Delta T, apparent/geometric altitude, refraction, parallax,
+semidiameter, and geocentric/topocentric conventions next to the affected
+public fields and calculations.
+Where this documentation belongs depends on the shared-astronomy-core question
+raised under Scope.
+
+**Completion criteria:**
+
+- Every public astronomical value has an explicit unit and convention.
+- Tests independently reproduce each derived public parameter.
+- No criterion relies on an ambiguously named altitude or elongation.
+
+### Supported-date ranges
+
+Document and test the reliable date range of every numerical backend and
+official calendar table.
+
+### Thread safety and deterministic builds
+
+Audit implementation state, platform-specific math behavior, and optional
+backends for deterministic and thread-safe use.
+
+## Post-v1.0
+
+Gated on external research, or on a second implementation existing.
 
 ### Pluggable ephemeris backend
 
-Allow applications to select between:
+Allow applications to select between the compact built-in ephemeris and an
+external high-precision one.
 
-- the current compact, dependency-free approximation; and
-- an optional high-precision lunar and solar ephemeris.
+**Not built until a second backend actually exists.** The
+`HijriMoonPosition` struct is already a compile-time seam; the accuracy caveat
+at the top of `hijri.h` states that nothing else in the file needs to
+change to swap the implementation. A runtime selection layer for a single
+backend is speculative abstraction, and this roadmap already applies that
+rule to calendar policies.
 
-The public evening-parameter and criterion APIs should remain independent of
-the selected ephemeris backend.
+The public evening-parameter and criterion APIs remain independent of the
+selected backend.
 
 **Completion criteria:**
 
@@ -63,35 +201,6 @@ the selected ephemeris backend.
   conventions.
 - Tests quantify differences in conjunction time, altitude, elongation, and
   moonset for a representative global dataset.
-
-### Time-scale and reference-frame documentation
-
-Document UT, TT, Delta T, apparent/geometric altitude, refraction, parallax,
-semidiameter, and geocentric/topocentric conventions next to the affected
-public fields and calculations.
-
-**Completion criteria:**
-
-- Every public astronomical value has an explicit unit and convention.
-- Tests independently reproduce each derived public parameter.
-- No criterion relies on an ambiguously named altitude or elongation.
-
-### Uncertainty and near-boundary results
-
-Add a way to identify results too close to a threshold for the selected
-ephemeris accuracy.
-
-This should not silently change a criterion from pass to fail. It should expose
-the uncertainty so applications can decide how to handle it.
-
-**Completion criteria:**
-
-- The backend documents an accuracy estimate or uncertainty source.
-- Criterion evaluation can report that a result is near a boundary.
-- Exact synthetic threshold tests remain deterministic.
-- Documentation distinguishes numerical uncertainty from policy uncertainty.
-
-## Next: reproducible validation
 
 ### Modern reference dataset
 
@@ -119,19 +228,6 @@ Each accepted fixture must record:
   different elevations.
 - Failures are classified by astronomy, convention, visibility model, or
   policy layer.
-
-### Cross-engine comparison
-
-Compare `hijri.h` with at least two independent astronomical implementations
-or datasets.
-
-**Completion criteria:**
-
-- Comparisons use identical input conventions.
-- Raw astronomical parameters are compared before calendar decisions.
-- Systematic offsets are investigated rather than hidden by broad tolerances.
-
-## Later: calendar policies
 
 ### General policy boundary
 
@@ -186,7 +282,7 @@ are available.
 - The implementation represents the complete documented policy, not a
   similarly shaped local threshold.
 
-## Later: observation integration
+### Observation integration
 
 Provide optional data structures for applications that combine calculated
 visibility with actual crescent observations.
@@ -207,42 +303,27 @@ Potential information includes:
 - Applications can trace a calendar decision to its astronomical and
   observational inputs.
 
-## Later: API and operational quality
-
-### Stable error reporting
-
-Replace ambiguous failure-only returns with explicit status values where
-callers need to distinguish invalid input, unavailable events, unsupported
-dates, and numerical failure.
-
 ### Backend and policy metadata
 
 Allow applications to record which ephemeris, policy, conventions, and data
 version produced a result.
 
-### Thread safety and deterministic builds
-
-Audit implementation state, platform-specific math behavior, and optional
-backends for deterministic and thread-safe use.
-
-### Supported-date ranges
-
-Document and test the reliable date range of every numerical backend and
-official calendar table.
-
 ## Testing priorities
 
 Maintain the following test layers:
 
-1. Exact civil-date, Julian Day, and tabular arithmetic.
-2. Synthetic formula and threshold boundaries.
-3. Event ordering and unavailable-event behavior.
-4. Independently reproduced astronomical parameters.
-5. Visibility-model zones and prescribed observation times.
-6. Real-evening numerical validation with fully specified conventions.
-7. Calendar-policy decisions with authoritative references.
-8. Strict C11 and C++17 compilation.
-9. Prayer-time and timezone regression isolation.
+1. Exact civil-date, Julian Day, and tabular arithmetic. — present
+2. Synthetic formula and threshold boundaries. — present
+3. Event ordering and unavailable-event behavior. — present
+4. Independently reproduced astronomical parameters. — empty
+5. Visibility-model zones and prescribed observation times. — present
+6. Real-evening numerical validation with fully specified conventions. — empty
+7. Calendar-policy decisions with authoritative references. — empty;
+   `test_umm_al_qura_policy` checks the dedicated function against the
+   equivalent predicate call at Mecca, which is self-consistency only
+8. Strict C11 and C++17 compilation. — partial; C11 is hand-run from
+   `README.md`, C++17 is never compiled
+9. Prayer-time and timezone regression isolation. — tests exist, no runner
 
 Every bug should be assigned to the lowest layer that can reproduce it. A
 calendar-date mismatch should not be patched at the policy layer when its
