@@ -53,7 +53,71 @@ The current lunar ephemeris is intentionally compact and approximate. Results
 near a criterion boundary must not be presented as observational-grade or as
 an official calendar declaration.
 
-## Next: numerical accuracy
+## Before v1.0 — blocks the tag
+
+Items that are expensive or impossible to change after tagging.
+
+### Cross-engine numerical comparison
+
+Compare `hijri.h` with at least two independent astronomical implementations
+or datasets.
+
+**Completion criteria:**
+
+- Comparisons use identical input conventions.
+- Raw astronomical parameters are compared before calendar decisions.
+- Systematic offsets are investigated rather than hidden by broad tolerances.
+
+### Stable error reporting
+
+Replace ambiguous failure-only returns with explicit status values where
+callers need to distinguish invalid input, unavailable events, unsupported
+dates, and numerical failure.
+
+## v1.0 — completes the release
+
+Additive items. Safe to land during the 1.0 cycle.
+
+### Uncertainty and near-boundary results
+
+Add a way to identify results too close to a threshold for the selected
+ephemeris accuracy.
+
+This should not silently change a criterion from pass to fail. It should expose
+the uncertainty so applications can decide how to handle it.
+
+**Completion criteria:**
+
+- The backend documents an accuracy estimate or uncertainty source.
+- Criterion evaluation can report that a result is near a boundary.
+- Exact synthetic threshold tests remain deterministic.
+- Documentation distinguishes numerical uncertainty from policy uncertainty.
+
+### Time-scale and reference-frame documentation
+
+Document UT, TT, Delta T, apparent/geometric altitude, refraction, parallax,
+semidiameter, and geocentric/topocentric conventions next to the affected
+public fields and calculations.
+
+**Completion criteria:**
+
+- Every public astronomical value has an explicit unit and convention.
+- Tests independently reproduce each derived public parameter.
+- No criterion relies on an ambiguously named altitude or elongation.
+
+### Supported-date ranges
+
+Document and test the reliable date range of every numerical backend and
+official calendar table.
+
+### Thread safety and deterministic builds
+
+Audit implementation state, platform-specific math behavior, and optional
+backends for deterministic and thread-safe use.
+
+## Post-v1.0
+
+Gated on external research, or on a second implementation existing.
 
 ### Pluggable ephemeris backend
 
@@ -74,35 +138,6 @@ the selected ephemeris backend.
   conventions.
 - Tests quantify differences in conjunction time, altitude, elongation, and
   moonset for a representative global dataset.
-
-### Time-scale and reference-frame documentation
-
-Document UT, TT, Delta T, apparent/geometric altitude, refraction, parallax,
-semidiameter, and geocentric/topocentric conventions next to the affected
-public fields and calculations.
-
-**Completion criteria:**
-
-- Every public astronomical value has an explicit unit and convention.
-- Tests independently reproduce each derived public parameter.
-- No criterion relies on an ambiguously named altitude or elongation.
-
-### Uncertainty and near-boundary results
-
-Add a way to identify results too close to a threshold for the selected
-ephemeris accuracy.
-
-This should not silently change a criterion from pass to fail. It should expose
-the uncertainty so applications can decide how to handle it.
-
-**Completion criteria:**
-
-- The backend documents an accuracy estimate or uncertainty source.
-- Criterion evaluation can report that a result is near a boundary.
-- Exact synthetic threshold tests remain deterministic.
-- Documentation distinguishes numerical uncertainty from policy uncertainty.
-
-## Next: reproducible validation
 
 ### Modern reference dataset
 
@@ -130,19 +165,6 @@ Each accepted fixture must record:
   different elevations.
 - Failures are classified by astronomy, convention, visibility model, or
   policy layer.
-
-### Cross-engine comparison
-
-Compare `hijri.h` with at least two independent astronomical implementations
-or datasets.
-
-**Completion criteria:**
-
-- Comparisons use identical input conventions.
-- Raw astronomical parameters are compared before calendar decisions.
-- Systematic offsets are investigated rather than hidden by broad tolerances.
-
-## Later: calendar policies
 
 ### General policy boundary
 
@@ -197,7 +219,7 @@ are available.
 - The implementation represents the complete documented policy, not a
   similarly shaped local threshold.
 
-## Later: observation integration
+### Observation integration
 
 Provide optional data structures for applications that combine calculated
 visibility with actual crescent observations.
@@ -218,28 +240,10 @@ Potential information includes:
 - Applications can trace a calendar decision to its astronomical and
   observational inputs.
 
-## Later: API and operational quality
-
-### Stable error reporting
-
-Replace ambiguous failure-only returns with explicit status values where
-callers need to distinguish invalid input, unavailable events, unsupported
-dates, and numerical failure.
-
 ### Backend and policy metadata
 
 Allow applications to record which ephemeris, policy, conventions, and data
 version produced a result.
-
-### Thread safety and deterministic builds
-
-Audit implementation state, platform-specific math behavior, and optional
-backends for deterministic and thread-safe use.
-
-### Supported-date ranges
-
-Document and test the reliable date range of every numerical backend and
-official calendar table.
 
 ## Testing priorities
 
@@ -287,4 +291,3 @@ when:
 - validation data uses matching conventions;
 - official or religious authority is not implied beyond what the implemented
   policy actually represents.
-
