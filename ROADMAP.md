@@ -57,6 +57,25 @@ an official calendar declaration.
 
 Items that are expensive or impossible to change after tagging.
 
+### Full Meeus ch. 47 lunar series
+
+Replace the body of `hijri_moon_position()`. It currently uses roughly six
+longitude terms, four latitude terms, and four distance terms of ELP2000-82B.
+The full series is public, introduces no dependency, and changes no public
+declaration.
+
+**Depends on:** nothing. This is the first item because every accuracy claim
+below is bounded by it.
+
+**Completion criteria:**
+
+- The longitude, latitude, and distance series are complete, including the
+  eccentricity correction applied to terms in the Sun's mean anomaly and the
+  additive A1/A2/A3 terms.
+- No public struct or function signature changes.
+- The library still builds with no runtime dependency.
+- Existing synthetic threshold tests continue to pass unchanged.
+
 ### Cross-engine numerical comparison
 
 Compare `hijri.h` with at least two independent astronomical implementations
@@ -121,13 +140,18 @@ Gated on external research, or on a second implementation existing.
 
 ### Pluggable ephemeris backend
 
-Allow applications to select between:
+Allow applications to select between the compact built-in ephemeris and an
+external high-precision one.
 
-- the current compact, dependency-free approximation; and
-- an optional high-precision lunar and solar ephemeris.
+**Not built until a second backend actually exists.** The
+`HijriMoonPosition` struct is already a compile-time seam; the accuracy caveat
+at the top of `hijri.h` states that nothing else in the file needs to change to
+swap the implementation. A runtime selection layer for a single backend is
+speculative abstraction, and this roadmap already applies that rule to calendar
+policies.
 
-The public evening-parameter and criterion APIs should remain independent of
-the selected ephemeris backend.
+The public evening-parameter and criterion APIs remain independent of the
+selected backend.
 
 **Completion criteria:**
 
