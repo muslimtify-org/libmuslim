@@ -81,6 +81,10 @@ below is bounded by it.
 Compare `hijri.h` with at least two independent astronomical implementations
 or datasets.
 
+**Depends on:** nothing — runnable today against the compact approximation, and
+again after the full series lands. Its output is the measured error bar that
+near-boundary reporting and every fixture tolerance below require.
+
 **Completion criteria:**
 
 - Comparisons use identical input conventions.
@@ -131,6 +135,9 @@ ephemeris accuracy.
 This should not silently change a criterion from pass to fail. It should expose
 the uncertainty so applications can decide how to handle it.
 
+**Depends on:** the measured error bar from cross-engine comparison. Without a
+number, "near a boundary" has no definition.
+
 **Completion criteria:**
 
 - The backend documents an accuracy estimate or uncertainty source.
@@ -143,6 +150,8 @@ the uncertainty so applications can decide how to handle it.
 Document UT, TT, Delta T, apparent/geometric altitude, refraction, parallax,
 semidiameter, and geocentric/topocentric conventions next to the affected
 public fields and calculations.
+Where this documentation belongs depends on the shared-astronomy-core question
+raised under Scope.
 
 **Completion criteria:**
 
@@ -299,15 +308,18 @@ version produced a result.
 
 Maintain the following test layers:
 
-1. Exact civil-date, Julian Day, and tabular arithmetic.
-2. Synthetic formula and threshold boundaries.
-3. Event ordering and unavailable-event behavior.
-4. Independently reproduced astronomical parameters.
-5. Visibility-model zones and prescribed observation times.
-6. Real-evening numerical validation with fully specified conventions.
-7. Calendar-policy decisions with authoritative references.
-8. Strict C11 and C++17 compilation.
-9. Prayer-time and timezone regression isolation.
+1. Exact civil-date, Julian Day, and tabular arithmetic. — present
+2. Synthetic formula and threshold boundaries. — present
+3. Event ordering and unavailable-event behavior. — present
+4. Independently reproduced astronomical parameters. — empty
+5. Visibility-model zones and prescribed observation times. — present
+6. Real-evening numerical validation with fully specified conventions. — empty
+7. Calendar-policy decisions with authoritative references. — empty;
+   `test_umm_al_qura_policy` checks the dedicated function against the
+   equivalent predicate call at Mecca, which is self-consistency only
+8. Strict C11 and C++17 compilation. — partial; C11 is hand-run from
+   `README.md`, C++17 is never compiled
+9. Prayer-time and timezone regression isolation. — tests exist, no runner
 
 Every bug should be assigned to the lowest layer that can reproduce it. A
 calendar-date mismatch should not be patched at the policy layer when its
