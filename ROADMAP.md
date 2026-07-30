@@ -106,6 +106,19 @@ today, so the break is free now and expensive later.
 - The header version string matches the tag that actually exists.
 - Examples and tests are updated to check status before using a result.
 
+### Build and compilation enforcement
+
+Testing layer 8 below claims strict C11 and C++17 compilation. The repository
+contains no build file and nothing compiles either header as C++, so the
+claim is currently unverified. Add a build entry point that checks it.
+
+**Completion criteria:**
+
+- One command builds every header, test, and example as strict C11.
+- The same command compiles both headers as C++17.
+- The advertised language compatibility is verified by that command rather
+  than by hand-run instructions in `README.md`.
+
 ## v1.0 — completes the release
 
 Additive items. Safe to land during the 1.0 cycle.
