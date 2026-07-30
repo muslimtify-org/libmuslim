@@ -426,6 +426,58 @@ static void test_orchestration(void) {
   }
 }
 
+/* The evening-parameter entry point takes a civil date and must return THAT
+ * date's local evening. It previously passed 0h UT into a sunset search that
+ * scans forward only 24 hours, so west of about 90 deg W -- where local sunset
+ * falls after 00:00 UT the next day -- the search returned the PREVIOUS local
+ * evening. Every predicate, both visibility models and the calendar conversion
+ * inherited a one-day error across the Americas and the Pacific, and no test
+ * saw it because every fixture site was in the eastern hemisphere.
+ *
+ * The sweep is the real guard: it fails at 7 of 25 longitudes without the fix.
+ * The named sites are there so a failure reports somewhere recognisable. */
+static void test_local_evening_date(void) {
+  int lon;
+  for (lon = -180; lon <= 180; lon += 15) {
+    HijriLocation loc = {20.0, (double)lon, 0.0, "sweep"};
+    HijriEveningParameters p =
+        hijri_compute_evening_parameters(2024, 3, 11, &loc);
+    char name[64];
+    int ly, lm;
+    double ld;
+    snprintf(name, sizeof(name), "local_evening_date_lon_%+d", lon);
+    if (p.sunset_status != HIJRI_EVENT_OK) {
+      check_true(name, 1); /* polar/no-sunset cases are not this test's subject */
+      continue;
+    }
+    /* Convert the sunset instant to the observer's own civil day. */
+    hijri_gregorian_from_jd(p.jd_sunset_ut + (double)lon / 360.0, &ly, &lm,
+                            &ld);
+    check_int(name, (int)ld, 11);
+  }
+
+  {
+    const HijriLocation sites[] = {
+        {34.05, -118.24, 71.0, "Los Angeles"},
+        {21.31, -157.86, 6.0, "Honolulu"},
+        {39.74, -104.98, 1609.0, "Denver"},
+        {-33.87, 151.21, 58.0, "Sydney"},
+    };
+    size_t i;
+    for (i = 0; i < sizeof(sites) / sizeof(sites[0]); i++) {
+      HijriEveningParameters p =
+          hijri_compute_evening_parameters(2024, 3, 11, &sites[i]);
+      char name[64];
+      int ly, lm;
+      double ld;
+      snprintf(name, sizeof(name), "local_evening_site_%s", sites[i].name);
+      hijri_gregorian_from_jd(p.jd_sunset_ut + sites[i].longitude_deg / 360.0,
+                              &ly, &lm, &ld);
+      check_int(name, (int)ld, 11);
+    }
+  }
+}
+
 static void test_umm_al_qura_policy(void) {
   HijriDate dedicated;
   HijriDate direct;
@@ -450,6 +502,7 @@ int main(void) {
   test_odeh();
   test_relevant_conjunction();
   test_orchestration();
+  test_local_evening_date();
   test_umm_al_qura_policy();
   check_true("all_predicate_enums_represented",
              HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET -
