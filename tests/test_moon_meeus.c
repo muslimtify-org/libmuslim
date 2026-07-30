@@ -162,15 +162,21 @@ static const double FIXTURE[24][4] = {
  * 0.892090), so they illustrate the direction effect but are not
  * representative -- they are among the detectable minority.
  *
- * Sigma-r is harder still: one unit is one metre while the book prints Delta
- * only to 0.1 km, so distance errors below about 100 units are invisible
- * regardless of row or direction.
+ * The same sweep over the other two columns, for completeness:
  *
- * So: this check is the sharpest thing here and it still misses roughly three
- * quarters of single-unit longitude typos, and cannot see 27 of the 60
- * longitude rows at all. It is a strong smoke test, not per-coefficient
- * coverage. Real coverage would need worked examples at several epochs, and
- * Meeus prints one.
+ *   Sigma-l (60 rows, +/-1)   CAUGHT  33 / 120   baseline residual -3.1484e-7 deg
+ *   Sigma-b (60 rows, +/-1)   CAUGHT  41 / 120   baseline residual -4.1922e-7 deg
+ *   Sigma-r (60 rows, +/-1)   CAUGHT   0 / 120   baseline residual -1.5184e-2 km
+ *
+ * Sigma-r is not merely weak, it is blind: one unit is one metre while the book
+ * prints Delta only to 0.1 km, so NO single-unit distance typo is detectable by
+ * this check, in any row, in either direction. The Horizons fixture does not
+ * rescue it either, at a 100 km bound.
+ *
+ * So: this is the sharpest check here and it still misses about three quarters
+ * of single-unit longitude typos, two thirds of latitude ones, and every single
+ * distance one. It is a strong smoke test, not per-coefficient coverage. Real
+ * coverage would need worked examples at several epochs, and Meeus prints one.
  *
  * It is also the provenance check: reproducing the publisher's own worked
  * example from the repository is stronger evidence that these are the
