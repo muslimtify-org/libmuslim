@@ -125,7 +125,7 @@ static const double FIXTURE[24][4] = {
  * MEASURED SENSITIVITY, so nobody mistakes this for a complete guarantee.
  * Single-unit mutations at this epoch:
  *   Table 47.B row 1 sigma_b  5128122 -> 5128123 : CAUGHT (err 1.1e-6 deg)
- *   Table 47.A row 60 sigma_l      294 -> 295    : CAUGHT (err 1.2e-6 deg)
+ *   Table 47.A row 59 sigma_l      294 -> 295    : CAUGHT (err 1.2e-6 deg)
  *   Table 47.A row 17 sigma_l    10675 -> 10676  : MISSED
  *   Table 47.A row 17 sigma_r   -34782 -> -34783 : MISSED
  *

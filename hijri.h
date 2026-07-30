@@ -480,10 +480,16 @@ HIJRIDEF HijriSunPosition hijri_sun_position(double jd_tt) {
  *   PyMeeus      -- architest/pymeeus, pymeeus/Moon.py
  *   astronomia   -- commenthol/astronomia, src/moonposition.js
  *
- * All 60 rows of Table 47.A matched exactly between the two under diff, as did
- * Table 47.B. Both tables satisfy the parity invariant of the lunar theory --
- * every 47.A row has an even F multiple, every 47.B row an odd one -- which a
- * corrupted table would be unlikely to satisfy by accident.
+ * Be precise about what was machine-checked, because this comment is the
+ * repository's tracked provenance record and overstating it would defeat its
+ * purpose. Table 47.A was compared row by row under `diff`: all 60 rows matched
+ * exactly between the two sources. Table 47.B was read from both sources and
+ * they agreed, but only one copy was retained, so the automated checks applied
+ * to it were row count, dominant term, and parity -- not a two-source diff.
+ *
+ * Both tables satisfy the parity invariant of the lunar theory -- every 47.A row
+ * has an even F multiple, every 47.B row an odd one -- which a corrupted table
+ * would be unlikely to satisfy by accident.
  *
  * The decisive check is not either of those, though: tests/test_moon_meeus.c
  * asserts Meeus's own printed worked Example 47.a, and this implementation
