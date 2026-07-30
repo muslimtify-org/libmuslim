@@ -127,34 +127,50 @@ static const double FIXTURE[24][4] = {
  *
  * MEASURED SENSITIVITY, so nobody mistakes this for a complete guarantee.
  *
- * The book prints lambda to six decimals, and our unmutated value sits
- * 3.15e-7 deg below the printed figure. That offset is what decides whether a
- * given typo is caught, because a one-unit change in a Sigma-l coefficient
- * moves lambda by at most 1e-6 deg -- the same order as the tolerance itself.
- * So a typo is caught when it pushes the residual AWAY from zero past 1e-6,
- * and missed when it pushes toward zero. Single-unit mutations, both
- * directions:
+ * Exhaustive sweep: every one of the 60 Sigma-l coefficients was changed by
+ * +1 and by -1 in turn, 120 mutations, and this file's own 1e-6 deg assertion
+ * applied. Result:
+ *
+ *   CAUGHT  33 / 120   (27.5 %)
+ *   MISSED  87 / 120   (72.5 %)
+ *
+ *   rows caught in BOTH directions      0
+ *   rows caught in ONE  direction      33
+ *   rows caught in NEITHER direction   27
+ *
+ * TWO mechanisms are at work, and it matters not to confuse them.
+ *
+ * First, visibility. Our unmutated lambda sits 3.1484e-7 deg below the printed
+ * figure, and a one-unit change moves lambda by |sin(arg) * E| * 1e-6 deg. So a
+ * row can be seen at all only when |sin(arg) * E| exceeds
+ * (1e-6 - 3.1484e-7) / 1e-6 = 0.6852. Measured: the 27 invisible rows all have
+ * |sin(arg) * E| <= 0.6760, the 33 detectable rows all have >= 0.7049. Those 27
+ * rows are undetectable by this check in either direction -- a one-unit typo in
+ * any of them passes the whole suite silently.
+ *
+ * Second, direction. For the 33 rows that clear the threshold, exactly one
+ * direction is ever caught, never both, decided by whether the typo pushes the
+ * residual away from zero:
  *
  *   47.A row 17 sigma_l  10675 -> 10676  residual +6.85e-7  MISSED
  *   47.A row 17 sigma_l  10675 -> 10674  residual -1.31e-6  CAUGHT
  *   47.A row 59 sigma_l    294 -> 295    residual -1.21e-6  CAUGHT
  *   47.A row 59 sigma_l    294 -> 293    residual +5.77e-7  MISSED
- *   47.B row  1 sigma_b 5128122 -> ...23 residual  1.06e-6  CAUGHT
+ *   47.B row  1 sigma_b 5128122 -> ...23 residual -1.06e-6  CAUGHT
  *
- * Note what this does NOT say. Row 17 has sin(arg) = +0.999993 at this epoch,
- * i.e. maximum sensitivity, and it is still missed in one direction. The miss
- * is not a property of the row; both rows above are caught one way and missed
- * the other. Roughly half of single-unit Sigma-l typos escape, selected by
- * sign rather than by how sensitive the coefficient is. Do not read an
- * uncaught row as a low-sensitivity row.
+ * Both rows above sit well above the threshold (|sin*E| = 0.999993 and
+ * 0.892090), so they illustrate the direction effect but are not
+ * representative -- they are among the detectable minority.
  *
- * Sigma-r is a separate and harder case: one unit is one metre, while the book
- * prints Delta only to 0.1 km, so distance errors below about 100 units are
- * invisible in either direction.
+ * Sigma-r is harder still: one unit is one metre while the book prints Delta
+ * only to 0.1 km, so distance errors below about 100 units are invisible
+ * regardless of row or direction.
  *
- * So this catches many single-digit transcription errors but by no means all.
- * Real per-coefficient coverage would need worked examples at several epochs,
- * and Meeus prints only this one.
+ * So: this check is the sharpest thing here and it still misses roughly three
+ * quarters of single-unit longitude typos, and cannot see 27 of the 60
+ * longitude rows at all. It is a strong smoke test, not per-coefficient
+ * coverage. Real coverage would need worked examples at several epochs, and
+ * Meeus prints one.
  *
  * It is also the provenance check: reproducing the publisher's own worked
  * example from the repository is stronger evidence that these are the
