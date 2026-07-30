@@ -64,8 +64,9 @@ longitude terms, four latitude terms, and four distance terms of ELP2000-82B.
 The full series is public, introduces no dependency, and changes no public
 declaration.
 
-**Depends on:** nothing. This is the first item because every accuracy claim
-below is bounded by it.
+**Depends on:** nothing. Ranked first because it is self-contained — no new
+dependency, no API change — and because the comparison below is far more
+informative once the series it measures is the one intended to ship.
 
 **Completion criteria:**
 
@@ -81,9 +82,10 @@ below is bounded by it.
 Compare `hijri.h` with at least two independent astronomical implementations
 or datasets.
 
-**Depends on:** nothing — runnable today against the compact approximation, and
-again after the full series lands. Its output is the measured error bar that
-near-boundary reporting and every fixture tolerance below require.
+**Depends on:** nothing mechanically. Run it twice: once against the compact
+approximation to establish a baseline, then again after the full series lands.
+The second run produces the measured error bar that near-boundary reporting
+and every fixture tolerance below require.
 
 **Completion criteria:**
 
@@ -94,14 +96,15 @@ near-boundary reporting and every fixture tolerance below require.
 ### Status-return conventions
 
 Replace failure-only returns with explicit status values where callers need to
-distinguish invalid input, unavailable events, unsupported dates, and numerical
-failure. `hijri_find_conjunction()`, `hijri_find_previous_conjunction()`,
-`hijri_find_next_conjunction()`, and `hijri_find_relevant_conjunction()`
-currently return a bare `double` with no failure channel.
+distinguish invalid input, unavailable events, unsupported dates, and
+numerical failure. `hijri_find_conjunction()`,
+`hijri_find_previous_conjunction()`, `hijri_find_next_conjunction()`, and
+`hijri_find_relevant_conjunction()` currently return a bare `double` with no
+failure channel.
 
 **`hijri.h` is not tagged v1.0 until this lands.** The header comment already
-reads `v1.0` while no git tag exists, and no external code consumes `hijri.h`
-today, so the break is free now and expensive later.
+reads `v1.0` while no git tag exists, and the in-repo Rust interop consumes
+only `prayertimes.h`, so the break is as cheap as it will ever be.
 
 **Completion criteria:**
 
@@ -113,13 +116,14 @@ today, so the break is free now and expensive later.
 ### Build and compilation enforcement
 
 Testing layer 8 below claims strict C11 and C++17 compilation. The repository
-contains no build file and nothing compiles either header as C++, so the
+contains no build file, and no header is compiled as C++ anywhere, so the
 claim is currently unverified. Add a build entry point that checks it.
 
 **Completion criteria:**
 
 - One command builds every header, test, and example as strict C11.
-- The same command compiles both headers as C++17.
+- The same command compiles `hijri.h` as C++17. Extending it to the other two
+  headers is desirable but out of scope, per Scope above.
 - The advertised language compatibility is verified by that command rather
   than by hand-run instructions in `README.md`.
 
@@ -180,10 +184,10 @@ external high-precision one.
 
 **Not built until a second backend actually exists.** The
 `HijriMoonPosition` struct is already a compile-time seam; the accuracy caveat
-at the top of `hijri.h` states that nothing else in the file needs to change to
-swap the implementation. A runtime selection layer for a single backend is
-speculative abstraction, and this roadmap already applies that rule to calendar
-policies.
+at the top of `hijri.h` states that nothing else in the file needs to
+change to swap the implementation. A runtime selection layer for a single
+backend is speculative abstraction, and this roadmap already applies that
+rule to calendar policies.
 
 The public evening-parameter and criterion APIs remain independent of the
 selected backend.
