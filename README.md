@@ -274,16 +274,23 @@ Regenerate the research baseline:
 gcc -std=c11 -Wall -Wextra -Wpedantic -O2 tests/hijri_research_probe.c -lm -o /tmp/libmuslim-hijri-probe
 /tmp/libmuslim-hijri-probe > /tmp/hijri-2020-2025-baseline.csv
 test "$(wc -l < /tmp/hijri-2020-2025-baseline.csv)" -eq 133
-if [ -f docs/research/hijri-2020-2025-baseline.csv ]; then
-  cmp /tmp/hijri-2020-2025-baseline.csv docs/research/hijri-2020-2025-baseline.csv
-fi
+cmp /tmp/hijri-2020-2025-baseline.csv docs/research/hijri-2020-2025-baseline.csv
 ```
 
-The baseline CSV and research report under `docs/research/` are local, ignored
-research artifacts. They are diagnostic evidence, not authoritative oracles.
-The comparison is optional and runs only when the local baseline exists; CSV
-generation and the 133-line completeness check work in a fresh clone.
-The permanent tracked tests are `tests/test_hijri.c` and
-`tests/hijri_research_probe.c`. Reference sources, conventions,
-discrepancies, and fixture admission decisions are recorded locally in
-`docs/research/hijri-2020-2025-sources.md`.
+`docs/research/` is tracked; the rest of `docs/` is not. The baseline CSV is a
+generated artifact committed so that changes to it are visible in review, and
+the `cmp` above is what keeps it honest — **any change to the ephemeris, the
+predicates, or the evening calculation will make it fail until the baseline is
+regenerated.** Nothing in `tests/` enforces this, so run the block above after
+touching those areas.
+
+The CSV is diagnostic evidence, not an authoritative oracle: it is produced by
+the library it is used to check, and no numerical value in it is reference
+truth. Its printed precision also overstates its accuracy — conjunction times
+carry nine decimal places of a Julian Day while the underlying uncertainty is
+minutes.
+
+The permanent tracked tests are `tests/test_hijri.c`, `tests/test_moon_meeus.c`
+and `tests/hijri_research_probe.c`. Reference sources, conventions,
+discrepancies, and fixture admission decisions are recorded in
+`docs/research/hijri-2020-2025-sources.md`, with dated findings alongside it.
