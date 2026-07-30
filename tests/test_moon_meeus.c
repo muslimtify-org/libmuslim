@@ -34,9 +34,12 @@
  *
  *   0.02 deg leaves about 4x margin on longitude and 33x on latitude, while the
  *   old series misses by 8x the bound. 100 km on distance gives 2.4x margin over
- *   the measured 41.9 km worst case; signed distance errors run -41.9 to +6.9 km
- *   with a +2.0 km mean, so the spread is Sigma-r truncation noise rather than a
- *   bias in the 385000.56 km constant.
+ *   the measured 41.9 km worst absolute case. Signed distance errors over these
+ *   24 epochs run -41.8864 km to +40.4101 km with a mean of +1.9650 km. The
+ *   near-zero mean against a two-sided spread of that size rules out a
+ *   structural error in the 385000.56 km constant or the AU conversion -- either
+ *   would show as a large one-sided offset -- and identifies the spread as
+ *   Sigma-r truncation noise.
  */
 
 #define HIJRI_IMPLEMENTATION

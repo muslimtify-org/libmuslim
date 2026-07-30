@@ -468,7 +468,7 @@ HIJRIDEF HijriSunPosition hijri_sun_position(double jd_tt) {
   return pos;
 }
 
-/* ---- Lunar position (leading periodic terms only -- see accuracy caveat) ---
+/* ---- Lunar position (full Meeus ch. 47 series -- Tables 47.A and 47.B) ----
  */
 
 /* PROVENANCE OF THE TWO TABLES BELOW
