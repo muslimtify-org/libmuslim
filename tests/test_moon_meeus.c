@@ -112,8 +112,50 @@ static const double FIXTURE[24][4] = {
   {2488069.5, 157.4003861,  1.0927180,   371679.8},
 };
 
+/* Meeus, "Astronomical Algorithms" 2nd ed., worked Example 47.a:
+ * 1992 April 12 at 0h TD, i.e. JDE 2448724.5. The book prints
+ *   lambda = 133.162655 deg, beta = -3.229126 deg, Delta = 368409.7 km.
+ *
+ * This is the sharpest check in the file. The Horizons fixture below is bounded
+ * at 0.02 deg -- about 20000 units of Sigma-l -- so it proves the series is
+ * broadly right while being nearly blind to a single mistyped coefficient.
+ * Asserting lambda and beta to 1e-6 deg pins Sigma-l and Sigma-b to roughly one
+ * unit.
+ *
+ * MEASURED SENSITIVITY, so nobody mistakes this for a complete guarantee.
+ * Single-unit mutations at this epoch:
+ *   Table 47.B row 1 sigma_b  5128122 -> 5128123 : CAUGHT (err 1.1e-6 deg)
+ *   Table 47.A row 60 sigma_l      294 -> 295    : CAUGHT (err 1.2e-6 deg)
+ *   Table 47.A row 17 sigma_l    10675 -> 10676  : MISSED
+ *   Table 47.A row 17 sigma_r   -34782 -> -34783 : MISSED
+ *
+ * Two limits cause the misses, and neither is fixable here. A row whose
+ * argument sits near a zero of its sine on 1992 April 12 contributes almost
+ * nothing at this one epoch regardless of how large its coefficient is. And
+ * Sigma-r is in units of 1e-3 km, so one unit is one metre, while the book
+ * prints Delta only to 0.1 km -- distance errors below about 100 units cannot
+ * be seen against a published value of that precision.
+ *
+ * So this catches many single-digit transcription errors but not all of them.
+ * Full per-coefficient coverage would need worked examples at several epochs,
+ * and Meeus prints only this one.
+ *
+ * It is also the provenance check: reproducing the publisher's own worked
+ * example from the repository is stronger evidence that these are the
+ * published coefficients than any claim about where they were copied from. */
+static void check_meeus_example_47a(void) {
+  HijriMoonPosition m = hijri_moon_position(2448724.5);
+  check_within("meeus_47a_longitude", 2448724.5, m.geocentric_longitude_deg,
+               133.162655, 1e-6);
+  check_within("meeus_47a_latitude", 2448724.5, m.geocentric_latitude_deg,
+               -3.229126, 1e-6);
+  check_within("meeus_47a_distance", 2448724.5, m.distance_km, 368409.7, 0.1);
+}
+
 int main(void) {
   double max_lon = 0.0, max_lat = 0.0, max_dist = 0.0;
+
+  check_meeus_example_47a();
 
   for (int i = 0; i < 24; i++) {
     double jd = FIXTURE[i][0];
