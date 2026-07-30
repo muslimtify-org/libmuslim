@@ -271,12 +271,37 @@ static const MethodKeyEntry METHOD_KEYS[] = {
     {"custom", CALC_CUSTOM},
 };
 
+/* ASCII-only, locale-independent case-insensitive compare.
+ *
+ * strcasecmp() is POSIX, not C, so it is absent under a strict -std=c11 build
+ * and spelled _stricmp() on MSVC. tolower() from <ctype.h> is the usual
+ * workaround but carries two traps: it is undefined for negative char values,
+ * and it is locale-dependent -- in a Turkish locale 'I' does not fold to 'i',
+ * so "ISNA" would stop matching "isna".
+ *
+ * METHOD_KEYS are fixed ASCII identifiers, so folding the ASCII range
+ * explicitly is both correct and portable, and needs no extra header. */
+static int pt__ascii_casecmp(const char *a, const char *b) {
+  for (;; a++, b++) {
+    unsigned char ca = (unsigned char)*a;
+    unsigned char cb = (unsigned char)*b;
+    if (ca >= 'A' && ca <= 'Z')
+      ca = (unsigned char)(ca - 'A' + 'a');
+    if (cb >= 'A' && cb <= 'Z')
+      cb = (unsigned char)(cb - 'A' + 'a');
+    if (ca != cb)
+      return (int)ca - (int)cb;
+    if (ca == '\0')
+      return 0;
+  }
+}
+
 CalcMethod method_from_string(const char *name) {
   if (!name)
     return CALC_CUSTOM;
   size_t count = sizeof(METHOD_KEYS) / sizeof(METHOD_KEYS[0]);
   for (size_t i = 0; i < count; i++) {
-    if (strcasecmp(name, METHOD_KEYS[i].key) == 0)
+    if (pt__ascii_casecmp(name, METHOD_KEYS[i].key) == 0)
       return METHOD_KEYS[i].method;
   }
   return CALC_CUSTOM;
