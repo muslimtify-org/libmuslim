@@ -76,6 +76,14 @@ static void check_within(const char *name, double jd, double actual,
   }
 }
 
+static void check_true_nonzero(const char *name, double value) {
+  checks++;
+  if (!(value > 0.0)) {
+    failures++;
+    printf("FAIL %s: expected a non-zero value, got %.9f\n", name, value);
+  }
+}
+
 static void check_angle_within(const char *name, double jd, double actual,
                                double expected, double tol) {
   double err = angdiff(actual, expected);
@@ -158,25 +166,27 @@ static const double FIXTURE[24][4] = {
  *   47.A row 59 sigma_l    294 -> 293    residual +5.77e-7  MISSED
  *   47.B row  1 sigma_b 5128122 -> ...23 residual -1.06e-6  CAUGHT
  *
- * Both rows above sit well above the threshold (|sin*E| = 0.999993 and
- * 0.892090), so they illustrate the direction effect but are not
- * representative -- they are among the detectable minority.
+ * Both rows above are in the detectable minority (|sin*E| = 0.999993 and
+ * 0.892090), so they show the direction effect but are not representative.
  *
- * The same sweep over the other two columns, for completeness:
+ * Full sweep, all three columns, 60 rows each by +/-1:
  *
- *   Sigma-l (60 rows, +/-1)   CAUGHT  33 / 120   baseline residual -3.1484e-7 deg
- *   Sigma-b (60 rows, +/-1)   CAUGHT  41 / 120   baseline residual -4.1922e-7 deg
- *   Sigma-r (60 rows, +/-1)   CAUGHT   0 / 120   baseline residual -1.5184e-2 km
+ *   Sigma-l   CAUGHT  33 / 120   baseline residual -3.1484e-7 deg
+ *   Sigma-b   CAUGHT  41 / 120   baseline residual -4.1922e-7 deg
+ *   Sigma-r   CAUGHT   0 / 120   baseline residual -1.5184e-2 km
  *
- * Sigma-r is not merely weak, it is blind: one unit is one metre while the book
- * prints Delta only to 0.1 km, so NO single-unit distance typo is detectable by
- * this check, in any row, in either direction. The Horizons fixture does not
- * rescue it either, at a 100 km bound.
+ * Sigma-r is blind, not merely weak: one unit is one metre while the book
+ * prints Delta only to 0.1 km, so no single-unit distance typo is detectable in
+ * any row or direction, and the 100 km Horizons bound does not rescue it.
  *
- * So: this is the sharpest check here and it still misses about three quarters
- * of single-unit longitude typos, two thirds of latitude ones, and every single
- * distance one. It is a strong smoke test, not per-coefficient coverage. Real
- * coverage would need worked examples at several epochs, and Meeus prints one.
+ * This is a hard limit, not an unfinished task. A coefficient unit is 1e-6 deg.
+ * Correcting the Horizons comparison for nutation was tried and does work --
+ * worst-case longitude error drops from 0.00514 to 0.00150 deg -- but that is
+ * still 1500x coarser than one unit, the rest being aberration and truncation.
+ * No Horizons bound reaches unit sensitivity; only a reference printed at unit
+ * precision can, and Meeus prints one worked example for the Moon.
+ *
+ * So this is a strong smoke test, not per-coefficient coverage.
  *
  * It is also the provenance check: reproducing the publisher's own worked
  * example from the repository is stronger evidence that these are the
@@ -190,10 +200,63 @@ static void check_meeus_example_47a(void) {
   check_within("meeus_47a_distance", 2448724.5, m.distance_km, 368409.7, 0.1);
 }
 
+/* The fixture above is expressed in TT, so it calls hijri_moon_position()
+ * directly and never touches Delta T. Every caller in hijri.h goes the other
+ * way -- hijri_sun_altitude(), hijri_moon_altitude(), the evening parameters,
+ * and both visibility evaluators all convert with hijri_jd_tt_from_ut() first.
+ * Without the checks below, that conversion is untested and a regression in it
+ * would leave this whole file green while shifting every real result.
+ *
+ * Delta T is not negligible next to the series accuracy this file asserts:
+ * 73 s in 2023 moves the Moon 0.0112 deg, over twice the 0.0051 deg worst-case
+ * series error. The header calls the routine "coarse but adequate"; these
+ * checks are what makes "adequate" falsifiable.
+ *
+ * Published values are the usual reference figures for Delta T at those epochs.
+ * The 8 s bound is deliberately loose -- it is not a precision claim, it bounds
+ * the induced lunar error at about 0.0012 deg, a quarter of the series error.
+ * Measured at the time of writing: worst deviation 5.01 s at 1950, i.e.
+ * 0.00076 deg of lunar motion. */
+static void check_delta_t(void) {
+  struct { double jd; double published_s; } v[] = {
+    {2415020.5, -2.80},  /* 1900.0 */
+    {2433282.5, 29.10},  /* 1950.0 */
+    {2451544.5, 63.83},  /* 2000.0 */
+    {2455197.5, 66.07},  /* 2010.0 */
+    {2458849.5, 69.36},  /* 2020.0 */
+  };
+  for (unsigned i = 0; i < sizeof v / sizeof *v; i++) {
+    check_within("delta_t_seconds", v[i].jd, hijri_delta_t_seconds(v[i].jd),
+                 v[i].published_s, 8.0);
+  }
+}
+
+/* Proves the UT -> TT conversion is actually wired into the position path, not
+ * merely present. Feeding the same number as UT and as TT must differ by
+ * exactly the Moon's motion over Delta T, so this fails both if the conversion
+ * is dropped (difference collapses to zero) and if it gains a wrong scale. */
+static void check_ut_to_tt_path(void) {
+  double jd_ut = 2460000.5;
+  double dt_days = hijri_delta_t_seconds(jd_ut) / 86400.0;
+
+  double as_ut = hijri_moon_position(jd_ut).geocentric_longitude_deg;
+  double via_tt = hijri_moon_position(hijri_jd_tt_from_ut(jd_ut))
+                      .geocentric_longitude_deg;
+  double moved = angdiff(via_tt, as_ut);
+
+  /* Mean lunar motion is 13.176 deg/day; over ~73 s that is ~0.0111 deg.
+   * Allow 10 percent for the true instantaneous rate. */
+  check_within("ut_to_tt_shifts_moon", jd_ut, moved, 13.176 * dt_days,
+               0.1 * 13.176 * dt_days);
+  check_true_nonzero("ut_to_tt_conversion_is_applied", moved);
+}
+
 int main(void) {
   double max_lon = 0.0, max_lat = 0.0, max_dist = 0.0;
 
   check_meeus_example_47a();
+  check_delta_t();
+  check_ut_to_tt_path();
 
   for (int i = 0; i < 24; i++) {
     double jd = FIXTURE[i][0];

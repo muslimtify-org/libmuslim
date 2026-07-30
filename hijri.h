@@ -507,6 +507,15 @@ HIJRIDEF HijriSunPosition hijri_sun_position(double jd_tt) {
  * transcription, or this comment.
  */
 
+/* E^|M|, applied to terms involving the Sun's mean anomaly to account for the
+ * eccentricity of Earth's orbit. Meeus specifies E for |M| = 1 and E^2 for
+ * |M| = 2; no row of either table has |M| > 2. */
+static double hijri__moon_e_factor(double E, long m) {
+  if (m == 0)
+    return 1.0;
+  return (m == 1 || m == -1) ? E : E * E;
+}
+
 /* Meeus, "Astronomical Algorithms" 2nd ed., Table 47.A -- periodic terms for
  * the Moon's longitude (sigma_l, unit 1e-6 deg) and distance (sigma_r, unit
  * 1e-3 km). Columns: multiples of D, M, M', F, then sigma_l, sigma_r.
@@ -669,8 +678,7 @@ HIJRIDEF HijriMoonPosition hijri_moon_position(double jd_tt) {
                                 hijri__moon_lr[i][1] * M +
                                 hijri__moon_lr[i][2] * Mp +
                                 hijri__moon_lr[i][3] * F);
-    long m = hijri__moon_lr[i][1];
-    double e = (m == 0) ? 1.0 : ((m == 1 || m == -1) ? E : E * E);
+    double e = hijri__moon_e_factor(E, hijri__moon_lr[i][1]);
     sum_l += (double)hijri__moon_lr[i][4] * e * sin(arg);
     sum_r += (double)hijri__moon_lr[i][5] * e * cos(arg);
   }
@@ -680,9 +688,8 @@ HIJRIDEF HijriMoonPosition hijri_moon_position(double jd_tt) {
                                 hijri__moon_b[i][1] * M +
                                 hijri__moon_b[i][2] * Mp +
                                 hijri__moon_b[i][3] * F);
-    long m = hijri__moon_b[i][1];
-    double e = (m == 0) ? 1.0 : ((m == 1 || m == -1) ? E : E * E);
-    sum_b += (double)hijri__moon_b[i][4] * e * sin(arg);
+    sum_b += (double)hijri__moon_b[i][4] *
+             hijri__moon_e_factor(E, hijri__moon_b[i][1]) * sin(arg);
   }
 
   sum_l += 3958.0 * sin(HIJRI__DEG2RAD(A1)) +
