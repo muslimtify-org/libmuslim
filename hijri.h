@@ -32,18 +32,29 @@
  * -----------------------------------------------------------------------
  * ACCURACY CAVEAT -- PLEASE READ
  *
- * hijri_moon_position() below uses only the ~5 largest-amplitude periodic
- * terms of the ELP2000-82B lunar theory (accurate to roughly a few tenths
- * of a degree), not the full ~60-term series. This is enough to exercise
- * the whole pipeline correctly and get qualitatively right answers, but
- * is NOT enough precision for real religious-observance decisions in
- * genuinely borderline cases. For production use, replace the body of
- * hijri_moon_position() with the full series from Meeus, "Astronomical
- * Algorithms" 2nd ed., ch. 47, Tables 47.a/47.b, or link against an
- * existing implementation such as https://github.com/mygulamali/meeus or
- * libnova. Nothing else in this file needs to change to do that swap --
- * every other function only depends on the HijriMoonPosition struct's
- * contents, not on how it was computed.
+ * hijri_moon_position() implements the full Meeus ch. 47 lunar series --
+ * Table 47.A (60 terms, longitude and distance) and Table 47.B (60 terms,
+ * latitude), with the E eccentricity factor and the A1/A2/A3 additive
+ * corrections.
+ *
+ * Measured against 24 JPL Horizons epochs spanning 1900-2100, worst case:
+ *
+ *     longitude  0.0051 deg      latitude  0.0006 deg      distance  41.9 km
+ *
+ * It also reproduces Meeus's own printed worked Example 47.a to every digit
+ * the book gives. See tests/test_moon_meeus.c, which carries both checks.
+ *
+ * WHAT THIS STILL DOES NOT DO. No nutation and no aberration are applied, so
+ * these are geometric positions referred to the mean equinox of date. The
+ * 0.0051 deg longitude residual above is essentially that omitted nutation,
+ * not series error.
+ *
+ * Judgement is still required near a criterion boundary. This ephemeris is
+ * far tighter than the thresholds the visibility criteria in this file use,
+ * but a calculated result is not an observation, and no calculation here
+ * decides religious validity. See the documented local predicates below, and
+ * note that a local predicate is not by itself a national or global authority
+ * decision.
  *
  * See the explicitly documented local predicates below.
  *
