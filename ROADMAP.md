@@ -9,6 +9,17 @@ be added merely because its name and headline thresholds are known. It should
 be added only when its geographic scope, astronomical conventions, decision
 rules, and validation references are sufficiently documented.
 
+## Scope
+
+This roadmap covers [`hijri.h`](hijri.h) only. `prayertimes.h` and
+`timezone.h` are tracked here solely as regression-isolation targets under
+testing layer 9; neither has a roadmap yet.
+
+One question must be answered before the time-scale documentation work below,
+because it decides where that documentation belongs: do the headers
+share an astronomy core, or does each carry its own solar code? Both currently
+compute solar position independently.
+
 ## Current foundation
 
 The library currently provides:
