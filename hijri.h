@@ -471,6 +471,27 @@ HIJRIDEF HijriSunPosition hijri_sun_position(double jd_tt) {
 /* ---- Lunar position (leading periodic terms only -- see accuracy caveat) ---
  */
 
+/* PROVENANCE OF THE TWO TABLES BELOW
+ *
+ * These 120 coefficients were not written from memory. They were taken from two
+ * independent published transcriptions of Meeus ch. 47 and compared row by row
+ * before use:
+ *
+ *   PyMeeus      -- architest/pymeeus, pymeeus/Moon.py
+ *   astronomia   -- commenthol/astronomia, src/moonposition.js
+ *
+ * All 60 rows of Table 47.A matched exactly between the two under diff, as did
+ * Table 47.B. Both tables satisfy the parity invariant of the lunar theory --
+ * every 47.A row has an even F multiple, every 47.B row an odd one -- which a
+ * corrupted table would be unlikely to satisfy by accident.
+ *
+ * The decisive check is not either of those, though: tests/test_moon_meeus.c
+ * asserts Meeus's own printed worked Example 47.a, and this implementation
+ * reproduces lambda, beta and Delta to every digit the book prints. That is
+ * reproducible from this repository alone and does not rely on trusting either
+ * transcription, or this comment.
+ */
+
 /* Meeus, "Astronomical Algorithms" 2nd ed., Table 47.A -- periodic terms for
  * the Moon's longitude (sigma_l, unit 1e-6 deg) and distance (sigma_r, unit
  * 1e-3 km). Columns: multiples of D, M, M', F, then sigma_l, sigma_r.
