@@ -87,11 +87,24 @@ or datasets.
 - Raw astronomical parameters are compared before calendar decisions.
 - Systematic offsets are investigated rather than hidden by broad tolerances.
 
-### Stable error reporting
+### Status-return conventions
 
-Replace ambiguous failure-only returns with explicit status values where
-callers need to distinguish invalid input, unavailable events, unsupported
-dates, and numerical failure.
+Replace failure-only returns with explicit status values where callers need to
+distinguish invalid input, unavailable events, unsupported dates, and numerical
+failure. `hijri_find_conjunction()`, `hijri_find_previous_conjunction()`,
+`hijri_find_next_conjunction()`, and `hijri_find_relevant_conjunction()`
+currently return a bare `double` with no failure channel.
+
+**`hijri.h` is not tagged v1.0 until this lands.** The header comment already
+reads `v1.0` while no git tag exists, and no external code consumes `hijri.h`
+today, so the break is free now and expensive later.
+
+**Completion criteria:**
+
+- Every public function that can fail reports failure through a status value,
+  not a sentinel or an unchecked out-parameter.
+- The header version string matches the tag that actually exists.
+- Examples and tests are updated to check status before using a result.
 
 ## v1.0 — completes the release
 
