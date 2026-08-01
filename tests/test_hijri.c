@@ -827,6 +827,26 @@ static void test_umm_al_qura_official_calendar(void) {
       check_date("umm_official_muharram_1448", d, 1448, 1, 1);
     }
   }
+
+  /* Table-INDEPENDENT anchors. The fixture above derives from ICU, and so
+   * does the embedded table, so the fixture alone cannot detect an
+   * ICU-vs-KACST divergence. These two dates come from historically
+   * documented dual-dated Saudi events, not from any calendar table:
+   *   1953-11-09 = 2 Rabi al-Awwal 1373  (death of King Abdulaziz)
+   *   2005-08-01 = 26 Jumada al-Akhirah 1426  (death of King Fahd)
+   * Three other documented anchors (1932, 1979, 1992 -- all before the
+   * modern Umm al-Qura system took force in 1423 AH) DISAGREE with the
+   * retro-computed table by one day and are deliberately not asserted;
+   * see docs/research/2026-08-01-umm-al-qura-oracle.md. */
+  {
+    HijriDate d;
+    if (hijri_umm_al_qura_from_gregorian(1953, 11, 9, &d)) {
+      check_date("umm_anchor_king_abdulaziz_1373", d, 1373, 3, 2);
+    }
+    if (hijri_umm_al_qura_from_gregorian(2005, 8, 1, &d)) {
+      check_date("umm_anchor_king_fahd_1426", d, 1426, 6, 26);
+    }
+  }
 }
 
 /* The property whose violation killed the reverted chain design: consecutive

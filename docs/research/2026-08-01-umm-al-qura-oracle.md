@@ -68,7 +68,7 @@ above takes under a minute and would have caught this immediately.
 198 official month starts, 2015-2030, asking what Hijri day the library assigns:
 
 ```
-  per-date conjunction scan (shipping)   183 exact   6 early    9 late   92.4%
+  per-date conjunction scan (previous)   183 exact   6 early    9 late   92.4%
 ```
 
 ## The chain: measured, better on paper, reverted
@@ -221,3 +221,44 @@ reconstruction outside, and the conversion is a pure integer table walk —
 coherent at every latitude by construction, no astronomy involved. The
 mutation test demonstrates a single flipped bit in one table entry fails the
 suite.
+
+## Table-independent anchors (added after review finding W1)
+
+The fixture and the embedded table both derive from ICU, so the test suite is
+circular against ICU by construction: it proves the code reads the table
+correctly, not that ICU matches what Saudi Arabia actually used. To break the
+circle, five historically documented dual-dated Saudi events were checked
+against ICU on 2026-08-01:
+
+```
+MISMATCH 1932-09-23 -> 5/22/1351  (documented: 21 Jumada al-Ula 1351, Proclamation of the Kingdom)
+MISMATCH 1979-11-20 -> 12/30/1399 (documented: 1 Muharram 1400, Grand Mosque seizure at dawn)
+MATCH    1953-11-09 -> 3/2/1373   (documented: 2 Rabi al-Awwal 1373, death of King Abdulaziz)
+MISMATCH 1992-03-01 -> 8/26/1412  (documented: 27 Shaban 1412, Basic Law of Governance)
+MATCH    2005-08-01 -> 6/26/1426  (documented: 26 Jumada al-Akhirah 1426, death of King Fahd)
+```
+
+Together with the five modern religious-event anchors recorded above (all
+MATCH, 1444-1446 AH), the pattern is clean: **every mismatch is before
+1423 AH (2002 CE)** — the year the current Umm al-Qura computation rule took
+force — and every match from 1373 AH onward that falls in or near the modern
+era holds. The 1953 match shows the retro-computation coincides with
+historical usage for some early years but not reliably (1932, 1979, 1992
+differ by one day).
+
+**Interpretation.** For the modern era the ICU/CLDR table is the official
+calendar and is now independently corroborated. For years before ~1423 AH it
+is a retro-computation that can differ by one day from the calendar Saudi
+Arabia actually used — a property of the table itself (the same table every
+browser and OS ships), not of this library's reading of it. README and
+docs/HIJRI_CALCULATIONS.md state this scope; the two matching independent
+anchors (1953, 2005) are asserted in `tests/test_hijri.c` as
+table-independent checks.
+
+Anchor documentation: Proclamation of the Kingdom, 23 September 1932 = 21
+Jumada al-Ula 1351 (Saudi MoFA, Saudi Gazette, Wikipedia "Proclamation of the
+Kingdom of Saudi Arabia"); Grand Mosque seizure, 20 November 1979 = 1
+Muharram 1400 (Britannica, Wikipedia "Grand Mosque seizure"); death of King
+Abdulaziz, 9 November 1953 = 2 Rabi al-Awwal 1373; Basic Law of Governance,
+Royal Order A/90, 1 March 1992 = 27 Shaban 1412; death of King Fahd, 1
+August 2005 = 26 Jumada al-Akhirah 1426.
