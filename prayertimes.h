@@ -1,8 +1,57 @@
+/*
+ * MIT License
+ *
+ * Copyright (c) 2025-2026 muslimtify-org
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+/* prayertimes.h -- single-header C/C++ prayer-time calculation library
+ *
+ * This library calculates daily prayer times for a date and location using a
+ * selection of established calculation methods. It has no dependencies beyond
+ * the C standard library and libm.
+ *
+ * In exactly one C or C++ source file, define PRAYERTIMES_IMPLEMENTATION before
+ * including this header to create the implementation:
+ *
+ *     #define PRAYERTIMES_IMPLEMENTATION
+ *     #include "prayertimes.h"
+ *
+ * In every other source file that uses the API, include the header normally:
+ *
+ *     #include "prayertimes.h"
+ */
+
 #ifndef PRAYERTIMES_H
 #define PRAYERTIMES_H
 
 #ifdef __cplusplus
 extern "C" {
+#endif
+
+#ifndef PRAYERTIMESDEF
+#ifdef PRAYERTIMES_STATIC
+#define PRAYERTIMESDEF static
+#else
+#define PRAYERTIMESDEF extern
+#endif
 #endif
 
 #define _USE_MATH_DEFINES
@@ -104,41 +153,43 @@ struct PrayerTimes {
  * Format a decimal-hours time (e.g. 5.5) into "HH:MM" in outBuffer.
  * Minutes are rounded up (Kemenag convention).
  */
-void format_time_hm(double timeHours, char *outBuffer, size_t bufSize);
+PRAYERTIMESDEF void format_time_hm(double timeHours, char *outBuffer,
+                                   size_t bufSize);
 
 /**
  * Format a decimal-hours time (e.g. 5.5) into "HH:MM:SS" in outBuffer.
  * Seconds are rounded to nearest; use format_time_hm for the Kemenag
  * round-up-to-the-minute convention.
  */
-void format_time_hms(double timeHours, char *outBuffer, size_t bufSize);
+PRAYERTIMESDEF void format_time_hms(double timeHours, char *outBuffer,
+                                    size_t bufSize);
 
 /**
  * Look up the parameter set for a calculation method.
  * Returns: pointer to a static MethodParams, or NULL if method is out of range.
  */
-const MethodParams *method_params_get(CalcMethod method);
+PRAYERTIMESDEF const MethodParams *method_params_get(CalcMethod method);
 
 /**
  * Map a method key string (e.g. "kemenag") to its CalcMethod.
  * Returns: the matching method, or CALC_CUSTOM if name is NULL or unknown.
  */
-CalcMethod method_from_string(const char *name);
+PRAYERTIMESDEF CalcMethod method_from_string(const char *name);
 
 /**
  * Map a CalcMethod back to its key string (e.g. "kemenag").
  * Returns: the key, or "custom" if the method has no key.
  */
-const char *method_to_string(CalcMethod method);
+PRAYERTIMESDEF const char *method_to_string(CalcMethod method);
 
 /**
  * Compute all prayer times for a date and location using the given method.
  * Returns times as decimal hours in local time; high-latitude fallbacks apply.
  */
-struct PrayerTimes calculate_prayer_times(int year, int month, int day,
-                                          double latitude, double longitude,
-                                          double timezone,
-                                          const MethodParams *params);
+PRAYERTIMESDEF struct PrayerTimes
+calculate_prayer_times(int year, int month, int day, double latitude,
+                       double longitude, double timezone,
+                       const MethodParams *params);
 
 /**
  * Days since 1970-01-01 for a civil (proleptic Gregorian) date, and its
@@ -169,6 +220,12 @@ static inline void mt_civil_from_days(long z, int *y, int *m, int *d) {
   *m = (int)mm;
   *d = (int)dd;
 }
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif
 
 #ifdef PRAYERTIMES_IMPLEMENTATION
 
@@ -233,7 +290,7 @@ static const MethodParams METHOD_TABLE[CALC_COUNT] = {
                      MIDNIGHT_STANDARD, 0},
 };
 
-const MethodParams *method_params_get(CalcMethod method) {
+PRAYERTIMESDEF const MethodParams *method_params_get(CalcMethod method) {
   if (method < 0 || method >= CALC_COUNT)
     return NULL;
   return &METHOD_TABLE[method];
@@ -296,7 +353,7 @@ static int pt__ascii_casecmp(const char *a, const char *b) {
   }
 }
 
-CalcMethod method_from_string(const char *name) {
+PRAYERTIMESDEF CalcMethod method_from_string(const char *name) {
   if (!name)
     return CALC_CUSTOM;
   size_t count = sizeof(METHOD_KEYS) / sizeof(METHOD_KEYS[0]);
@@ -307,7 +364,7 @@ CalcMethod method_from_string(const char *name) {
   return CALC_CUSTOM;
 }
 
-const char *method_to_string(CalcMethod method) {
+PRAYERTIMESDEF const char *method_to_string(CalcMethod method) {
   for (size_t i = 0; i < sizeof(METHOD_KEYS) / sizeof(METHOD_KEYS[0]); i++) {
     if (METHOD_KEYS[i].method == method)
       return METHOD_KEYS[i].key;
@@ -398,7 +455,8 @@ static double hour_angle_safe(double lat, double decl, double angle,
 }
 
 // Format time (double hours) into "HH:MM"
-void format_time_hm(double timeHours, char *outBuffer, size_t bufSize) {
+PRAYERTIMESDEF void format_time_hm(double timeHours, char *outBuffer,
+                                   size_t bufSize) {
   int hours = (int)timeHours;
   double fraction = timeHours - hours;
   int minutes = (int)ceil(fraction * 60.0); // Always round up (Kemenag method)
@@ -414,7 +472,8 @@ void format_time_hm(double timeHours, char *outBuffer, size_t bufSize) {
 }
 
 // Format time into "HH:MM:SS"
-void format_time_hms(double timeHours, char *outBuffer, size_t bufSize) {
+PRAYERTIMESDEF void format_time_hms(double timeHours, char *outBuffer,
+                                    size_t bufSize) {
   int hours = (int)timeHours;
   double fraction = timeHours - hours;
   int totalSeconds = (int)(fraction * 3600.0 + 0.5);
@@ -432,10 +491,10 @@ void format_time_hms(double timeHours, char *outBuffer, size_t bufSize) {
   snprintf(outBuffer, bufSize, "%02d:%02d:%02d", hours, minutes, seconds);
 }
 
-struct PrayerTimes calculate_prayer_times(int year, int month, int day,
-                                          double latitude, double longitude,
-                                          double timezone,
-                                          const MethodParams *params) {
+PRAYERTIMESDEF struct PrayerTimes
+calculate_prayer_times(int year, int month, int day, double latitude,
+                       double longitude, double timezone,
+                       const MethodParams *params) {
   double jd = julian_day(year, month, day);
   double decl, eqt;
   sun_position(jd, &decl, &eqt);
@@ -515,9 +574,3 @@ struct PrayerTimes calculate_prayer_times(int year, int month, int day,
   return times;
 }
 #endif // PRAYERTIMES_IMPLEMENTATION
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif
