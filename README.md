@@ -117,6 +117,16 @@ application policy you define.
 against 24 JPL Horizons epochs spanning 1900–2100: 0.0051° in longitude,
 0.0006° in latitude, 41.9 km in distance. Nutation and aberration are not
 applied, so these are geometric positions referred to the mean equinox of date.
+Calendar conversion is measured separately against a different reference.
+`hijri_umm_al_qura_from_gregorian()` agrees with the official Umm al-Qura
+calendar on 183 of 198 month starts over 2015–2030 (92.4%), checked against the
+`islamic-umalqura` table in ICU/CLDR. A sequential-chain implementation reaches
+191 and was reverted for returning non-monotonic days above 60° latitude; the
+remaining seven are not reachable from the published rule at any precision. The
+measurements, the reverted design, and a one-day reference error that
+invalidated an earlier round of this analysis are recorded in
+[`docs/research/2026-08-01-umm-al-qura-oracle.md`](docs/research/2026-08-01-umm-al-qura-oracle.md).
+
 A calculated result is still not an observation, and nothing here decides
 religious validity.
 
