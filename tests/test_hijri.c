@@ -771,35 +771,18 @@ static const int HIJRI_UMM_OFFICIAL[][5] = {
   {2030, 12, 26, 1452, 9},
 };
 
-/* Current measured score: 183 of 198 official month starts, 92.4%.
+/* Asserted as EQUALITY: the conversion is now a lookup into the official
+ * table (1300-1600 AH), so every in-range fixture row must be exact. The
+ * fixture window 2015-2030 is entirely in range.
  *
- * The bound is asserted as >= so that a genuine improvement raises the score
- * without failing the suite. Two separate ceilings sit above it.
- *
- * 191/198 is reachable. Chaining month starts sequentially -- deciding each
- * month's length from the predicate on the evening of its 29th day, rather
- * than scanning forward from the nearest conjunction -- was measured at
- * 191/198 here. It was implemented, measured, and reverted on 2026-08-01: the
- * chain's answer depends on which tabular month it is seeded from, and the
- * seed is derived from the query date, so two adjacent Gregorian days that
- * straddle a tabular month boundary could return non-monotonic Hijri days
- * (4 occurrences per 730 days at both 60N and 65N; zero at Mecca, Jakarta and
- * London). Trading silent wrong days for +4.1 points at Mecca is a bad trade
- * for a calendar library. Details and the two failed repair attempts are in
- * docs/research/2026-08-01-umm-al-qura-oracle.md.
- *
- * 198/198 is NOT reachable from the published rule at any precision:
- *
- *   - 2024-12-02: the Moon's upper limb sits at -0.0131 deg, 47 arcseconds
- *     below the horizon. Inside the library's own ephemeris error.
- *   - Six months in 2029-2030: conjunction 8-16 h before sunset, Moon 1.0-2.5
- *     deg up, moonset lag 7-15 min. Both documented Umm al-Qura conditions are
- *     comfortably satisfied, yet the published table gives a 30-day month --
- *     the table departs from its own stated rule for these months.
- *
- * So 191 is the ceiling for a rule-based implementation, and the 8-point gap
- * between 183 and 191 is real, unclaimed work -- not a tolerance chosen to
- * make a test pass. */
+ * History, kept because it explains why the table exists at all:
+ *   - astronomical reconstruction (per-date scan): 183/198, 92.4%
+ *   - sequential chain: 191/198, reverted for non-monotonic days at 60-65N
+ *   - 198/198 was proven unreachable from the published rule: for seven
+ *     months in the window the official table departs from its own stated
+ *     criterion (see docs/research/2026-08-01-umm-al-qura-oracle.md)
+ * The table closes the gap by shipping the published facts instead of
+ * recomputing them. */
 static void test_umm_al_qura_official_calendar(void) {
   const size_t total = sizeof(HIJRI_UMM_OFFICIAL) / sizeof(HIJRI_UMM_OFFICIAL[0]);
   size_t index;
@@ -820,16 +803,7 @@ static void test_umm_al_qura_official_calendar(void) {
     }
   }
 
-  /* One constant, used by both the condition and the message, so the two
-   * cannot drift apart when the bound is raised. */
-  const int floor_exact = 183;
-
-  checks++;
-  if (exact < floor_exact) {
-    failures++;
-    printf("FAIL exact/umm_official_exact_month_starts actual=%d expected>=%d\n",
-           exact, floor_exact);
-  }
+  check_int("umm_official_exact_month_starts", exact, 198);
 
   check_int("umm_official_month_identity_consistent", identity_mismatches, 0);
 
@@ -848,6 +822,77 @@ static void test_umm_al_qura_official_calendar(void) {
   }
 }
 
+/* The property whose violation killed the reverted chain design: consecutive
+ * Gregorian days must map to consecutive Hijri days, or to a day-1 rollover
+ * with correct month succession. With the table this is structural; the test
+ * guards against any future implementation reintroducing query-dependence.
+ *
+ * Note: against the astronomical implementation this sweep takes ~11 s
+ * (5844 conversions, each solving sunset/moonset). Against the table it is
+ * effectively instant. Slow is expected only while the test is failing. */
+static void test_umm_al_qura_day_sequence_coherent(void) {
+  double jd = hijri_jd_from_gregorian(2015, 1, 1.0);
+  double jd_end = hijri_jd_from_gregorian(2030, 12, 31.0);
+  int have = 0, py = 0, pm = 0, pd = 0;
+  int incoherent = 0, conversion_failures = 0;
+
+  for (; jd <= jd_end; jd += 1.0) {
+    int gy, gm;
+    double gd_frac;
+    HijriDate h;
+    hijri_gregorian_from_jd(jd, &gy, &gm, &gd_frac);
+    if (!hijri_umm_al_qura_from_gregorian(gy, gm, (int)floor(gd_frac), &h)) {
+      conversion_failures++;
+      have = 0;
+      continue;
+    }
+    if (have) {
+      int ok = (h.year == py && h.month == pm && h.day == pd + 1) ||
+               (h.day == 1 &&
+                ((h.year == py && h.month == pm + 1) ||
+                 (h.year == py + 1 && pm == 12 && h.month == 1)));
+      if (!ok) {
+        incoherent++;
+      }
+    }
+    have = 1;
+    py = h.year;
+    pm = h.month;
+    pd = h.day;
+  }
+  check_int("umm_sequence_incoherent_transitions", incoherent, 0);
+  check_int("umm_sequence_conversion_failures", conversion_failures, 0);
+}
+
+/* Table range: 1 Muharram 1300 (1882-11-12) through 30 Dhu al-Hijjah 1600
+ * (2174-11-25). Inside, the answer is the official table, asserted exactly.
+ * Outside, the function falls back to the astronomical reconstruction, whose
+ * result is asserted only to be a sane date -- the fallback's accuracy is not
+ * this test's subject. */
+static void test_umm_al_qura_table_boundaries(void) {
+  HijriDate h;
+
+  check_int("umm_boundary_first_day_status",
+            hijri_umm_al_qura_from_gregorian(1882, 11, 12, &h), 1);
+  check_date("umm_boundary_first_day", h, 1300, 1, 1);
+
+  {
+    int ok = hijri_umm_al_qura_from_gregorian(1882, 11, 11, &h);
+    check_true("umm_boundary_pre_table_sane",
+               !ok || (h.day >= 1 && h.day <= 30));
+  }
+
+  check_int("umm_boundary_last_day_status",
+            hijri_umm_al_qura_from_gregorian(2174, 11, 25, &h), 1);
+  check_date("umm_boundary_last_day", h, 1600, 12, 30);
+
+  {
+    int ok = hijri_umm_al_qura_from_gregorian(2174, 11, 26, &h);
+    check_true("umm_boundary_post_table_sane",
+               !ok || (h.day >= 1 && h.day <= 30));
+  }
+}
+
 int main(void) {
   test_julian_day();
   test_tabular_calendar();
@@ -859,6 +904,8 @@ int main(void) {
   test_local_evening_date();
   test_umm_al_qura_policy();
   test_umm_al_qura_official_calendar();
+  test_umm_al_qura_day_sequence_coherent();
+  test_umm_al_qura_table_boundaries();
   check_true("all_predicate_enums_represented",
              HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET -
                          HIJRI_PREDICATE_MABIMS_1992 +
