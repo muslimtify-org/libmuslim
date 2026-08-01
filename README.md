@@ -142,13 +142,21 @@ On a platform without a timezone database, keep supplying the offset yourself.
 
 ## Building and tests
 
-Everything compiles standalone. No build system.
+Using the library needs no build system — drop the header in. The `Makefile` is
+for checking the library itself, and needs **GNU make** (`gmake` on the BSDs):
 
 ```sh
-for t in tests/test_prayertimes.c tests/test_hijri.c tests/test_moon_meeus.c tests/test_timezone.c; do
-    gcc -std=c11 -Wall -Wextra -Wpedantic -O2 "$t" -lm -o /tmp/t && /tmp/t || echo "FAIL $t"
-done
+make                              # everything below
+make test                         # build all tests strict-C11 and run them
+make cxx                          # compile every header as C++17
+make baseline                     # regenerate the research CSV and compare
+make check CC=clang CXX=clang++   # same checks, different toolchain
 ```
+
+CI runs `make check` on Linux and macOS with gcc and clang on every push and
+pull request. Each target enforces something the project asserts and which was
+previously checked only by remembering to run a command — `prayertimes.h` once
+shipped broken under its own documented build line because nobody ran it.
 
 `tests/test_moon_meeus.c` validates the lunar series against a vendored JPL
 Horizons fixture, Meeus's own printed worked example, and published ΔT values.
@@ -156,20 +164,11 @@ Horizons fixture, Meeus's own printed worked example, and published ΔT values.
 longitude sweep asserting each observer's own local evening is used.
 
 The research baseline is a generated artifact, committed so changes to it are
-visible in review:
-
-```sh
-gcc -std=c11 -Wall -Wextra -Wpedantic -O2 tests/hijri_research_probe.c -lm -o /tmp/probe
-/tmp/probe > /tmp/baseline.csv
-cmp /tmp/baseline.csv docs/research/hijri-2020-2025-baseline.csv
-```
-
-Any change to the ephemeris, the predicates, or the evening calculation will
-break that `cmp` until the baseline is regenerated, and nothing in `tests/`
-enforces it — so run it after touching those areas. **No value in that CSV is
-reference truth**: it is produced by the library it is used to check, and its
-nine-decimal Julian Days imply precision the underlying accuracy does not
-support.
+visible in review. Any change to the ephemeris, the predicates, or the evening
+calculation moves it, and `make baseline` fails until it is regenerated with
+`make baseline-update`. **No value in that CSV is reference truth**: it is
+produced by the library it is used to check, and its nine-decimal Julian Days
+imply precision the underlying accuracy does not support.
 
 Sources, conventions, and fixture admission decisions are recorded in
 [`docs/research/`](docs/research/).

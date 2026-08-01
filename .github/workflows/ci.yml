@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    # Two compilers and two operating systems. These headers are stb-style and
+    # meant to be dropped into anyone's project, so "builds on the author's
+    # machine" is not the claim being made.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        toolchain: [gcc, clang]
+        include:
+          - toolchain: gcc
+            cc: gcc
+            cxx: g++
+          - toolchain: clang
+            cc: clang
+            cxx: clang++
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.os }} / ${{ matrix.toolchain }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: build and test
+        run: make test cxx examples CC=${{ matrix.cc }} CXX=${{ matrix.cxx }}
+
+      # The committed research CSV prints Julian Days to nine decimals -- about
+      # 0.1 ms -- and libm rounding differs between platforms, so a byte-exact
+      # comparison is only reproducible on the platform that generated it. The
+      # first CI run showed exactly one row of 132 differing in the last digit
+      # between glibc and Apple libm:
+      #
+      #   linux  2460025.178317311 ... -3.308841
+      #   macos  2460025.178317312 ... -3.308842
+      #
+      # That is rounding noise, not a real difference -- the underlying accuracy
+      # is minutes, not microseconds. Pinning the gate to one platform keeps it
+      # meaningful without pretending the CSV is portable. The real fix is to
+      # stop printing precision the data does not have; tracked separately so a
+      # 132-row data change does not ride along in a build-tooling PR.
+      - name: research baseline (glibc only -- see comment)
+        if: matrix.os == 'ubuntu-latest'
+        run: make baseline CC=${{ matrix.cc }} CXX=${{ matrix.cxx }}
