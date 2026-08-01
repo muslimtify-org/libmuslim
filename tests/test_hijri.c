@@ -926,7 +926,13 @@ static void test_umm_al_qura_table_boundaries(void) {
  * and the same shape of convention hijri_find_sunset uses for the Sun.
  * Under the old centre-based moonset the limb reads +1 semidiameter
  * (~0.26-0.28 deg) at the reported moonset, which is what this test
- * rejects. */
+ * rejects.
+ *
+ * Mutation-tested on 2026-08-01: reverting the solver to the centre
+ * convention fails all three checks (jakarta actual=0.275054192314,
+ * mecca actual=0.270914380280, london actual=0.262178151012); grafting
+ * the superseded dip credit onto the predicate fails wujud_upper_limb_zero
+ * (actual=1 expected=0). Reverting either restores 469 checks, 0 failures. */
 static void test_moonset_crossing_convention(void) {
   static const struct {
     double lat, lon, elev;
