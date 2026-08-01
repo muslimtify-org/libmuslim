@@ -119,3 +119,57 @@ Muhammadiyah's announced calendar dates — those belong to the Phase 1 plan
 and its fixtures, with the oracle-validation rule from
 [2026-08-01-umm-al-qura-oracle.md](2026-08-01-umm-al-qura-oracle.md)
 applied before any reference is trusted.
+
+## Correction (same day): the dip cancels, and the library already matched
+
+The comparison table above concludes the library is "~17′ stricter" for
+omitting the Dip term. That conclusion is **wrong**, and the error is
+instructive: it compared the altitude formula while ignoring that the
+Pedoman also computes *sunset itself* with dip (p. 88 region: sunset uses
+h = −(s.d. + R′ + Dip)). An elevated observer's sunset is later; in that
+extra minute or two the Moon descends by almost exactly the dip credit. The
+two effects cancel to ~1′ in general.
+
+Verified against the book's own worked example (2008-09-29, Yogyakarta):
+
+```
+book h′b (dip on both sides)                    = −52.1′
+library upper-limb quantity (dip on neither)    = −52.5′   delta 0.4′
+dip on the altitude side only (rejected design) = −35.3′   delta 16.7′
+```
+
+So the library's existing `upper_limb > 0` predicate is the faithful
+implementation of the Pedoman, and the "fix" the original conclusion implied
+would have introduced a ~17′ error in Muhammadiyah's name. The worked
+example is now a committed fixture (`test_pedoman_worked_example`,
+tolerance ±3′), which refutes the rejected design as well as pinning the
+faithful one.
+
+## Measured impact of the moonset-convention alignment
+
+The one real change: `hijri_find_moonset` now crosses where the Moon's
+upper limb sits on the apparent horizon (previously the Moon's centre),
+matching the Sun's convention and the upper-limb quantity. Moonset moves
+~1 minute later. Measured over all 5,844 evenings per city, 2015–2030:
+
+```
+                    conj+moonset true      lag>=5min true
+                    before    after        before    after
+  Yogyakarta 90 m    2903  ->  2907         5633  ->  5629
+  Jakarta     8 m    2900  ->  2902         5633  ->  5628
+  Mecca     240 m    2898  ->  2899         5627  ->  5627
+```
+
+On crescent-relevant evenings (Moon age 0–48 h; 373–379 per city) the two
+encodings of the criterion disagreed **zero** times before the change and
+zero after — the ~0.25° inconsistency band existed but was never occupied
+in-window. The earlier month-level disagreements that motivated calling
+this "the one known bug" were measured on decision evenings anchored by the
+misread van Gent table and are unreliable. The alignment is preventive
+consistency with a provable invariant (`test_moonset_crossing_convention`,
+`test_crescent_equivalence_property`), not an observed-bug repair.
+
+The small lag-count decreases are a window-edge effect: a later moonset can
+change which moonset event falls inside the evening's search window.
+
+Two further mechanical downstreams observed in the regenerated research baseline: the Yallop q and Odeh V scores move by ~2e-4 because both evaluate at best time = sunset + 4/9 lag (no zone classification changed), and one no-crossing eclipse-day fallback classification (2024-04-08, Bandar Seri Begawan) flips NEVER_RISES to NEVER_SETS because the mean-altitude tie-break threshold moved by one semidiameter.
