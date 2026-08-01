@@ -920,6 +920,137 @@ static void test_umm_al_qura_table_boundaries(void) {
   }
 }
 
+/* One Moon-horizon convention: at the instant hijri_find_moonset reports,
+ * the Moon's upper limb must sit on the apparent horizon -- the same
+ * definition under which moon_upper_limb_apparent_altitude_deg reads zero,
+ * and the same shape of convention hijri_find_sunset uses for the Sun.
+ * Under the old centre-based moonset the limb reads +1 semidiameter
+ * (~0.26-0.28 deg) at the reported moonset, which is what this test
+ * rejects. */
+static void test_moonset_crossing_convention(void) {
+  static const struct {
+    double lat, lon, elev;
+    int y, m, d;
+    const char *name;
+  } cases[] = {
+      {-6.2088, 106.8456, 8.0, 2025, 3, 1, "jakarta"},
+      {21.4225, 39.8262, 240.0, 2025, 6, 25, "mecca"},
+      {51.5074, -0.1278, 11.0, 2026, 2, 18, "london"},
+  };
+  size_t index;
+  char name[96];
+
+  for (index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {
+    HijriLocation loc = {cases[index].lat, cases[index].lon,
+                         cases[index].elev, cases[index].name};
+    HijriEveningParameters p = hijri_compute_evening_parameters(
+        cases[index].y, cases[index].m, cases[index].d, &loc);
+    if (p.moonset_status != HIJRI_EVENT_OK) {
+      continue;
+    }
+    {
+      double jd_tt = hijri_jd_tt_from_ut(p.jd_moonset_ut);
+      HijriMoonPosition moon = hijri_moon_position(jd_tt);
+      double sd = 0.2725076 * moon.horizontal_parallax_deg;
+      double ra_topo, dec_topo, center, limb;
+      hijri_moon_topocentric(&moon, p.jd_moonset_ut, loc.latitude_deg,
+                             loc.longitude_deg, loc.elevation_m, &ra_topo,
+                             &dec_topo);
+      center = hijri__altitude_deg(ra_topo, dec_topo, p.jd_moonset_ut, &loc);
+      limb = center + sd + HIJRI__REFRACTION_AT_HORIZON_DEG;
+      snprintf(name, sizeof(name), "moonset_crossing_%s", cases[index].name);
+      check_close(name, limb, 0.0, 0.01);
+    }
+  }
+}
+
+/* On crescent-relevant evenings, "the Moon sets after the Sun" and "the
+ * Moon's upper limb is above the horizon at sunset" are the same claim.
+ * Scoped to Moon age 0-48 h with sunset and moonset available: on gibbous
+ * evenings the day's found moonset is the PREVIOUS night's Moon setting
+ * before dawn, so the ordering comparison is legitimately unrelated to the
+ * sunset-time altitude there (measured: 2738 of 5844 evenings), and an
+ * unscoped test would be asserting noise.
+ *
+ * Runtime note: ~35-40 s (17,532 evenings x full parameter computation,
+ * three cities, 2015-2030). Deliberate: this is the invariant that
+ * distinguishes the two encodings of the Wujudul Hilal criterion, and the
+ * count floor below keeps the age-window scoping from hollowing it. */
+static void test_crescent_equivalence_property(void) {
+  static const struct {
+    double lat, lon, elev;
+    const char *name;
+  } cities[] = {
+      {-(7.0 + 48.0 / 60.0), 110.0 + 21.0 / 60.0, 90.0, "yogyakarta"},
+      {-6.2088, 106.8456, 8.0, "jakarta"},
+      {21.4225, 39.8262, 240.0, "mecca"},
+  };
+  size_t index;
+  char name[96];
+
+  for (index = 0; index < sizeof(cities) / sizeof(cities[0]); index++) {
+    HijriLocation loc = {cities[index].lat, cities[index].lon,
+                         cities[index].elev, cities[index].name};
+    double jd = hijri_jd_from_gregorian(2015, 1, 1.0);
+    double jd_end = hijri_jd_from_gregorian(2030, 12, 31.0);
+    int crescent = 0, mismatches = 0, guard_band = 0;
+
+    for (; jd <= jd_end; jd += 1.0) {
+      int gy, gm;
+      double gd_frac;
+      HijriEveningParameters p;
+      hijri_gregorian_from_jd(jd, &gy, &gm, &gd_frac);
+      p = hijri_compute_evening_parameters(gy, gm, (int)floor(gd_frac), &loc);
+      if (p.sunset_status != HIJRI_EVENT_OK ||
+          p.moonset_status != HIJRI_EVENT_OK) {
+        continue;
+      }
+      if (p.moon_age_hours < 0.0 || p.moon_age_hours > 48.0) {
+        continue;
+      }
+      crescent++;
+      if (fabs(p.moon_upper_limb_apparent_altitude_deg) < 0.02) {
+        guard_band++;
+      } else if (p.moonset_after_sunset !=
+                 (p.moon_upper_limb_apparent_altitude_deg > 0.0)) {
+        mismatches++;
+      }
+    }
+    snprintf(name, sizeof(name), "equiv_crescent_count_%s",
+             cities[index].name);
+    check_true(name, crescent >= 350);
+    snprintf(name, sizeof(name), "equiv_mismatches_%s", cities[index].name);
+    check_int(name, mismatches, 0);
+    snprintf(name, sizeof(name), "equiv_guard_band_%s", cities[index].name);
+    check_true(name, guard_band <= 2);
+  }
+}
+
+/* Pedoman Hisab Muhammadiyah (Majelis Tarjih dan Tajdid, 2009), pp. 88-95,
+ * worked example: 29 Ramadan 1429 H = 2008-09-29, Yogyakarta (phi -7d48',
+ * lambda 110d21', elevation 90 m), printed result h'b = -0d52'03.82".
+ *
+ * The library's upper-limb quantity omits the book's +Dip credit AND the
+ * book's dip-delayed sunset; the two dip effects cancel to ~1', so the
+ * library reproduces the printed value directly (measured delta 0.4').
+ * The +-3' bound is wide enough for the ephemeris floor and the book's
+ * rounding, and tight enough to refute the superseded design that added
+ * the dip credit on the altitude side only (that lands 16.7' off).
+ * See docs/research/2026-08-01-wujudul-hilal-convention.md. */
+static void test_pedoman_worked_example(void) {
+  HijriLocation yogyakarta = {-(7.0 + 48.0 / 60.0), 110.0 + 21.0 / 60.0,
+                              90.0, "Yogyakarta"};
+  HijriEveningParameters p =
+      hijri_compute_evening_parameters(2008, 9, 29, &yogyakarta);
+  double book_hb = -(52.0 / 60.0 + 3.82 / 3600.0);
+
+  check_int("pedoman_sunset_available", p.sunset_status, HIJRI_EVENT_OK);
+  check_close("pedoman_upper_limb_matches_book",
+              p.moon_upper_limb_apparent_altitude_deg, book_hb, 3.0 / 60.0);
+  check_int("pedoman_conjunction_before_sunset", p.conjunction_before_sunset,
+            1);
+}
+
 int main(void) {
   test_julian_day();
   test_tabular_calendar();
@@ -933,6 +1064,9 @@ int main(void) {
   test_umm_al_qura_official_calendar();
   test_umm_al_qura_day_sequence_coherent();
   test_umm_al_qura_table_boundaries();
+  test_moonset_crossing_convention();
+  test_crescent_equivalence_property();
+  test_pedoman_worked_example();
   check_true("all_predicate_enums_represented",
              HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET -
                          HIJRI_PREDICATE_MABIMS_1992 +
