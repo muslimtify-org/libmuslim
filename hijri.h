@@ -834,7 +834,13 @@ static double hijri__moon_upper_limb_altitude(double jd_ut,
   double jd_tt = hijri_jd_tt_from_ut(jd_ut);
   HijriMoonPosition geo = hijri_moon_position(jd_tt);
   double sd = 0.2725076 * geo.horizontal_parallax_deg;
-  return hijri_moon_altitude(jd_ut, loc) + sd +
+  double ra_topo, dec_topo;
+  /* Same computation hijri_moon_altitude() performs, reusing the position
+   * already evaluated for the semidiameter -- one lunar-series evaluation
+   * per sample instead of two. */
+  hijri_moon_topocentric(&geo, jd_ut, loc->latitude_deg, loc->longitude_deg,
+                         loc->elevation_m, &ra_topo, &dec_topo);
+  return hijri__altitude_deg(ra_topo, dec_topo, jd_ut, loc) + sd +
          HIJRI__REFRACTION_AT_HORIZON_DEG;
 }
 
