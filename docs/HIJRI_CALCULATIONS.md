@@ -181,6 +181,15 @@ elongation requirement at all*, it's a pure geometry test ("is the
 young moon born, and does it linger above the horizon after the sun
 goes down"), not an actual visibility prediction.
 
+> **Implementation note:** since 2026-08 the library's
+> `hijri_umm_al_qura_from_gregorian()` does not evaluate this criterion at
+> all for dates in 1300–1600 AH — it reads the official published table
+> (embedded, ~600 bytes, derived from ICU/CLDR), because the published
+> calendar deviates from its own stated criterion for some months and is
+> therefore not exactly computable. The criterion machinery described here
+> remains available through the predicate API and is used as the fallback
+> outside the table's range.
+
 **MABIMS (Indonesia / Malaysia / Brunei / Singapore)**
 
 Pre-2021:

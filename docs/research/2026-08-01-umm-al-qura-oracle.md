@@ -171,3 +171,53 @@ The MABIMS (Indonesia, Malaysia, Singapore) and Diyanet comparisons produced on
 2026-08-01 were computed against the misread van Gent extraction. No claim
 about them should be repeated until they are re-measured against a validated
 reference.
+
+## Resolution (same day): ship the table
+
+The cycle above — reconstruct, measure, miss — ended by dropping the premise.
+The Umm al-Qura calendar is published by fiat; the correct implementation is
+the published table, not a recomputation of it.
+
+**Licensing, resolved.** The earlier rejection of an embedded table was based
+on R.H. van Gent's compilation being the only source. ICU embeds the same
+table (`UMALQURA_MONTHLENGTH` in `icu4c/source/i18n/islamcal.cpp`, years
+1300-1600 AH) under the Unicode license, and the data is regenerable from the
+validated oracle without copying ICU source at all:
+
+```sh
+node -e '
+const f=new Intl.DateTimeFormat("en-u-ca-islamic-umalqura",{year:"numeric",month:"numeric",day:"numeric",timeZone:"UTC"});
+const g=(dt,t)=>+f.formatToParts(dt).find(x=>x.type===t).value;
+let starts=[];
+for(let t=Date.UTC(1882,10,10); t<=Date.UTC(2175,5,1); t+=86400000){
+  const dt=new Date(t);
+  if(g(dt,"day")===1) starts.push({y:g(dt,"year"),m:g(dt,"month"),t});
+}
+const len={};
+for(let i=0;i+1<starts.length;i++){
+  const a=starts[i]; (len[a.y]=len[a.y]||{})[a.m]=(starts[i+1].t-a.t)/86400000;
+}
+for(let y=1300;y<=1600;y++){
+  const L=len[y]; let v=0;
+  for(let m=1;m<=12;m++) if(L[m]===30) v|=1<<(11-(m-1));
+  console.log(y, "0x"+v.toString(16).toUpperCase().padStart(4,"0"));
+}
+'
+```
+
+**Verification performed 2026-08-01:**
+
+- All 301 derived values compared programmatically against ICU main's
+  `islamcal.cpp`: **301/301 identical, zero mismatches** (an earlier automated
+  quote of ICU's tail values was wrong — a `};` inside a source comment had
+  truncated the extraction; parsing with comments stripped resolved it).
+- Anchor: 1 Muharram 1300 = 1882-11-12 = JD 2408761.5 at 0h UT.
+- Total span: 106,665 days; the table's last day, 30 Dhu al-Hijjah 1600, is
+  2174-11-25.
+
+**Result:** `hijri_umm_al_qura_from_gregorian()` is exact (198/198 fixture,
+asserted as equality) inside 1300-1600 AH, falls back to the astronomical
+reconstruction outside, and the conversion is a pure integer table walk —
+coherent at every latitude by construction, no astronomy involved. The
+mutation test demonstrates a single flipped bit in one table entry fails the
+suite.
