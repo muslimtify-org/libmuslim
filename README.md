@@ -132,6 +132,15 @@ capped — including months where the official table departs from its own
 stated rule — are recorded in
 [`docs/research/2026-08-01-umm-al-qura-oracle.md`](docs/research/2026-08-01-umm-al-qura-oracle.md).
 
+Against Indonesia's official calendar (Kemenag, 37 month starts 2024–2026,
+validated via seven independent government announcements), the MABIMS 2021
+predicate at the westernmost point is never one day early and supports 33 of
+37 official starts — measured, fixture-enforced, and deliberately not
+claimed as exact reproduction: the official calendar includes months the
+criterion alone does not produce. Details and the geocentric-elongation
+convention finding are in
+[`docs/research/2026-08-01-kemenag-reference.md`](docs/research/2026-08-01-kemenag-reference.md).
+
 A calculated result is still not an observation, and nothing here decides
 religious validity.
 

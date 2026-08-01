@@ -71,7 +71,7 @@ anywhere-in-Indonesia rule.
 
 ```
   start        alt      topo elong   geo elong
-  2025-03-01   +4.51      +5.40        +6.40-   (Ramadan 1446; itsbat-confirmed)
+  2025-03-01   +4.51      +5.40        +6.3952   (Ramadan 1446; itsbat-confirmed)
   2025-12-21   +2.19      +5.97        +6.47    (Rajab 1447)
   2026-06-16   +3.82      +6.17        +6.97    (Muharram 1448; Kemenag-announced)
   2026-12-10   +2.09      +6.02        +6.50    (Rajab 1448)
@@ -81,7 +81,7 @@ Findings, stated carefully:
 
 - All four fail the **topocentric** elongation threshold; scoring with
   **geocentric** elongation instead supports one more month (34/37) and puts
-  1 Ramadan 1446 *exactly at* the 6.4° boundary (6.3996°) — within the
+  1 Ramadan 1446 just below the 6.4° boundary (6.3952°, 0.005° short) — within the
   library's ephemeris error of the threshold. The
   topocentric-vs-geocentric convention question for Kemenag's own
   implementation remains open and now has a measurable consequence.
@@ -114,3 +114,38 @@ Findings, stated carefully:
 - Extend the table back to 2023 (first year the new criterion was in force)
   when a validated source for it is found (the 2023 transcription page is no
   longer online).
+
+## Convention pinned by the itsbat announcement (added same day)
+
+For the 28 February 2025 itsbat (1 Ramadan 1446), the official announcement
+stated the hilal across Indonesia at altitude 3°5.91′–4°40.96′ and
+elongation 4°47.03′–6°24.14′. The maxima occur at the westernmost point.
+Compared with this library at Sabang that evening:
+
+```
+                        announced max      library @ Sabang     delta
+  elongation            6°24.14′ = 6.4023°  geocentric  6.3952°  0.43′
+                                            topocentric 5.4027°  ~60′
+  altitude              4°40.96′ = 4.683°   geometric   4.507°   ~10.6′
+```
+
+Two conclusions:
+
+- **Kemenag's operational elongation is geocentric.** The announced maximum
+  matches the geocentric value to 0.43 arcminutes while the topocentric
+  value is a full degree away. This resolves, for Kemenag's practice, the
+  topocentric-vs-geocentric question that
+  `docs/research/`'s MABIMS notes have carried as open — while
+  T. Djamaluddin's published statement ("elongasi toposentrik") remains the
+  basis for `HIJRI_PREDICATE_MABIMS_2021` as shipped. The two authorities'
+  conventions genuinely differ; the library documents both rather than
+  silently picking one.
+- **Kemenag's altitude is likely mar'i (apparent).** The ~10.6′ excess over
+  the geometric value is consistent with refraction at 4.5° altitude
+  (~10–11′). Unconfirmed by a computation manual; recorded as the open item
+  blocking any future Kemenag-operational predicate.
+
+The comparison also corroborates the library's ephemeris against the
+government's own hisab team at the sub-arcminute level on the quantity that
+decides months. `test_kemenag_official_calendar` keeps the elongation pin as
+a living assertion.
