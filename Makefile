@@ -98,6 +98,12 @@ examples: $(EXAMPLE_BINS)
 # docs/research/hijri-2020-2025-baseline.csv is generated and committed so that
 # changes to it show up in review. Any change to the ephemeris, the predicates,
 # or the evening calculation moves it. This is the check that catches that.
+#
+# PLATFORM-DEPENDENT. The CSV prints Julian Days to nine decimals (~0.1 ms) and
+# libm rounding differs between implementations, so cmp only succeeds on the
+# platform that generated the committed file -- currently glibc. CI runs this
+# target on Linux only. Running it elsewhere will report a one-digit difference
+# that is rounding noise, not a regression.
 baseline: $(BUILD)/tests/hijri_research_probe
 	@$(BUILD)/tests/hijri_research_probe > $(BUILD)/baseline.csv
 	@if cmp -s $(BUILD)/baseline.csv docs/research/hijri-2020-2025-baseline.csv; then \
