@@ -823,26 +823,47 @@ HIJRIDEF HijriEventStatus hijri_find_sunset(double jd_local_midnight_ut,
   return (mean_alt > target) ? HIJRI_EVENT_NEVER_SETS : HIJRI_EVENT_NEVER_RISES;
 }
 
+/* Apparent altitude of the Moon's UPPER LIMB: topocentric centre altitude
+ * plus semidiameter plus horizon refraction. Zero here is the same instant
+ * at which moon_upper_limb_apparent_altitude_deg reads zero, and the same
+ * convention hijri_find_sunset uses for the Sun -- one horizon definition
+ * across the header, so "the Moon has set" and "the Moon's upper limb is
+ * below the horizon" cannot disagree. */
+static double hijri__moon_upper_limb_altitude(double jd_ut,
+                                              const HijriLocation *loc) {
+  double jd_tt = hijri_jd_tt_from_ut(jd_ut);
+  HijriMoonPosition geo = hijri_moon_position(jd_tt);
+  double sd = 0.2725076 * geo.horizontal_parallax_deg;
+  double ra_topo, dec_topo;
+  /* Same computation hijri_moon_altitude() performs, reusing the position
+   * already evaluated for the semidiameter -- one lunar-series evaluation
+   * per sample instead of two. */
+  hijri_moon_topocentric(&geo, jd_ut, loc->latitude_deg, loc->longitude_deg,
+                         loc->elevation_m, &ra_topo, &dec_topo);
+  return hijri__altitude_deg(ra_topo, dec_topo, jd_ut, loc) + sd +
+         HIJRI__REFRACTION_AT_HORIZON_DEG;
+}
+
 HIJRIDEF HijriEventStatus hijri_find_moonset(double jd_after,
                                              const HijriLocation *loc,
                                              double *result_jd) {
-  double target = -HIJRI__REFRACTION_AT_HORIZON_DEG;
+  double target = 0.0;
   double step = 1.0 / 24.0;
   double prev_jd = jd_after;
-  double prev_alt = hijri_moon_altitude(prev_jd, loc) - target;
+  double prev_alt = hijri__moon_upper_limb_altitude(prev_jd, loc) - target;
   for (int h = 1; h <= 24; h++) {
     double jd = jd_after + h * step;
-    double alt = hijri_moon_altitude(jd, loc) - target;
+    double alt = hijri__moon_upper_limb_altitude(jd, loc) - target;
     if (prev_alt > 0 && alt <= 0) {
-      if (hijri__bisect_crossing(hijri_moon_altitude, loc, prev_jd, jd, target,
-                                 result_jd)) {
+      if (hijri__bisect_crossing(hijri__moon_upper_limb_altitude, loc, prev_jd,
+                                 jd, target, result_jd)) {
         return HIJRI_EVENT_OK;
       }
     }
     prev_jd = jd;
     prev_alt = alt;
   }
-  double mean_alt = hijri_moon_altitude(jd_after + 0.5, loc);
+  double mean_alt = hijri__moon_upper_limb_altitude(jd_after + 0.5, loc);
   return (mean_alt > target) ? HIJRI_EVENT_NEVER_SETS : HIJRI_EVENT_NEVER_RISES;
 }
 
@@ -1068,6 +1089,16 @@ hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
   case HIJRI_PREDICATE_MABIMS_2021:
     return p->moon_center_geometric_altitude_deg >= 3.0 &&
            p->topocentric_elongation_deg >= 6.4;
+  /* Pedoman Hisab Muhammadiyah (Majelis Tarjih dan Tajdid, 2009), pp.
+   * 88-95: h'b = (hb - Pb) + R'b + SDb + Dip, upper limb, apparent,
+   * topocentric; the month begins when ijtimak precedes sunset and
+   * h'b > 0. No dip term appears below deliberately: the book credits the
+   * altitude with +Dip but also computes SUNSET with dip (later for an
+   * elevated observer), and the two effects cancel to ~1 arcminute --
+   * verified against the book's own worked example, which this library
+   * reproduces to 0.4' (see tests/test_hijri.c and
+   * docs/research/2026-08-01-wujudul-hilal-convention.md). Adding dip on
+   * the altitude side alone would deviate from the source by ~17'. */
   case HIJRI_PREDICATE_WUJUDUL_HILAL:
     return p->conjunction_before_sunset &&
            p->moon_upper_limb_apparent_altitude_deg > 0.0;
