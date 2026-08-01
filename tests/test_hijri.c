@@ -771,8 +771,24 @@ static const int HIJRI_UMM_OFFICIAL[][5] = {
   {2030, 12, 26, 1452, 9},
 };
 
-/* The library cannot reach 198/198 from the rule alone, and the bound below is
- * a floor rather than an equality for two measured reasons:
+/* Current measured score: 183 of 198 official month starts, 92.4%.
+ *
+ * The bound is asserted as >= so that a genuine improvement raises the score
+ * without failing the suite. Two separate ceilings sit above it.
+ *
+ * 191/198 is reachable. Chaining month starts sequentially -- deciding each
+ * month's length from the predicate on the evening of its 29th day, rather
+ * than scanning forward from the nearest conjunction -- was measured at
+ * 191/198 here. It was implemented, measured, and reverted on 2026-08-01: the
+ * chain's answer depends on which tabular month it is seeded from, and the
+ * seed is derived from the query date, so two adjacent Gregorian days that
+ * straddle a tabular month boundary could return non-monotonic Hijri days
+ * (4 occurrences per 730 days at both 60N and 65N; zero at Mecca, Jakarta and
+ * London). Trading silent wrong days for +4.1 points at Mecca is a bad trade
+ * for a calendar library. Details and the two failed repair attempts are in
+ * docs/research/2026-08-01-umm-al-qura-oracle.md.
+ *
+ * 198/198 is NOT reachable from the published rule at any precision:
  *
  *   - 2024-12-02: the Moon's upper limb sits at -0.0131 deg, 47 arcseconds
  *     below the horizon. Inside the library's own ephemeris error.
@@ -781,9 +797,9 @@ static const int HIJRI_UMM_OFFICIAL[][5] = {
  *     comfortably satisfied, yet the published table gives a 30-day month --
  *     the table departs from its own stated rule for these months.
  *
- * 191/198 is therefore the measured ceiling for a rule-based implementation,
- * not a tolerance chosen to make a test pass. It is asserted as >= so that a
- * genuine ephemeris improvement raises the score without failing the suite. */
+ * So 191 is the ceiling for a rule-based implementation, and the 8-point gap
+ * between 183 and 191 is real, unclaimed work -- not a tolerance chosen to
+ * make a test pass. */
 static void test_umm_al_qura_official_calendar(void) {
   const size_t total = sizeof(HIJRI_UMM_OFFICIAL) / sizeof(HIJRI_UMM_OFFICIAL[0]);
   size_t index;
@@ -804,11 +820,15 @@ static void test_umm_al_qura_official_calendar(void) {
     }
   }
 
+  /* One constant, used by both the condition and the message, so the two
+   * cannot drift apart when the bound is raised. */
+  const int floor_exact = 183;
+
   checks++;
-  if (exact < 191) {
+  if (exact < floor_exact) {
     failures++;
-    printf("FAIL exact/umm_official_exact_month_starts actual=%d expected>=191\n",
-           exact);
+    printf("FAIL exact/umm_official_exact_month_starts actual=%d expected>=%d\n",
+           exact, floor_exact);
   }
 
   check_int("umm_official_month_identity_consistent", identity_mismatches, 0);
