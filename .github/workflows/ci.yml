@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    # Two compilers and two operating systems. These headers are stb-style and
+    # meant to be dropped into anyone's project, so "builds on the author's
+    # machine" is not the claim being made.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        toolchain: [gcc, clang]
+        include:
+          - toolchain: gcc
+            cc: gcc
+            cxx: g++
+          - toolchain: clang
+            cc: clang
+            cxx: clang++
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.os }} / ${{ matrix.toolchain }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: make check
+        run: make check CC=${{ matrix.cc }} CXX=${{ matrix.cxx }}
