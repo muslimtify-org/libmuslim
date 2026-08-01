@@ -782,7 +782,14 @@ static const int HIJRI_UMM_OFFICIAL[][5] = {
  *     months in the window the official table departs from its own stated
  *     criterion (see docs/research/2026-08-01-umm-al-qura-oracle.md)
  * The table closes the gap by shipping the published facts instead of
- * recomputing them. */
+ * recomputing them.
+ *
+ * Mutation-tested on 2026-08-01: flipping one bit of the 1447 table entry
+ * (0x0BAA -> 0x0BAB) fails umm_official_exact_month_starts (actual=141
+ * expected=198), umm_official_muharram_1448 (actual=1447-12-30
+ * expected=1448-01-01), and umm_boundary_last_day (actual=1600-12-29
+ * expected=1600-12-30); reverting restores 452 checks, 0 failures. The
+ * fixture therefore detects a single-day error in a single table entry. */
 static void test_umm_al_qura_official_calendar(void) {
   const size_t total = sizeof(HIJRI_UMM_OFFICIAL) / sizeof(HIJRI_UMM_OFFICIAL[0]);
   size_t index;
