@@ -143,7 +143,7 @@ On a platform without a timezone database, keep supplying the offset yourself.
 ## Building and tests
 
 Using the library needs no build system — drop the header in. The `Makefile` is
-for checking the library itself:
+for checking the library itself, and needs **GNU make** (`gmake` on the BSDs):
 
 ```sh
 make                              # everything below

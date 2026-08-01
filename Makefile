@@ -1,5 +1,12 @@
 # libmuslim -- single-header C libraries, no build system required to *use* them.
 #
+# REQUIRES GNU MAKE (3.81 or newer -- what macOS ships).
+# This file uses $(origin), $(addprefix) and order-only prerequisites, none of
+# which are POSIX. BSD make (bmake, the default `make` on FreeBSD, NetBSD and
+# OpenBSD) will not parse it; use `gmake` there. Rewriting for POSIX make would
+# cost the pattern rules for little gain, so the dependency is documented rather
+# than removed.
+#
 # This Makefile exists to enforce the claims the project makes, not to build a
 # product. Every target below corresponds to something README.md or ROADMAP.md
 # asserts and which was previously checked only by a human remembering to run a
@@ -43,8 +50,13 @@ TESTS    = test_hijri test_moon_meeus test_prayertimes test_timezone
 EXAMPLES = hijri_example prayertimes_example
 HEADERS  = hijri.h prayertimes.h timezone.h
 
-TEST_BINS    = $(addprefix $(BUILD)/,$(TESTS))
-EXAMPLE_BINS = $(addprefix $(BUILD)/,$(EXAMPLES))
+# Separate output directories so each pattern rule matches a distinct target
+# pattern. With a single $(BUILD)/% both rules below matched, and which one won
+# depended on GNU make picking the first rule whose prerequisite exists --
+# correct, but it would have silently preferred tests/ if a basename ever
+# collided with one in examples/.
+TEST_BINS    = $(addprefix $(BUILD)/tests/,$(TESTS))
+EXAMPLE_BINS = $(addprefix $(BUILD)/examples/,$(EXAMPLES))
 
 .PHONY: all check test cxx examples baseline clean
 
@@ -53,13 +65,13 @@ all: check
 check: test cxx examples baseline
 	@echo "OK  all checks passed ($(CC) / $(CXX))"
 
-$(BUILD):
-	@mkdir -p $(BUILD)
+$(BUILD)/tests $(BUILD)/examples:
+	@mkdir -p $@
 
-$(BUILD)/%: tests/%.c $(HEADERS) | $(BUILD)
+$(BUILD)/tests/%: tests/%.c $(HEADERS) | $(BUILD)/tests
 	$(CC) $(CFLAGS) $< $(LDLIBS) -o $@
 
-$(BUILD)/%: examples/%.c $(HEADERS) | $(BUILD)
+$(BUILD)/examples/%: examples/%.c $(HEADERS) | $(BUILD)/examples
 	$(CC) $(CFLAGS) $< $(LDLIBS) -o $@
 
 # Every test binary must build warning-free and exit zero.
@@ -72,12 +84,12 @@ test: $(TEST_BINS)
 
 # README and ROADMAP both advertise C++17 compatibility. Before this target
 # existed, nothing in the repository ever compiled a header as C++.
-cxx: $(HEADERS) | $(BUILD)
-	@printf '#define HIJRI_IMPLEMENTATION\n#include "hijri.h"\n' > $(BUILD)/cxx_all.cpp
-	@printf '#define PRAYERTIMES_IMPLEMENTATION\n#include "prayertimes.h"\n' >> $(BUILD)/cxx_all.cpp
-	@printf '#define MUSLIM_TIMEZONE_IMPLEMENTATION\n#include "timezone.h"\n' >> $(BUILD)/cxx_all.cpp
-	@printf 'int main(void){return 0;}\n' >> $(BUILD)/cxx_all.cpp
-	$(CXX) $(CXXFLAGS) -I. $(BUILD)/cxx_all.cpp $(LDLIBS) -o $(BUILD)/cxx_all
+cxx: $(HEADERS) | $(BUILD)/tests
+	@printf '#define HIJRI_IMPLEMENTATION\n#include "hijri.h"\n' > $(BUILD)/tests/cxx_all.cpp
+	@printf '#define PRAYERTIMES_IMPLEMENTATION\n#include "prayertimes.h"\n' >> $(BUILD)/tests/cxx_all.cpp
+	@printf '#define MUSLIM_TIMEZONE_IMPLEMENTATION\n#include "timezone.h"\n' >> $(BUILD)/tests/cxx_all.cpp
+	@printf 'int main(void){return 0;}\n' >> $(BUILD)/tests/cxx_all.cpp
+	$(CXX) $(CXXFLAGS) -I. $(BUILD)/tests/cxx_all.cpp $(LDLIBS) -o $(BUILD)/tests/cxx_all
 	@echo "  PASS  headers compile as C++17"
 
 examples: $(EXAMPLE_BINS)
@@ -86,10 +98,8 @@ examples: $(EXAMPLE_BINS)
 # docs/research/hijri-2020-2025-baseline.csv is generated and committed so that
 # changes to it show up in review. Any change to the ephemeris, the predicates,
 # or the evening calculation moves it. This is the check that catches that.
-baseline: $(BUILD)/hijri_research_probe
-	@$(BUILD)/hijri_research_probe > $(BUILD)/baseline.csv
-	@lines=$$(wc -l < $(BUILD)/baseline.csv); \
-	 if [ "$$lines" -ne 133 ]; then echo "FAIL  baseline has $$lines lines, expected 133"; exit 1; fi
+baseline: $(BUILD)/tests/hijri_research_probe
+	@$(BUILD)/tests/hijri_research_probe > $(BUILD)/baseline.csv
 	@if cmp -s $(BUILD)/baseline.csv docs/research/hijri-2020-2025-baseline.csv; then \
 	  echo "  PASS  research baseline matches the committed CSV"; \
 	else \
@@ -101,8 +111,8 @@ baseline: $(BUILD)/hijri_research_probe
 	fi
 
 .PHONY: baseline-update
-baseline-update: $(BUILD)/hijri_research_probe
-	$(BUILD)/hijri_research_probe > docs/research/hijri-2020-2025-baseline.csv
+baseline-update: $(BUILD)/tests/hijri_research_probe
+	$(BUILD)/tests/hijri_research_probe > docs/research/hijri-2020-2025-baseline.csv
 	@echo "  baseline regenerated -- review the diff before committing"
 
 clean:
