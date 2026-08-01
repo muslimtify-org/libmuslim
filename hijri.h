@@ -1338,68 +1338,21 @@ hijri_evaluate_evening(int gy, int gm, int gd, const HijriLocation *loc,
   return result;
 }
 
-/* The Umm al-Qura rule is sequential: "If on the 29th day of the lunar month
- * the two conditions are satisfied, then the next day is the first day of the
- * new lunar month." Which evening is the 29th depends on where the PREVIOUS
- * month began, so month starts have to be chained -- a per-date scan from the
- * nearest conjunction has no way to know, and scored 92.4% against the official
- * calendar where this chain scores 96.5% (198 month starts, 2015-2030).
- *
- * Day 29 of a month starting on Julian Day S is S + 28, by ordinary civil
- * counting. Measured 96.5% against 3.6% for S + 27, so the offset is not a
- * matter of taste.
- *
- * The chain is seeded from the tabular calendar rather than an epoch table:
- * it self-corrects, and the score converges by three months of burn-in
- * (3, 4, 5 and 6 months all score 96.5%). Four is used for margin. That keeps
- * the conversion a pure function -- no global state, no initialisation call,
- * no thread-safety question -- at a cost of about eight evening evaluations. */
-#define HIJRI__CHAIN_BURN_IN_MONTHS 4
-#define HIJRI__CHAIN_MAX_STEPS (HIJRI__CHAIN_BURN_IN_MONTHS + 6)
-
-static double hijri__month_start_containing(double target_jd,
-                                            const HijriLocation *loc,
-                                            HijriLocalPredicate predicate,
-                                            HijriDate *month_out) {
-  HijriDate cursor = hijri_tabular_from_jd(target_jd);
-  double start;
-  int step;
-
-  cursor.month -= HIJRI__CHAIN_BURN_IN_MONTHS;
-  while (cursor.month < 1) {
-    cursor.month += 12;
-    cursor.year--;
-  }
-  cursor.day = 1;
-  start = floor(hijri_tabular_to_jd(cursor));
-
-  for (step = 0; step < HIJRI__CHAIN_MAX_STEPS; step++) {
+static double hijri__find_month_start_after_conjunction(
+    double jd_conj, const HijriLocation *loc, HijriLocalPredicate predicate) {
+  const int MAX_FORWARD_DAYS = 5;
+  for (int k = 0; k < MAX_FORWARD_DAYS; k++) {
+    double eve_jd = floor(jd_conj) + (double)k;
     int ey, em;
     double ed_frac;
-    HijriMonthDecision decision;
-    double next;
+    hijri_gregorian_from_jd(eve_jd, &ey, &em, &ed_frac);
+    int ed = (int)floor(ed_frac + 0.5);
 
-    hijri_gregorian_from_jd(start + 28.5, &ey, &em, &ed_frac);
-    decision = hijri_evaluate_evening(ey, em, (int)floor(ed_frac), loc,
-                                      predicate);
-    /* An unavailable sunset cannot be read as a failed predicate: that would
-     * silently emit a 30-day month at high latitude. Fail the conversion. */
-    if (decision.parameters.sunset_status != HIJRI_EVENT_OK) {
-      return NAN;
-    }
-
-    next = start + (decision.month_starts_next_day ? 29.0 : 30.0);
-    if (next > target_jd) {
-      if (month_out) {
-        *month_out = cursor;
-      }
-      return start;
-    }
-    start = next;
-    cursor.month++;
-    if (cursor.month > 12) {
-      cursor.month = 1;
-      cursor.year++;
+    HijriMonthDecision decision =
+        hijri_evaluate_evening(ey, em, ed, loc, predicate);
+    if (decision.parameters.sunset_status == HIJRI_EVENT_OK &&
+        decision.month_starts_next_day) {
+      return eve_jd + 1.0;
     }
   }
   return NAN;
@@ -1408,15 +1361,22 @@ static double hijri__month_start_containing(double target_jd,
 HIJRIDEF int hijri_from_gregorian_with_local_predicate(
     int gy, int gm, int gd, const HijriLocation *loc,
     HijriLocalPredicate predicate, HijriDate *out) {
-  double target_jd = floor(hijri_jd_from_gregorian(gy, gm, (double)gd));
-  HijriDate month;
-  double jd_month_start;
+  double target_jd =
+      floor(hijri_jd_from_gregorian(gy, gm, (double)gd));
+  double jd_conjunction =
+      hijri_find_relevant_conjunction(target_jd + 1.0);
+  double jd_month_start = hijri__find_month_start_after_conjunction(
+      jd_conjunction, loc, predicate);
   int day_number;
 
-  jd_month_start =
-      hijri__month_start_containing(target_jd, loc, predicate, &month);
   if (isnan(jd_month_start) || target_jd < jd_month_start) {
-    return 0;
+    jd_conjunction =
+        hijri_find_previous_conjunction(jd_conjunction - 1.0);
+    jd_month_start = hijri__find_month_start_after_conjunction(
+        jd_conjunction, loc, predicate);
+    if (isnan(jd_month_start) || target_jd < jd_month_start) {
+      return 0;
+    }
   }
 
   day_number = (int)(target_jd - jd_month_start) + 1;
@@ -1424,12 +1384,14 @@ HIJRIDEF int hijri_from_gregorian_with_local_predicate(
     return 0;
   }
 
-  /* The month identity comes from counting chain steps, not from resampling
-   * the tabular calendar a few days into the month as this function used to
-   * do. The seed is a tabular month start exactly, so advancing k steps lands
-   * on month k -- the identity and the day number now come from one source. */
-  out->year = month.year;
-  out->month = month.month;
+  /* Sample the tabular calendar a few days *into* the month, not on the
+   * boundary day itself -- the tabular calendar's own boundary can sit
+   * a day off from the astronomically-resolved one, which would
+   * otherwise misassign the month number (see README/commit notes). */
+  HijriDate approx = hijri_tabular_from_jd(jd_month_start + 5.0);
+
+  out->year = approx.year;
+  out->month = approx.month;
   out->day = day_number;
   return 1;
 }
