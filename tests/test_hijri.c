@@ -1092,7 +1092,12 @@ static void test_pedoman_worked_example(void) {
  * exactly: two Rajab starts sit ~0.85 deg below the altitude criterion at
  * the westernmost point under every convention tested. Floors are >= so a
  * genuine ephemeris improvement cannot fail the suite; never-early is
- * asserted as equality because it is the claim that matters. */
+ * asserted as equality because it is the claim that matters.
+ *
+ * Mutation-tested on 2026-08-01: shifting one fixture date by one day
+ * fails both never-early checks (actual=1); raising the altitude
+ * threshold to 4.0 fails both support floors (support drops to 31).
+ * Reverting either restores 475 checks, 0 failures. */
 static void test_kemenag_official_calendar(void) {
   static const int KEMENAG_STARTS[][3] = {
       {2024, 1, 13},  {2024, 2, 11}, {2024, 3, 12}, {2024, 4, 10},
