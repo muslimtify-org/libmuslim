@@ -1076,8 +1076,8 @@ static void test_pedoman_worked_example(void) {
  * Provenance: transcriptions of the official releases (al-habib.info,
  * cross-checked against detik.com's independent transcription for the two
  * astronomically surprising months), validated BEFORE measurement against
- * seven independently documented government announcements (itsbat and
- * Kemenag statements for Ramadan/Syawal 1445-1447, Dzulhijjah 1447,
+ * seven independently documented government announcements (Ramadan and
+ * Syawal 1445, Ramadan and Syawal 1446, Ramadan 1447, Dzulhijjah 1447,
  * Muharram 1448) -- all seven match. Residual risk: a never-announced month
  * mis-transcribed identically by both sources; retrieving the official PDF
  * from the simbi.kemenag.go.id flipbook would close it. Full analysis:
