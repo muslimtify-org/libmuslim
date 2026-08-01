@@ -153,10 +153,15 @@ make baseline                     # regenerate the research CSV and compare
 make check CC=clang CXX=clang++   # same checks, different toolchain
 ```
 
-CI runs `make check` on Linux and macOS with gcc and clang on every push and
-pull request. Each target enforces something the project asserts and which was
-previously checked only by remembering to run a command — `prayertimes.h` once
-shipped broken under its own documented build line because nobody ran it.
+CI runs `make test cxx examples` on Linux and macOS with gcc and clang on every
+push and pull request, and `make baseline` on Linux only — the CSV prints Julian
+Days to nine decimals and libm rounding differs between platforms, so a
+byte-exact comparison is reproducible per-platform rather than universally.
+
+Each target enforces something the project asserts and which was previously
+checked only by remembering to run a command — `prayertimes.h` once shipped
+broken under its own documented build line because nobody ran it, and the first
+CI run caught a macOS/glibc difference no local check could have.
 
 `tests/test_moon_meeus.c` validates the lunar series against a vendored JPL
 Horizons fixture, Meeus's own printed worked example, and published ΔT values.
