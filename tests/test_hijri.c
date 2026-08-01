@@ -1070,6 +1070,99 @@ static void test_pedoman_worked_example(void) {
             1);
 }
 
+/* Official Kemenag month starts, Kalender Hijriah Indonesia 2024-2026
+ * (Rajab 1445 through Rajab 1448), Ditjen Bimas Islam.
+ *
+ * Provenance: transcriptions of the official releases (al-habib.info,
+ * cross-checked against detik.com's independent transcription for the two
+ * astronomically surprising months), validated BEFORE measurement against
+ * seven independently documented government announcements (itsbat and
+ * Kemenag statements for Ramadan/Syawal 1445-1447, Dzulhijjah 1447,
+ * Muharram 1448) -- all seven match. Residual risk: a never-announced month
+ * mis-transcribed identically by both sources; retrieving the official PDF
+ * from the simbi.kemenag.go.id flipbook would close it. Full analysis:
+ * docs/research/2026-08-01-kemenag-reference.md.
+ *
+ * What these tests claim, and deliberately do not claim: the library's
+ * single-point MABIMS 2021 predicate is NEVER one day early against the
+ * official calendar (0/37, asserted exactly, under both the shipped
+ * topocentric-elongation reading and the geocentric reading Kemenag's
+ * operational numbers pin), and it supports at least 33/37 official starts
+ * at Indonesia's westernmost point. It does NOT reproduce the calendar
+ * exactly: two Rajab starts sit ~0.85 deg below the altitude criterion at
+ * the westernmost point under every convention tested. Floors are >= so a
+ * genuine ephemeris improvement cannot fail the suite; never-early is
+ * asserted as equality because it is the claim that matters. */
+static void test_kemenag_official_calendar(void) {
+  static const int KEMENAG_STARTS[][3] = {
+      {2024, 1, 13},  {2024, 2, 11}, {2024, 3, 12}, {2024, 4, 10},
+      {2024, 5, 10},  {2024, 6, 8},  {2024, 7, 7},  {2024, 8, 6},
+      {2024, 9, 5},   {2024, 10, 4}, {2024, 11, 3}, {2024, 12, 3},
+      {2025, 1, 1},   {2025, 1, 31}, {2025, 3, 1},  {2025, 3, 31},
+      {2025, 4, 29},  {2025, 5, 28}, {2025, 6, 27}, {2025, 7, 26},
+      {2025, 8, 25},  {2025, 9, 23}, {2025, 10, 23}, {2025, 11, 22},
+      {2025, 12, 21}, {2026, 1, 20}, {2026, 2, 19}, {2026, 3, 21},
+      {2026, 4, 19},  {2026, 5, 18}, {2026, 6, 16}, {2026, 7, 16},
+      {2026, 8, 14},  {2026, 9, 13}, {2026, 10, 12}, {2026, 11, 11},
+      {2026, 12, 10}};
+  HijriLocation sabang = {5.8926, 95.3238, 10.0, "Sabang"};
+  const size_t total = sizeof(KEMENAG_STARTS) / sizeof(KEMENAG_STARTS[0]);
+  size_t index;
+  int support_topo = 0, support_geo = 0;
+  int early_topo = 0, early_geo = 0;
+
+  for (index = 0; index < total; index++) {
+    double start_jd = floor(hijri_jd_from_gregorian(KEMENAG_STARTS[index][0],
+                                                    KEMENAG_STARTS[index][1],
+                                                    (double)KEMENAG_STARTS[index][2]));
+    int offset;
+    for (offset = 1; offset <= 2; offset++) {
+      int gy, gm;
+      double gd_frac;
+      HijriEveningParameters p;
+      int topo_ok, geo_ok;
+      hijri_gregorian_from_jd(start_jd - (double)offset + 0.5, &gy, &gm,
+                              &gd_frac);
+      p = hijri_compute_evening_parameters(gy, gm, (int)floor(gd_frac),
+                                           &sabang);
+      if (p.sunset_status != HIJRI_EVENT_OK) {
+        continue;
+      }
+      topo_ok = (p.moon_center_geometric_altitude_deg >= 3.0 &&
+                 p.topocentric_elongation_deg >= 6.4);
+      geo_ok = (p.moon_center_geometric_altitude_deg >= 3.0 &&
+                p.geocentric_elongation_deg >= 6.4);
+      if (offset == 1) {
+        support_topo += topo_ok;
+        support_geo += geo_ok;
+      } else {
+        early_topo += topo_ok;
+        early_geo += geo_ok;
+      }
+    }
+  }
+
+  check_int("kemenag_never_early_topocentric", early_topo, 0);
+  check_int("kemenag_never_early_geocentric", early_geo, 0);
+  check_true("kemenag_support_floor_topocentric", support_topo >= 33);
+  check_true("kemenag_support_floor_geocentric", support_geo >= 34);
+
+  /* The convention pin. For the 28 Feb 2025 itsbat, Kemenag announced
+   * elongation across Indonesia up to 6 deg 24.14 min = 6.4023 deg. At the
+   * westernmost point this library computes geocentric 6.3952 (0.43 arcmin
+   * from the announcement) while topocentric is a full degree away --
+   * Kemenag's operational elongation is geocentric. Kept as a living check
+   * so ephemeris drift or a convention regression surfaces here. */
+  {
+    HijriEveningParameters pin =
+        hijri_compute_evening_parameters(2025, 2, 28, &sabang);
+    check_close("kemenag_pin_geocentric_matches_announcement",
+                pin.geocentric_elongation_deg, 6.4023, 0.05);
+    check_true("kemenag_pin_topocentric_is_far_below",
+               pin.topocentric_elongation_deg < 5.5);
+  }
+}
+
 int main(void) {
   test_julian_day();
   test_tabular_calendar();
@@ -1086,6 +1179,7 @@ int main(void) {
   test_moonset_crossing_convention();
   test_crescent_equivalence_property();
   test_pedoman_worked_example();
+  test_kemenag_official_calendar();
   check_true("all_predicate_enums_represented",
              HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET -
                          HIJRI_PREDICATE_MABIMS_1992 +
