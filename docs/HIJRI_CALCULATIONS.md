@@ -181,6 +181,19 @@ elongation requirement at all*, it's a pure geometry test ("is the
 young moon born, and does it linger above the horizon after the sun
 goes down"), not an actual visibility prediction.
 
+> **Implementation note:** since 2026-08 the library's
+> `hijri_umm_al_qura_from_gregorian()` does not evaluate this criterion at
+> all for dates in 1300–1600 AH — it reads the official published table
+> (embedded, ~600 bytes, derived from ICU/CLDR), because the published
+> calendar deviates from its own stated criterion for some months and is
+> therefore not exactly computable. The criterion machinery described here
+> remains available through the predicate API and is used as the fallback
+> outside the table's range. One dating caveat: for years before ~1423 AH
+> (2002 CE) the table is a modern retro-computation, and independently
+> documented Saudi correspondences show it can differ by one day from the
+> calendar historically in use (three of five documented anchors differ;
+> see `docs/research/2026-08-01-umm-al-qura-oracle.md`).
+
 **MABIMS (Indonesia / Malaysia / Brunei / Singapore)**
 
 Pre-2021:
@@ -325,25 +338,22 @@ than hardcoding one. A few concrete mechanisms behind that:
 | Julian Day conversion | Exact | Standard algorithm, no approximation |
 | Delta T | ~seconds, historically ~minutes | Negligible vs. degree-scale thresholds |
 | Sun position | ~0.01° | Meeus low-precision theory |
-| **Moon position** | **~0.1–0.3°** | **Only 5–6 leading ELP2000-82B terms, see caveat below** |
+| **Moon position** | **0.0051° lon / 0.0006° lat / 41.9 km** | **Full Meeus ch. 47 series; measured against 24 JPL Horizons epochs, 1900–2100** |
 | Rise/set times | Limited by Moon-position precision above | Refraction modeled with a fixed 34′ constant |
 | Parallax | Spherical-Earth approximation | Elevation correction omitted (sub-arcsecond effect) |
-| Month/year numbering | Reliable in normal cases | Falls back on the tabular calendar's mid-month assignment |
+| Umm al-Qura dates | Exact vs the published table, 1300–1600 AH | Table lookup, no astronomy; see §7 implementation note |
+| Month/year numbering (predicate paths) | Reliable in normal cases | Falls back on the tabular calendar's mid-month assignment |
 
-**The one component to be careful with for real observational-grade
-use is lunar position.** The current implementation trades off full
-ELP2000-82B precision (~60 terms) for a compact, easy-to-follow
-implementation using only the handful of largest terms. This is enough
-to get qualitatively correct answers and to validate the rest of the
-pipeline (as demonstrated by the worked timezone-boundary example
-earlier), but genuinely borderline real-world cases can come out
-differently with the full series. If you need that level of precision,
-swap the body of `hijri_moon_position()` for the full Meeus ch. 47
-tables, or link against an existing full-precision implementation (e.g.
-[mygulamali/meeus](https://github.com/mygulamali/meeus) or libnova),
-nothing else in the library needs to change, since every other function
-only depends on the `HijriMoonPosition` struct's contents, not on how it
-was computed.
+**Lunar position uses the complete Meeus ch. 47 series** (60 longitude/
+distance terms, 60 latitude terms, eccentricity correction, A1/A2/A3
+additive terms), validated in `tests/test_moon_meeus.c` against a vendored
+JPL Horizons fixture, Meeus's own printed worked example, and published
+ΔT values. Nutation and aberration are not applied, so positions are
+geometric, referred to the mean equinox of date — that is the 0.005°
+floor in the table above, not series truncation. Every other function
+depends only on the `HijriMoonPosition` struct's contents, not on how it
+was computed, so a higher-precision ephemeris can still be swapped in
+without touching anything else.
 
 ## References
 

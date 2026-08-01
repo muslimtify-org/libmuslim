@@ -117,6 +117,21 @@ application policy you define.
 against 24 JPL Horizons epochs spanning 1900–2100: 0.0051° in longitude,
 0.0006° in latitude, 41.9 km in distance. Nutation and aberration are not
 applied, so these are geometric positions referred to the mean equinox of date.
+Calendar conversion is measured separately against a different reference.
+`hijri_umm_al_qura_from_gregorian()` reads the published Umm al-Qura table for
+1300–1600 AH (1882–2174 CE) rather than reconstructing it astronomically: 198
+of 198 official month starts over 2015–2030, exact. The ~600-byte table is
+derived from the ICU/CLDR `islamic-umalqura` calendar, verified byte-identical
+to ICU's own Unicode-licensed data, and corroborated by independently
+documented Saudi dates for the modern era. One honest caveat: for years before
+~1423 AH (2002) the table everyone ships is a retro-computation, and three of
+five documented historical correspondences (1932, 1979, 1992) differ from it
+by one day. Outside the table's range the astronomical reconstruction (92.4%
+measured) takes over. The measurements, anchors, and why reconstruction is
+capped — including months where the official table departs from its own
+stated rule — are recorded in
+[`docs/research/2026-08-01-umm-al-qura-oracle.md`](docs/research/2026-08-01-umm-al-qura-oracle.md).
+
 A calculated result is still not an observation, and nothing here decides
 religious validity.
 

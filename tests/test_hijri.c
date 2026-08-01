@@ -550,6 +550,376 @@ static void test_umm_al_qura_policy(void) {
                dedicated.day == direct.day);
 }
 
+/* Official Umm al-Qura month starts, 2015-2030.
+ *
+ * Source: the `islamic-umalqura` calendar in ICU/CLDR -- the Umm al-Qura table
+ * that ships in browsers and operating systems -- enumerated with Node's
+ * Intl.DateTimeFormat. Regeneration command and the cross-check that validates
+ * it are recorded in docs/research/.
+ *
+ * The oracle was validated against five Saudi dates known independently of any
+ * calendar table before being admitted:
+ *   2025-03-01 = 1 Ramadan 1446   (fasting began)
+ *   2025-03-30 = 1 Shawwal 1446   (Eid al-Fitr)
+ *   2024-03-11 = 1 Ramadan 1445   (fasting began)
+ *   2024-04-10 = 1 Shawwal 1445   (Eid al-Fitr)
+ *   2023-06-27 = 9 Dhu al-Hijjah 1444 (Day of Arafah)
+ * This matters: an earlier attempt at this work used a hand-parsed table whose
+ * epoch was misread by one day, and the resulting 95%-disagreement "finding"
+ * was entirely an artifact of the reference. Cross-check the oracle, always.
+ *
+ * Columns: Gregorian year, month, day; expected Hijri year, month. Every row
+ * is day 1 of the named Hijri month by construction. */
+static const int HIJRI_UMM_OFFICIAL[][5] = {
+  {2015, 1, 21, 1436, 4},
+  {2015, 2, 20, 1436, 5},
+  {2015, 3, 21, 1436, 6},
+  {2015, 4, 20, 1436, 7},
+  {2015, 5, 19, 1436, 8},
+  {2015, 6, 18, 1436, 9},
+  {2015, 7, 17, 1436, 10},
+  {2015, 8, 16, 1436, 11},
+  {2015, 9, 14, 1436, 12},
+  {2015, 10, 14, 1437, 1},
+  {2015, 11, 13, 1437, 2},
+  {2015, 12, 12, 1437, 3},
+  {2016, 1, 11, 1437, 4},
+  {2016, 2, 10, 1437, 5},
+  {2016, 3, 10, 1437, 6},
+  {2016, 4, 8, 1437, 7},
+  {2016, 5, 8, 1437, 8},
+  {2016, 6, 6, 1437, 9},
+  {2016, 7, 6, 1437, 10},
+  {2016, 8, 4, 1437, 11},
+  {2016, 9, 2, 1437, 12},
+  {2016, 10, 2, 1438, 1},
+  {2016, 11, 1, 1438, 2},
+  {2016, 11, 30, 1438, 3},
+  {2016, 12, 30, 1438, 4},
+  {2017, 1, 29, 1438, 5},
+  {2017, 2, 28, 1438, 6},
+  {2017, 3, 29, 1438, 7},
+  {2017, 4, 27, 1438, 8},
+  {2017, 5, 27, 1438, 9},
+  {2017, 6, 25, 1438, 10},
+  {2017, 7, 24, 1438, 11},
+  {2017, 8, 23, 1438, 12},
+  {2017, 9, 21, 1439, 1},
+  {2017, 10, 21, 1439, 2},
+  {2017, 11, 19, 1439, 3},
+  {2017, 12, 19, 1439, 4},
+  {2018, 1, 18, 1439, 5},
+  {2018, 2, 17, 1439, 6},
+  {2018, 3, 18, 1439, 7},
+  {2018, 4, 17, 1439, 8},
+  {2018, 5, 16, 1439, 9},
+  {2018, 6, 15, 1439, 10},
+  {2018, 7, 14, 1439, 11},
+  {2018, 8, 12, 1439, 12},
+  {2018, 9, 11, 1440, 1},
+  {2018, 10, 10, 1440, 2},
+  {2018, 11, 9, 1440, 3},
+  {2018, 12, 8, 1440, 4},
+  {2019, 1, 7, 1440, 5},
+  {2019, 2, 6, 1440, 6},
+  {2019, 3, 8, 1440, 7},
+  {2019, 4, 6, 1440, 8},
+  {2019, 5, 6, 1440, 9},
+  {2019, 6, 4, 1440, 10},
+  {2019, 7, 4, 1440, 11},
+  {2019, 8, 2, 1440, 12},
+  {2019, 8, 31, 1441, 1},
+  {2019, 9, 30, 1441, 2},
+  {2019, 10, 29, 1441, 3},
+  {2019, 11, 28, 1441, 4},
+  {2019, 12, 27, 1441, 5},
+  {2020, 1, 26, 1441, 6},
+  {2020, 2, 25, 1441, 7},
+  {2020, 3, 25, 1441, 8},
+  {2020, 4, 24, 1441, 9},
+  {2020, 5, 24, 1441, 10},
+  {2020, 6, 22, 1441, 11},
+  {2020, 7, 22, 1441, 12},
+  {2020, 8, 20, 1442, 1},
+  {2020, 9, 18, 1442, 2},
+  {2020, 10, 18, 1442, 3},
+  {2020, 11, 16, 1442, 4},
+  {2020, 12, 16, 1442, 5},
+  {2021, 1, 14, 1442, 6},
+  {2021, 2, 13, 1442, 7},
+  {2021, 3, 14, 1442, 8},
+  {2021, 4, 13, 1442, 9},
+  {2021, 5, 13, 1442, 10},
+  {2021, 6, 11, 1442, 11},
+  {2021, 7, 11, 1442, 12},
+  {2021, 8, 9, 1443, 1},
+  {2021, 9, 8, 1443, 2},
+  {2021, 10, 7, 1443, 3},
+  {2021, 11, 6, 1443, 4},
+  {2021, 12, 5, 1443, 5},
+  {2022, 1, 4, 1443, 6},
+  {2022, 2, 2, 1443, 7},
+  {2022, 3, 4, 1443, 8},
+  {2022, 4, 2, 1443, 9},
+  {2022, 5, 2, 1443, 10},
+  {2022, 5, 31, 1443, 11},
+  {2022, 6, 30, 1443, 12},
+  {2022, 7, 30, 1444, 1},
+  {2022, 8, 28, 1444, 2},
+  {2022, 9, 27, 1444, 3},
+  {2022, 10, 26, 1444, 4},
+  {2022, 11, 25, 1444, 5},
+  {2022, 12, 25, 1444, 6},
+  {2023, 1, 23, 1444, 7},
+  {2023, 2, 21, 1444, 8},
+  {2023, 3, 23, 1444, 9},
+  {2023, 4, 21, 1444, 10},
+  {2023, 5, 21, 1444, 11},
+  {2023, 6, 19, 1444, 12},
+  {2023, 7, 19, 1445, 1},
+  {2023, 8, 17, 1445, 2},
+  {2023, 9, 16, 1445, 3},
+  {2023, 10, 16, 1445, 4},
+  {2023, 11, 15, 1445, 5},
+  {2023, 12, 14, 1445, 6},
+  {2024, 1, 13, 1445, 7},
+  {2024, 2, 11, 1445, 8},
+  {2024, 3, 11, 1445, 9},
+  {2024, 4, 10, 1445, 10},
+  {2024, 5, 9, 1445, 11},
+  {2024, 6, 7, 1445, 12},
+  {2024, 7, 7, 1446, 1},
+  {2024, 8, 5, 1446, 2},
+  {2024, 9, 4, 1446, 3},
+  {2024, 10, 4, 1446, 4},
+  {2024, 11, 3, 1446, 5},
+  {2024, 12, 2, 1446, 6},
+  {2025, 1, 1, 1446, 7},
+  {2025, 1, 31, 1446, 8},
+  {2025, 3, 1, 1446, 9},
+  {2025, 3, 30, 1446, 10},
+  {2025, 4, 29, 1446, 11},
+  {2025, 5, 28, 1446, 12},
+  {2025, 6, 26, 1447, 1},
+  {2025, 7, 26, 1447, 2},
+  {2025, 8, 24, 1447, 3},
+  {2025, 9, 23, 1447, 4},
+  {2025, 10, 23, 1447, 5},
+  {2025, 11, 22, 1447, 6},
+  {2025, 12, 21, 1447, 7},
+  {2026, 1, 20, 1447, 8},
+  {2026, 2, 18, 1447, 9},
+  {2026, 3, 20, 1447, 10},
+  {2026, 4, 18, 1447, 11},
+  {2026, 5, 18, 1447, 12},
+  {2026, 6, 16, 1448, 1},
+  {2026, 7, 15, 1448, 2},
+  {2026, 8, 14, 1448, 3},
+  {2026, 9, 12, 1448, 4},
+  {2026, 10, 12, 1448, 5},
+  {2026, 11, 11, 1448, 6},
+  {2026, 12, 10, 1448, 7},
+  {2027, 1, 9, 1448, 8},
+  {2027, 2, 8, 1448, 9},
+  {2027, 3, 9, 1448, 10},
+  {2027, 4, 8, 1448, 11},
+  {2027, 5, 7, 1448, 12},
+  {2027, 6, 6, 1449, 1},
+  {2027, 7, 5, 1449, 2},
+  {2027, 8, 3, 1449, 3},
+  {2027, 9, 2, 1449, 4},
+  {2027, 10, 1, 1449, 5},
+  {2027, 10, 31, 1449, 6},
+  {2027, 11, 29, 1449, 7},
+  {2027, 12, 29, 1449, 8},
+  {2028, 1, 28, 1449, 9},
+  {2028, 2, 26, 1449, 10},
+  {2028, 3, 27, 1449, 11},
+  {2028, 4, 26, 1449, 12},
+  {2028, 5, 25, 1450, 1},
+  {2028, 6, 24, 1450, 2},
+  {2028, 7, 23, 1450, 3},
+  {2028, 8, 22, 1450, 4},
+  {2028, 9, 20, 1450, 5},
+  {2028, 10, 19, 1450, 6},
+  {2028, 11, 18, 1450, 7},
+  {2028, 12, 17, 1450, 8},
+  {2029, 1, 16, 1450, 9},
+  {2029, 2, 14, 1450, 10},
+  {2029, 3, 16, 1450, 11},
+  {2029, 4, 15, 1450, 12},
+  {2029, 5, 14, 1451, 1},
+  {2029, 6, 13, 1451, 2},
+  {2029, 7, 13, 1451, 3},
+  {2029, 8, 12, 1451, 4},
+  {2029, 9, 10, 1451, 5},
+  {2029, 10, 9, 1451, 6},
+  {2029, 11, 8, 1451, 7},
+  {2029, 12, 7, 1451, 8},
+  {2030, 1, 5, 1451, 9},
+  {2030, 2, 4, 1451, 10},
+  {2030, 3, 6, 1451, 11},
+  {2030, 4, 4, 1451, 12},
+  {2030, 5, 4, 1452, 1},
+  {2030, 6, 3, 1452, 2},
+  {2030, 7, 2, 1452, 3},
+  {2030, 8, 1, 1452, 4},
+  {2030, 8, 31, 1452, 5},
+  {2030, 9, 29, 1452, 6},
+  {2030, 10, 28, 1452, 7},
+  {2030, 11, 27, 1452, 8},
+  {2030, 12, 26, 1452, 9},
+};
+
+/* Asserted as EQUALITY: the conversion is now a lookup into the official
+ * table (1300-1600 AH), so every in-range fixture row must be exact. The
+ * fixture window 2015-2030 is entirely in range.
+ *
+ * History, kept because it explains why the table exists at all:
+ *   - astronomical reconstruction (per-date scan): 183/198, 92.4%
+ *   - sequential chain: 191/198, reverted for non-monotonic days at 60-65N
+ *   - 198/198 was proven unreachable from the published rule: for seven
+ *     months in the window the official table departs from its own stated
+ *     criterion (see docs/research/2026-08-01-umm-al-qura-oracle.md)
+ * The table closes the gap by shipping the published facts instead of
+ * recomputing them.
+ *
+ * Mutation-tested on 2026-08-01: flipping one bit of the 1447 table entry
+ * (0x0BAA -> 0x0BAB) fails umm_official_exact_month_starts (actual=141
+ * expected=198), umm_official_muharram_1448 (actual=1447-12-30
+ * expected=1448-01-01), and umm_boundary_last_day (actual=1600-12-29
+ * expected=1600-12-30); reverting restores 452 checks, 0 failures. The
+ * fixture therefore detects a single-day error in a single table entry. */
+static void test_umm_al_qura_official_calendar(void) {
+  const size_t total = sizeof(HIJRI_UMM_OFFICIAL) / sizeof(HIJRI_UMM_OFFICIAL[0]);
+  size_t index;
+  int exact = 0;
+  int identity_mismatches = 0;
+
+  for (index = 0; index < total; index++) {
+    const int *row = HIJRI_UMM_OFFICIAL[index];
+    HijriDate got;
+    if (!hijri_umm_al_qura_from_gregorian(row[0], row[1], row[2], &got)) {
+      continue;
+    }
+    if (got.day == 1) {
+      exact++;
+      if (got.year != row[3] || got.month != row[4]) {
+        identity_mismatches++;
+      }
+    }
+  }
+
+  check_int("umm_official_exact_month_starts", exact, 198);
+
+  check_int("umm_official_month_identity_consistent", identity_mismatches, 0);
+
+  /* Named individual dates, so a regression names a date rather than a count. */
+  {
+    HijriDate d;
+    if (hijri_umm_al_qura_from_gregorian(2025, 3, 1, &d)) {
+      check_date("umm_official_ramadan_1446", d, 1446, 9, 1);
+    }
+    if (hijri_umm_al_qura_from_gregorian(2025, 3, 30, &d)) {
+      check_date("umm_official_shawwal_1446", d, 1446, 10, 1);
+    }
+    if (hijri_umm_al_qura_from_gregorian(2026, 6, 16, &d)) {
+      check_date("umm_official_muharram_1448", d, 1448, 1, 1);
+    }
+  }
+
+  /* Table-INDEPENDENT anchors. The fixture above derives from ICU, and so
+   * does the embedded table, so the fixture alone cannot detect an
+   * ICU-vs-KACST divergence. These two dates come from historically
+   * documented dual-dated Saudi events, not from any calendar table:
+   *   1953-11-09 = 2 Rabi al-Awwal 1373  (death of King Abdulaziz)
+   *   2005-08-01 = 26 Jumada al-Akhirah 1426  (death of King Fahd)
+   * Three other documented anchors (1932, 1979, 1992 -- all before the
+   * modern Umm al-Qura system took force in 1423 AH) DISAGREE with the
+   * retro-computed table by one day and are deliberately not asserted;
+   * see docs/research/2026-08-01-umm-al-qura-oracle.md. */
+  {
+    HijriDate d;
+    if (hijri_umm_al_qura_from_gregorian(1953, 11, 9, &d)) {
+      check_date("umm_anchor_king_abdulaziz_1373", d, 1373, 3, 2);
+    }
+    if (hijri_umm_al_qura_from_gregorian(2005, 8, 1, &d)) {
+      check_date("umm_anchor_king_fahd_1426", d, 1426, 6, 26);
+    }
+  }
+}
+
+/* The property whose violation killed the reverted chain design: consecutive
+ * Gregorian days must map to consecutive Hijri days, or to a day-1 rollover
+ * with correct month succession. With the table this is structural; the test
+ * guards against any future implementation reintroducing query-dependence.
+ *
+ * Note: against the astronomical implementation this sweep takes ~11 s
+ * (5844 conversions, each solving sunset/moonset). Against the table it is
+ * effectively instant. Slow is expected only while the test is failing. */
+static void test_umm_al_qura_day_sequence_coherent(void) {
+  double jd = hijri_jd_from_gregorian(2015, 1, 1.0);
+  double jd_end = hijri_jd_from_gregorian(2030, 12, 31.0);
+  int have = 0, py = 0, pm = 0, pd = 0;
+  int incoherent = 0, conversion_failures = 0;
+
+  for (; jd <= jd_end; jd += 1.0) {
+    int gy, gm;
+    double gd_frac;
+    HijriDate h;
+    hijri_gregorian_from_jd(jd, &gy, &gm, &gd_frac);
+    if (!hijri_umm_al_qura_from_gregorian(gy, gm, (int)floor(gd_frac), &h)) {
+      conversion_failures++;
+      have = 0;
+      continue;
+    }
+    if (have) {
+      int ok = (h.year == py && h.month == pm && h.day == pd + 1) ||
+               (h.day == 1 &&
+                ((h.year == py && h.month == pm + 1) ||
+                 (h.year == py + 1 && pm == 12 && h.month == 1)));
+      if (!ok) {
+        incoherent++;
+      }
+    }
+    have = 1;
+    py = h.year;
+    pm = h.month;
+    pd = h.day;
+  }
+  check_int("umm_sequence_incoherent_transitions", incoherent, 0);
+  check_int("umm_sequence_conversion_failures", conversion_failures, 0);
+}
+
+/* Table range: 1 Muharram 1300 (1882-11-12) through 30 Dhu al-Hijjah 1600
+ * (2174-11-25). Inside, the answer is the official table, asserted exactly.
+ * Outside, the function falls back to the astronomical reconstruction, whose
+ * result is asserted only to be a sane date -- the fallback's accuracy is not
+ * this test's subject. */
+static void test_umm_al_qura_table_boundaries(void) {
+  HijriDate h;
+
+  check_int("umm_boundary_first_day_status",
+            hijri_umm_al_qura_from_gregorian(1882, 11, 12, &h), 1);
+  check_date("umm_boundary_first_day", h, 1300, 1, 1);
+
+  {
+    int ok = hijri_umm_al_qura_from_gregorian(1882, 11, 11, &h);
+    check_true("umm_boundary_pre_table_sane",
+               !ok || (h.day >= 1 && h.day <= 30));
+  }
+
+  check_int("umm_boundary_last_day_status",
+            hijri_umm_al_qura_from_gregorian(2174, 11, 25, &h), 1);
+  check_date("umm_boundary_last_day", h, 1600, 12, 30);
+
+  {
+    int ok = hijri_umm_al_qura_from_gregorian(2174, 11, 26, &h);
+    check_true("umm_boundary_post_table_sane",
+               !ok || (h.day >= 1 && h.day <= 30));
+  }
+}
+
 int main(void) {
   test_julian_day();
   test_tabular_calendar();
@@ -560,6 +930,9 @@ int main(void) {
   test_orchestration();
   test_local_evening_date();
   test_umm_al_qura_policy();
+  test_umm_al_qura_official_calendar();
+  test_umm_al_qura_day_sequence_coherent();
+  test_umm_al_qura_table_boundaries();
   check_true("all_predicate_enums_represented",
              HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET -
                          HIJRI_PREDICATE_MABIMS_1992 +
