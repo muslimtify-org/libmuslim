@@ -125,6 +125,48 @@ static const double FIXTURE[24][4] = {
   {2488069.5, 157.4003861,  1.0927180,   371679.8},
 };
 
+/* Second oracle: Skyfield 1.54 evaluating JPL DE440 (de440s.bsp,
+ * JD 2396752.50 - 2506352.50). Generated offline; the generator is not
+ * committed, matching how the Horizons curl above is recorded rather than
+ * automated. Columns: jd_tt, ecliptic longitude, latitude, distance km.
+ *
+ * SKY_MOON_APPARENT is the true equinox of date with light-time, aberration
+ * and deflection applied -- the same convention as the Horizons FIXTURE above,
+ * which is what makes the two directly comparable.
+ *
+ * This table is compared against FIXTURE, not against the library. No change
+ * to hijri.h can alter that comparison; it is deliberately a check that two
+ * independently written clients, time-scale conversions and frame
+ * transformations agree. Its value was realised at generation time. It is
+ * committed so the agreement is a recorded, re-checkable fact and so a later
+ * edit to either table is caught. */
+static const double SKY_MOON_APPARENT[24][4] = {
+  {2415020.5, 272.4166554, 1.1082848, 368384.7},
+  {2433282.5, 61.4113490, 3.7815908, 399627.0},
+  {2458853.5, 33.9142664, -4.7720029, 399050.0},
+  {2458931.7, 350.0058863, -4.8406354, 405997.3},
+  {2459044.2, 29.6109988, -4.5133435, 403651.7},
+  {2459122.9, 351.3590626, -5.0051253, 402694.7},
+  {2459201.3, 307.2360153, -3.8917898, 379131.4},
+  {2459318.6, 46.1467695, -2.2062451, 405972.5},
+  {2459407.1, 127.3843109, 4.3443072, 392638.4},
+  {2459502.8, 319.3934063, -5.0379255, 381789.9},
+  {2459613.4, 336.2772541, -4.9759217, 371948.6},
+  {2459688.2, 234.2535652, -0.1535586, 365670.3},
+  {2459777.9, 345.1493230, -4.5958804, 371014.5},
+  {2459860.5, 350.7275249, -4.1560818, 373354.7},
+  {2459955.1, 149.5662781, 4.7492722, 404593.7},
+  {2460048.7, 304.7981964, -5.2706746, 369277.7},
+  {2460133.3, 345.6392595, -3.5820685, 366205.2},
+  {2460229.6, 168.9985534, 3.1010663, 403593.9},
+  {2460322.4, 311.4838468, -4.6555482, 362505.5},
+  {2460451.8, 214.3795185, -1.7207037, 398518.7},
+  {2460577.2, 77.6242628, 5.0077584, 377036.8},
+  {2460699.5, 237.7144878, -4.3684739, 399260.0},
+  {2469807.5, 18.6647836, 3.3919492, 378705.4},
+  {2488069.5, 157.4003361, 1.0927267, 371679.8},
+};
+
 /* Meeus, "Astronomical Algorithms" 2nd ed., worked Example 47.a:
  * 1992 April 12 at 0h TD, i.e. JDE 2448724.5. The book prints
  *   lambda = 133.162655 deg, beta = -3.229126 deg, Delta = 368409.7 km.
@@ -253,9 +295,34 @@ static void check_ut_to_tt_path(void) {
   check_true_nonzero("ut_to_tt_conversion_is_applied", moved);
 }
 
+/* Group 1 -- harness verification. Two oracles, same convention, same epochs. */
+static void check_group1_harness(void) {
+  double max_lon = 0.0, max_lat = 0.0, max_dist = 0.0;
+  int i;
+  for (i = 0; i < 24; i++) {
+    double dlon = angdiff(SKY_MOON_APPARENT[i][1], FIXTURE[i][1]);
+    double dlat = fabs(SKY_MOON_APPARENT[i][2] - FIXTURE[i][2]);
+    double ddist = fabs(SKY_MOON_APPARENT[i][3] - FIXTURE[i][3]);
+    if (dlon > max_lon) max_lon = dlon;
+    if (dlat > max_lat) max_lat = dlat;
+    if (ddist > max_dist) max_dist = ddist;
+    check_angle_within("sky_vs_horizons_lon", FIXTURE[i][0],
+                       SKY_MOON_APPARENT[i][1], FIXTURE[i][1], 1e-4);
+    check_within("sky_vs_horizons_lat", FIXTURE[i][0],
+                 SKY_MOON_APPARENT[i][2], FIXTURE[i][2], 1e-4);
+    check_within("sky_vs_horizons_dist", FIXTURE[i][0],
+                 SKY_MOON_APPARENT[i][3], FIXTURE[i][3], 1.0);
+  }
+  printf("sky_vs_horizons max deviation: lon %.7f deg lat %.7f deg dist %.1f km\n",
+         max_lon, max_lat, max_dist);
+  /* A table pasted twice would print exactly zero. */
+  check_true_nonzero("sky_vs_horizons_nondegenerate", max_lon);
+}
+
 int main(void) {
   double max_lon = 0.0, max_lat = 0.0, max_dist = 0.0;
 
+  check_group1_harness();
   check_meeus_example_47a();
   check_delta_t();
   check_ut_to_tt_path();
