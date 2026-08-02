@@ -205,7 +205,8 @@ raised under Scope.
 
 ### Sun and Moon reference-frame consistency
 
-**Open, measured 2026-08.** `hijri_sun_position()` returns an apparent
+**Header corrected 2026-08. Code change measured and NOT recommended.**
+`hijri_sun_position()` returns an apparent
 longitude, applying both the aberration and the nutation term at
 `hijri.h:485-502`, while `hijri_moon_position()` returns the mean equinox of
 date with neither, and `hijri.h:1095-1100` computes elongation as the angular
@@ -216,9 +217,17 @@ The measured consequence is 0.0070530 deg of elongation error, which is
 inconsistency is real and its effect is immaterial at that threshold, so the
 proportionate remedy is a correction to the header claim at `hijri.h:71-73`,
 which states that no nutation and no aberration are applied and is accurate for
-the Moon only. Unifying the frames in code is not recommended on this evidence,
-since it would move the committed 2020-2025 baseline for no demonstrated
-decision benefit. Measurement and reasoning in
+the Moon only. That header correction has been made.
+
+Unifying the frames in code is measured and NOT recommended, and the reason is
+counterintuitive enough to record so that a future reader does not attempt it
+expecting a gain. Making both bodies mean-of-date measures 0.0083813 deg of
+elongation error against 0.0070530 deg today, about 19 percent WORSE. The
+mismatch partially cancels the solar truncation error, and removing it exposes
+the full solar residual, which is 0.0084042 deg. Frame unification is therefore
+a correctness-of-description change with a small accuracy cost, not an accuracy
+improvement. The quantity that actually limits elongation accuracy is the
+Meeus ch. 25 low-precision solar theory. Measurement and reasoning in
 [`docs/research/2026-08-02-cross-engine-error-bar.md`](docs/research/2026-08-02-cross-engine-error-bar.md).
 
 **Completion criteria:**
@@ -228,6 +237,9 @@ decision benefit. Measurement and reasoning in
 - Any change to the frames entering the elongation computation is deliberate
   and reviewed, with the criterion-outcome delta across the 2020-2025 baseline
   counted and recorded.
+- Any future attempt at frame unification first re-measures the 0.0083813 deg
+  figure above, since unifying the frames costs accuracy rather than gaining it
+  for as long as the ch. 25 solar theory is the limiting term.
 
 ### Supported-date ranges
 

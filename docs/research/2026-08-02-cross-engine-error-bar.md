@@ -261,18 +261,32 @@ instead by the 1e-6 deg assertion against Meeus's own printed worked Example
 
 ## Open questions
 
-- **The `hijri.h:71-73` header text is wrong about the Sun.** It states the file
-  applies no nutation and no aberration. That holds for the Moon and not for
-  `hijri_sun_position()`, which applies both at `hijri.h:485-502`. This is a
-  documentation defect. It is not fixed here because this note's scope is
-  measurement, and the correction belongs in its own reviewed change.
-- **The mixed-frame elongation at `hijri.h:1095-1100` is left as it stands.**
-  The measured cost is 0.0070530 deg, 907x below the threshold it feeds. A frame
-  change would be an accuracy improvement for its own sake at this magnitude,
-  and it would move the committed 2020-2025 baseline for no demonstrated
-  decision benefit. The tolerance `TOL_ELONG_DEG` now pins current behaviour, so
-  if the frame is ever unified the diff will be deliberate and visible rather
-  than silent drift.
+- **The `hijri.h:71-73` header text was wrong about the Sun, and has been
+  corrected.** It stated the file applies no nutation and no aberration. That
+  holds for the Moon and not for `hijri_sun_position()`, which applies both at
+  `hijri.h:485-502`. The header now distinguishes the two bodies. The change is
+  comment-only and the committed 2020-2025 baseline is byte-identical across it,
+  which is the evidence that no behaviour moved.
+- **The mixed-frame elongation at `hijri.h:1095-1100` is left as it stands, and
+  unifying the frames is measured to be a REGRESSION rather than an
+  improvement.** Making both bodies mean-of-date, by removing the nutation and
+  aberration terms the library itself applies at `hijri.h:485-486` and
+  recomputing against a both-mean DE440 reference, gives 0.0083813 deg of
+  elongation error against 0.0070530 deg for the current mixed frame. That is
+  about 19 percent worse. The mismatch partially cancels the solar truncation
+  error, and removing it exposes the full solar residual of 0.0084042 deg, which
+  the 0.0083813 deg figure lands almost exactly on. So frame unification is a
+  correctness-of-description change carrying a small accuracy cost, not an
+  accuracy gain. The quantity that actually limits elongation accuracy is the
+  Meeus ch. 25 low-precision solar theory, and only replacing that theory moves
+  the number. The tolerance `TOL_ELONG_DEG` pins current behaviour, so if the
+  frame is ever unified the diff will be deliberate and visible rather than
+  silent drift.
+  This comparison was computed with a throwaway probe rather than a committed
+  test, so it is a recorded measurement and not a standing assertion. It is
+  reproducible from the committed fixtures: undo the two solar terms, difference
+  against `SKY_SUN_GEOMETRIC` minus `SKY_MOON_GEOMETRIC`, and take the maximum
+  over the 24 epochs.
 - **Solar latitude is modelled as zero.** The Sun tables carry an ecliptic
   latitude column for format symmetry but no assertion is made against it. Zero
   is correct to about 1.2 arcsec, which is 3.3e-4 deg and well inside the
