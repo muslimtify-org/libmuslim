@@ -66,12 +66,35 @@
  *     longitude  0.0051 deg      latitude  0.0006 deg      distance  41.9 km
  *
  * It also reproduces Meeus's own printed worked Example 47.a to every digit
- * the book gives. See tests/test_moon_meeus.c, which carries both checks.
+ * the book gives. See tests/test_ephemeris_oracle.c, which carries both checks.
  *
- * WHAT THIS STILL DOES NOT DO. No nutation and no aberration are applied, so
- * these are geometric positions referred to the mean equinox of date. The
- * 0.0051 deg longitude residual above is essentially that omitted nutation,
- * not series error.
+ * WHAT THIS STILL DOES NOT DO, AND WHERE THE TWO BODIES DIFFER.
+ *
+ * The LUNAR position applies neither nutation nor aberration, so
+ * hijri_moon_position() returns geometric coordinates referred to the mean
+ * equinox of date. The 0.0051 deg residual above is mostly that omitted
+ * nutation rather than series error, and this is now measured rather than
+ * inferred: against a mean-of-date DE440 reference the Meeus ch. 47
+ * truncation error is 0.0012755 deg, about 4x smaller.
+ *
+ * The SOLAR position is NOT the same, and an earlier version of this comment
+ * wrongly claimed it was. Meeus ch. 25 applies both nutation and aberration
+ * (see hijri_sun_position below), so apparent_longitude_deg is referred to the
+ * TRUE equinox of date. Measured against DE440 its error is 0.0084042 deg,
+ * within the ~0.01 deg the theory documents, but larger than the lunar
+ * truncation error -- the Sun is the dominant term in this library's error
+ * bar, not the Moon.
+ *
+ * A consequence worth knowing before "fixing" it: elongation is computed
+ * between an apparent Sun and a mean-of-date Moon, which are different
+ * frames. The shipped geocentric elongation path (the RA/Dec angular
+ * separation the criteria run) measures 0.0065798 deg against DE440, 972x
+ * below the 6.4 deg MABIMS 2021 threshold; the topocentric value adds a
+ * parallax correction that is not oracle-measured. Making the frames
+ * consistent measures WORSE, 0.0083813 deg in longitude difference, because
+ * the mismatch partially cancels the solar truncation error. The real limit
+ * is the ch. 25 solar theory, not the frame.
+ * See docs/research/2026-08-02-cross-engine-error-bar.md.
  *
  * Judgement is still required near a criterion boundary. This ephemeris is
  * far tighter than the thresholds the visibility criteria in this file use,
@@ -530,7 +553,7 @@ HIJRIDEF HijriSunPosition hijri_sun_position(double jd_tt) {
  * has an even F multiple, every 47.B row an odd one -- which a corrupted table
  * would be unlikely to satisfy by accident.
  *
- * The decisive check is not either of those, though: tests/test_moon_meeus.c
+ * The decisive check is not either of those, though: tests/test_ephemeris_oracle.c
  * asserts Meeus's own printed worked Example 47.a, and this implementation
  * reproduces lambda, beta and Delta to every digit the book prints. That is
  * reproducible from this repository alone and does not rely on trusting either

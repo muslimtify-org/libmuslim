@@ -346,7 +346,7 @@ than hardcoding one. A few concrete mechanisms behind that:
 
 **Lunar position uses the complete Meeus ch. 47 series** (60 longitude/
 distance terms, 60 latitude terms, eccentricity correction, A1/A2/A3
-additive terms), validated in `tests/test_moon_meeus.c` against a vendored
+additive terms), validated in `tests/test_ephemeris_oracle.c` against a vendored
 JPL Horizons fixture, Meeus's own printed worked example, and published
 ΔT values. Nutation and aberration are not applied, so positions are
 geometric, referred to the mean equinox of date — that is the 0.005°
