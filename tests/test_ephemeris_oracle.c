@@ -101,6 +101,27 @@
  * 0.015 deg is the measured maximum rounded up to leave 2.13x margin. */
 #define TOL_ELONG_DEG 0.015
 
+/* GROUP 1, oracle-versus-oracle. These bound the agreement between Skyfield
+ * and Horizons, not between the library and anything, so they are deliberately
+ * far tighter than every other bound in this file: the two oracles derive from
+ * the same JPL ephemeris family and should agree to the fixtures' own printing
+ * resolution. Measured over these 24 epochs:
+ *
+ *     lon 0.0000668 deg      lat 0.0000113 deg      dist 0.0 km
+ *
+ * The longitude bound keeps only 1.50x margin, which is intentional. A loose
+ * bound here would defeat the point, since this is the check that would catch
+ * a time-scale or frame mistake in the comparison harness. The distance bound
+ * is not a 2x rule: both tables print distance to 0.1 km, so 0.0 km means
+ * "agrees to the printing resolution", and 0.5 km is five printing units.
+ *
+ * GROUP 5, the frame-unification counterfactual. Measured 0.0083813 deg,
+ * rounded up to leave 2.03x margin. */
+#define TOL_ORACLE_LON_DEG 0.0001
+#define TOL_ORACLE_LAT_DEG 0.0001
+#define TOL_ORACLE_DIST_KM 0.5
+#define TOL_ELONG_UNIFIED_DEG 0.017
+
 /* MEASURED MUTATION SENSITIVITY of the four tables above.
  *
  * The Meeus 47.a block further down records an exhaustive 120-mutation sweep of
@@ -108,6 +129,13 @@
  * same standard: each was deliberately mutated, the suite was rebuilt and run,
  * and the result below is what the binary actually printed. Every mutation was
  * reverted afterwards; nothing in this file or in hijri.h carries a mutation.
+ *
+ * Coverage, one mutation per table: M1 SKY_MOON_GEOMETRIC, M2 SKY_SUN_APPARENT,
+ * M3 SKY_MOON_APPARENT, M5 SKY_SUN_GEOMETRIC. M4 mutates a hijri.h coefficient
+ * rather than a table and is recorded as an uncaught gap. M1 through M4 report
+ * a 275-check suite and M5 reports 299, because M5 and the group 5 assertions
+ * it exercises were added later, after a verification pass found that
+ * SKY_SUN_GEOMETRIC had no assertion reading it at all.
  *
  * M1  SKY_MOON_GEOMETRIC row 0 longitude, 272.4120166 -> 272.4220166 (+0.01)
  *     CAUGHT
@@ -152,7 +180,21 @@
  *     Note that the 47.a check did not catch this mutation either -- the run
  *     reported 0 failures overall, not merely 0 in groups 1 through 4 -- which
  *     puts row 1 in the +1 direction among the MISSED majority the sweep below
- *     counts at 87 / 120. */
+ *     counts at 87 / 120.
+ *
+ * M5  SKY_SUN_GEOMETRIC row 0 longitude, 280.1543331 -> 280.2043331 (+0.05).
+ *     CAUGHT by elongation_frame_unified:
+ *       FAIL elongation_frame_unified at jd=2415020.5: got 7.7422959
+ *       want 7.7923165 (err 0.0500206 > tol 0.0170000)
+ *     Suite went to "299 checks, 1 failures", exit 1.
+ *
+ *     M5 was added after a verification pass observed that SKY_SUN_GEOMETRIC
+ *     was the one table no assertion read -- it fed only a printf, so the claim
+ *     above that all four tables are mutation-proven was false when written.
+ *     check_group5_frame_counterfactual() now reads it, which both closes that
+ *     gap and makes the "unifying the frames measures worse" result
+ *     reproducible from a checkout rather than resting on an uncommitted
+ *     probe. */
 
 static int checks;
 static int failures;
@@ -231,6 +273,42 @@ static const double FIXTURE[24][4] = {
  * JD 2396752.50 - 2506352.50). Generated offline; the generator is not
  * committed, matching how the Horizons curl above is recorded rather than
  * automated. Columns: jd_tt, ecliptic longitude, latitude, distance km.
+ *
+ * The tables below were produced with:
+ *
+ *   python3 -m venv venv && ./venv/bin/pip install skyfield   # 1.54
+ *   ./venv/bin/python gen_oracle.py
+ *
+ * where gen_oracle.py, for each jd_tt in the FIXTURE epoch list above, is:
+ *
+ *   from skyfield.api import load
+ *   from skyfield.framelib import ecliptic_frame
+ *   from skyfield.nutationlib import iau2000b
+ *   AU_KM = 149597870.7
+ *   ts = load.timescale(); eph = load('de440s.bsp')
+ *   earth, moon, sun = eph['earth'], eph['moon'], eph['sun']
+ *   t = ts.tt_jd(jd)
+ *
+ *   # APPARENT: light-time, aberration and deflection; true equinox of date.
+ *   a = earth.at(t).observe(body).apparent()
+ *   lat, lon, dist = a.frame_latlon(ecliptic_frame)
+ *
+ *   # GEOMETRIC: instantaneous vector, no light-time, no aberration, and
+ *   # nutation in longitude removed to reach the MEAN equinox of date.
+ *   # iau2000b returns 0.1 microarcseconds, hence the 1e7 / 3600 scaling.
+ *   g = (body - earth).at(t)
+ *   lat, lon, dist = g.frame_latlon(ecliptic_frame)
+ *   dpsi, _ = iau2000b(t.tt)
+ *   lon_mean = lon.degrees - float(dpsi) / 1e7 / 3600.0
+ *
+ * The nutation subtraction is the load-bearing step and is easy to get wrong.
+ * skyfield.framelib.ecliptic_frame is the TRUE equinox of date, not the mean,
+ * so using it directly would compare the library against a reference carrying
+ * nutation the library does not apply, and would report that nutation as
+ * library error. Verified at jd_tt 2458853.5 during development: true-of-date
+ * 33.9144543, dpsi -0.0046361 deg, mean-of-date 33.9190904, against
+ * hijri_moon_position()'s 33.9187415 -- a residual of 0.00035 deg rather than
+ * the 0.0043 deg the unsubtracted comparison would have shown.
  *
  * SKY_MOON_APPARENT is the true equinox of date with light-time, aberration
  * and deflection applied -- the same convention as the Horizons FIXTURE above,
@@ -515,11 +593,12 @@ static void check_group1_harness(void) {
     if (dlat > max_lat) max_lat = dlat;
     if (ddist > max_dist) max_dist = ddist;
     check_angle_within("sky_vs_horizons_lon", FIXTURE[i][0],
-                       SKY_MOON_APPARENT[i][1], FIXTURE[i][1], 1e-4);
+                       SKY_MOON_APPARENT[i][1], FIXTURE[i][1],
+                       TOL_ORACLE_LON_DEG);
     check_within("sky_vs_horizons_lat", FIXTURE[i][0],
-                 SKY_MOON_APPARENT[i][2], FIXTURE[i][2], 1e-4);
+                 SKY_MOON_APPARENT[i][2], FIXTURE[i][2], TOL_ORACLE_LAT_DEG);
     check_within("sky_vs_horizons_dist", FIXTURE[i][0],
-                 SKY_MOON_APPARENT[i][3], FIXTURE[i][3], 1.0);
+                 SKY_MOON_APPARENT[i][3], FIXTURE[i][3], TOL_ORACLE_DIST_KM);
   }
   printf("sky_vs_horizons max deviation: lon %.7f deg lat %.7f deg dist %.1f km\n",
          max_lon, max_lat, max_dist);
@@ -612,6 +691,48 @@ static void check_group4_elongation(void) {
          max_mismatch);
 }
 
+/* Group 5 -- the counterfactual, and the answer to "should we just fix the
+ * frame mismatch group 4 measures".
+ *
+ * Undoes the aberration and nutation-in-longitude terms that
+ * hijri_sun_position() applies at hijri.h:485-486, putting the Sun in the same
+ * mean-of-date frame as the Moon, then compares that unified difference
+ * against a both-mean DE440 reference.
+ *
+ * The result is counterintuitive and is the reason this check is committed
+ * rather than left as a one-off experiment: unifying the frames measures
+ * WORSE, not better. 0.0083813 deg here against 0.0070530 deg for the mixed
+ * frame group 4 measures, about 19 percent worse. The mismatch partially
+ * cancels the solar truncation error, so removing it exposes the full solar
+ * residual -- note 0.0083813 lands almost exactly on the 0.0084042 deg the Sun
+ * misses by on its own in group 3. The quantity that actually limits
+ * elongation accuracy is the Meeus ch. 25 solar theory, not the frame.
+ *
+ * This is also the only assertion that reads SKY_SUN_GEOMETRIC, which is what
+ * holds that table to the same mutation-proven standard as the other three. */
+static void check_group5_frame_counterfactual(void) {
+  double max_err = 0.0;
+  int i;
+  for (i = 0; i < 24; i++) {
+    double jd = SKY_SUN_GEOMETRIC[i][0];
+    double t = (jd - 2451545.0) / 36525.0;
+    double omega = 125.04 - 1934.136 * t;
+    /* The two terms from hijri.h:485-486, subtracted back out. */
+    double nut_ab = -0.00569 - 0.00478 * sin(omega * M_PI / 180.0);
+    HijriSunPosition s = hijri_sun_position(jd);
+    HijriMoonPosition m = hijri_moon_position(jd);
+    double sun_mean = s.apparent_longitude_deg - nut_ab;
+    double unified = angdiff(sun_mean, m.geocentric_longitude_deg);
+    double ref_geo = angdiff(SKY_SUN_GEOMETRIC[i][1],
+                             SKY_MOON_GEOMETRIC[i][1]);
+    double err = fabs(unified - ref_geo);
+    if (err > max_err) max_err = err;
+    check_within("elongation_frame_unified", jd, unified, ref_geo,
+                 TOL_ELONG_UNIFIED_DEG);
+  }
+  printf("elongation_frame_unified max: %.7f deg\n", max_err);
+}
+
 int main(void) {
   double max_lon = 0.0, max_lat = 0.0, max_dist = 0.0;
 
@@ -619,6 +740,7 @@ int main(void) {
   check_group2_truncation();
   check_group3_sun();
   check_group4_elongation();
+  check_group5_frame_counterfactual();
   check_meeus_example_47a();
   check_delta_t();
   check_ut_to_tt_path();
