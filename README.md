@@ -141,6 +141,13 @@ criterion alone does not produce. Details and the geocentric-elongation
 convention finding are in
 [`docs/research/2026-08-01-kemenag-reference.md`](docs/research/2026-08-01-kemenag-reference.md).
 
+Against Muhammadiyah's official calendar, the Wujudul Hilal predicate at
+Yogyakarta reproduces all twelve Maklumat-announced month starts of the
+criterion's final four years (1443–1446 H, before Muhammadiyah's switch to
+the KHGT global calendar), never early, matching every published
+wujud/belum-wujud verdict — fixture-enforced; see
+[`docs/research/2026-08-01-muhammadiyah-reference.md`](docs/research/2026-08-01-muhammadiyah-reference.md).
+
 A calculated result is still not an observation, and nothing here decides
 religious validity.
 
