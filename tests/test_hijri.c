@@ -1186,7 +1186,13 @@ static void test_kemenag_official_calendar(void) {
  * 56' 28", our upper-limb quantity +1.06 deg) -- any change that flips
  * these is a regression this fixture exists to catch. The set includes
  * three 30-day negatives (belum wujud) and covers both failure modes of
- * the criterion (Moon below horizon; ijtimak after the decision evening). */
+ * the criterion (Moon below horizon; ijtimak after the decision evening).
+ *
+ * Mutation-tested on 2026-08-01: shifting one start date by one day fails
+ * muh_never_early (actual=1); raising the predicate's limb threshold to
+ * 1.5 deg fails muh_official_starts_supported (actual=10) and the razor
+ * pin muh_maklumat_2024_03_10 (actual=0). Reverting either restores
+ * 485 checks, 0 failures. */
 static void test_muhammadiyah_official_calendar(void) {
   static const int MUH_STARTS[][3] = {
       {2022, 4, 2},  {2022, 5, 2},  {2022, 6, 30},
