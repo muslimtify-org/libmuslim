@@ -1273,7 +1273,17 @@ static void test_muhammadiyah_official_calendar(void) {
  * result untouched; valid input reports OK with a Julian Day bit-identical
  * to the pre-conversion implementation (values captured before the
  * signature change; tolerance 1e-9 day = 86 microseconds, far below the
- * bisection bracket of ~4e-13 day, so any solver change trips it). */
+ * bisection bracket of ~4e-13 day, so any solver change trips it).
+ *
+ * Mutation-tested on 2026-08-01: stripping the non-finite guard and
+ * found-check from hijri_find_previous_conjunction fails
+ * conj_status_nan_input (actual=0) and both result-untouched checks;
+ * halving the search bisection to 20 iterations fails
+ * conj_bitident_next_2024_06_01 (diff 4.7e-8 vs tol 1e-9). Reverting
+ * either restores 498 checks, 0 failures. The infinity guard in the
+ * search helper is deliberately NOT mutation-tested: removing it makes
+ * the scan non-terminating (inf + 0.5 <= inf), a hang rather than a
+ * failure. */
 static void test_conjunction_status_returns(void) {
   double untouched = 12345.0;
   double jd;
