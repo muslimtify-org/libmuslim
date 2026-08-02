@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-/* hijri.h -- v1.0 -- stb-style single-file astronomical Hijri calendar library
+/* hijri.h -- v1.0.0-rc1 -- stb-style single-file astronomical Hijri calendar library
  *
  * Do this:
  *      #define HIJRI_IMPLEMENTATION
@@ -182,7 +182,11 @@ HIJRIDEF void hijri_moon_topocentric(const HijriMoonPosition *geo, double jd_ut,
 typedef enum {
   HIJRI_EVENT_OK = 0,
   HIJRI_EVENT_NEVER_RISES,
-  HIJRI_EVENT_NEVER_SETS
+  HIJRI_EVENT_NEVER_SETS,
+  /* Search failure: non-finite input or no event in the search window.
+   * Returned by the conjunction finders; the circumpolar statuses above
+   * remain specific to the rise/set solvers. */
+  HIJRI_EVENT_NOT_FOUND
 } HijriEventStatus;
 
 HIJRIDEF double hijri_sun_altitude(double jd_ut, const HijriLocation *loc);
@@ -197,23 +201,26 @@ HIJRIDEF HijriEventStatus hijri_find_moonset(double jd_after,
 
 /* ---- Conjunction (new moon) finder --------------------------------------- */
 
-/* Nearest ascending zero-crossing of (Moon longitude - Sun longitude)
- * within +/-20 days of jd_guess. If two conjunctions could fall in that
- * 40-day window, this returns whichever is found first scanning forward
- * from jd_guess-20 -- use hijri_find_previous_conjunction() instead when
- * you specifically want "the conjunction before this date", which is
- * unambiguous. */
-HIJRIDEF double hijri_find_conjunction(double jd_guess);
+/* All three finders return HIJRI_EVENT_OK with the conjunction's Julian
+ * Day in *result_jd, or HIJRI_EVENT_NOT_FOUND (leaving *result_jd
+ * untouched) on non-finite input or an empty search window. With finite
+ * civil dates the windows always contain a conjunction -- a lunation is
+ * 29.5 days -- so NOT_FOUND from calendar code indicates a caller bug,
+ * which is exactly why it is reported instead of echoed back as a
+ * plausible-looking Julian Day (the pre-1.0 behaviour). */
 
 /* Most recent geocentric conjunction at or before jd_before. This is what
  * you want when asking "what new moon does this evening's month count
- * belong to" -- unambiguous, unlike hijri_find_conjunction(). */
-HIJRIDEF double hijri_find_previous_conjunction(double jd_before);
-HIJRIDEF double hijri_find_next_conjunction(double jd_after);
-/* Selects the conjunction associated with the candidate crescent. This is
- * meaningful for evenings near the new-moon window; callers seeking an
- * arbitrary nearest conjunction should use the previous/next functions. */
-HIJRIDEF double hijri_find_relevant_conjunction(double jd_evening);
+ * belong to". */
+HIJRIDEF HijriEventStatus
+hijri_find_previous_conjunction(double jd_before, double *result_jd);
+HIJRIDEF HijriEventStatus
+hijri_find_next_conjunction(double jd_after, double *result_jd);
+/* Selects the conjunction associated with the candidate crescent: the
+ * nearer of previous/next to jd_evening. Meaningful for evenings near the
+ * new-moon window. */
+HIJRIDEF HijriEventStatus
+hijri_find_relevant_conjunction(double jd_evening, double *result_jd);
 
 typedef enum {
   HIJRI_PREDICATE_MABIMS_1992,
@@ -904,11 +911,21 @@ static double hijri__moon_sun_wrapped_diff(double jd_ut) {
   return diff - 180.0;
 }
 
-HIJRIDEF double hijri_find_conjunction(double jd_guess) {
+/* Ascending zero-crossing search shared by the public finders. The old
+ * public hijri_find_conjunction() -- whose 40-day window made "nearest"
+ * ambiguous and which echoed its input back on failure -- lives on only
+ * here, with an honest status instead of the echo. */
+static HijriEventStatus hijri__search_conjunction(double jd_guess,
+                                                  double *result_jd) {
   double step = 0.5;
-  double jd_start = jd_guess - 20.0;
-  double prev_jd = jd_start;
-  double prev_diff = hijri__moon_sun_wrapped_diff(prev_jd);
+  double jd_start, prev_jd, prev_diff;
+
+  if (!isfinite(jd_guess)) {
+    return HIJRI_EVENT_NOT_FOUND;
+  }
+  jd_start = jd_guess - 20.0;
+  prev_jd = jd_start;
+  prev_diff = hijri__moon_sun_wrapped_diff(prev_jd);
 
   for (double jd = jd_start + step; jd <= jd_guess + 20.0; jd += step) {
     double diff = hijri__moon_sun_wrapped_diff(jd);
@@ -925,20 +942,28 @@ HIJRIDEF double hijri_find_conjunction(double jd_guess) {
           hi = mid;
         }
       }
-      return 0.5 * (lo + hi);
+      *result_jd = 0.5 * (lo + hi);
+      return HIJRI_EVENT_OK;
     }
     prev_jd = jd;
     prev_diff = diff;
   }
-  return jd_guess;
+  return HIJRI_EVENT_NOT_FOUND;
 }
 
-HIJRIDEF double hijri_find_previous_conjunction(double jd_before) {
+HIJRIDEF HijriEventStatus
+hijri_find_previous_conjunction(double jd_before, double *result_jd) {
   double step = 0.5;
-  double jd_start = jd_before - 33.0;
-  double prev_jd = jd_start;
-  double prev_diff = hijri__moon_sun_wrapped_diff(prev_jd);
-  double found_jd = jd_before;
+  double jd_start, prev_jd, prev_diff, found_jd;
+  int found = 0;
+
+  if (!isfinite(jd_before)) {
+    return HIJRI_EVENT_NOT_FOUND;
+  }
+  jd_start = jd_before - 33.0;
+  prev_jd = jd_start;
+  prev_diff = hijri__moon_sun_wrapped_diff(prev_jd);
+  found_jd = 0.0;
 
   for (double jd = jd_start + step; jd <= jd_before; jd += step) {
     double diff = hijri__moon_sun_wrapped_diff(jd);
@@ -956,25 +981,47 @@ HIJRIDEF double hijri_find_previous_conjunction(double jd_before) {
         }
       }
       found_jd = 0.5 * (lo + hi);
+      found = 1;
     }
     prev_jd = jd;
     prev_diff = diff;
   }
-  return found_jd;
+  if (!found) {
+    return HIJRI_EVENT_NOT_FOUND;
+  }
+  *result_jd = found_jd;
+  return HIJRI_EVENT_OK;
 }
 
-HIJRIDEF double hijri_find_next_conjunction(double jd_after) {
-  double candidate = hijri_find_conjunction(jd_after + 15.0);
-  if (candidate <= jd_after)
-    candidate = hijri_find_conjunction(jd_after + 30.0);
-  return candidate;
+HIJRIDEF HijriEventStatus
+hijri_find_next_conjunction(double jd_after, double *result_jd) {
+  double candidate;
+  if (hijri__search_conjunction(jd_after + 15.0, &candidate) !=
+      HIJRI_EVENT_OK) {
+    return HIJRI_EVENT_NOT_FOUND;
+  }
+  if (candidate <= jd_after) {
+    if (hijri__search_conjunction(jd_after + 30.0, &candidate) !=
+        HIJRI_EVENT_OK) {
+      return HIJRI_EVENT_NOT_FOUND;
+    }
+  }
+  *result_jd = candidate;
+  return HIJRI_EVENT_OK;
 }
 
-HIJRIDEF double hijri_find_relevant_conjunction(double jd_evening) {
-  double previous = hijri_find_previous_conjunction(jd_evening);
-  double next = hijri_find_next_conjunction(jd_evening);
-  return fabs(jd_evening - previous) <= fabs(next - jd_evening) ? previous
-                                                               : next;
+HIJRIDEF HijriEventStatus
+hijri_find_relevant_conjunction(double jd_evening, double *result_jd) {
+  double previous, next;
+  if (hijri_find_previous_conjunction(jd_evening, &previous) !=
+          HIJRI_EVENT_OK ||
+      hijri_find_next_conjunction(jd_evening, &next) != HIJRI_EVENT_OK) {
+    return HIJRI_EVENT_NOT_FOUND;
+  }
+  *result_jd = fabs(jd_evening - previous) <= fabs(next - jd_evening)
+                   ? previous
+                   : next;
+  return HIJRI_EVENT_OK;
 }
 
 /* ---- Hilal parameters and criteria
@@ -1054,12 +1101,19 @@ hijri_compute_evening_parameters(int gy, int gm, int gd,
         sun.declination_deg);
   }
 
-  p.jd_relevant_conjunction_ut =
-      hijri_find_relevant_conjunction(p.jd_sunset_ut);
-  p.moon_age_hours =
-      (p.jd_sunset_ut - p.jd_relevant_conjunction_ut) * 24.0;
-  p.conjunction_before_sunset =
-      (p.jd_relevant_conjunction_ut < p.jd_sunset_ut);
+  if (hijri_find_relevant_conjunction(p.jd_sunset_ut,
+                                      &p.jd_relevant_conjunction_ut) ==
+      HIJRI_EVENT_OK) {
+    p.moon_age_hours =
+        (p.jd_sunset_ut - p.jd_relevant_conjunction_ut) * 24.0;
+    p.conjunction_before_sunset =
+        (p.jd_relevant_conjunction_ut < p.jd_sunset_ut);
+  } else {
+    /* Unreachable from valid civil dates; reported rather than echoed. */
+    p.jd_relevant_conjunction_ut = NAN;
+    p.moon_age_hours = NAN;
+    p.conjunction_before_sunset = 0;
+  }
 
   p.moonset_status =
       hijri_find_moonset(p.jd_sunset_ut, loc, &p.jd_moonset_ut);
@@ -1417,15 +1471,22 @@ HIJRIDEF int hijri_from_gregorian_with_local_predicate(
     HijriLocalPredicate predicate, HijriDate *out) {
   double target_jd =
       floor(hijri_jd_from_gregorian(gy, gm, (double)gd));
-  double jd_conjunction =
-      hijri_find_relevant_conjunction(target_jd + 1.0);
-  double jd_month_start = hijri__find_month_start_after_conjunction(
-      jd_conjunction, loc, predicate);
+  double jd_conjunction;
+  double jd_month_start;
   int day_number;
 
+  if (hijri_find_relevant_conjunction(target_jd + 1.0, &jd_conjunction) !=
+      HIJRI_EVENT_OK) {
+    return 0;
+  }
+  jd_month_start = hijri__find_month_start_after_conjunction(
+      jd_conjunction, loc, predicate);
+
   if (isnan(jd_month_start) || target_jd < jd_month_start) {
-    jd_conjunction =
-        hijri_find_previous_conjunction(jd_conjunction - 1.0);
+    if (hijri_find_previous_conjunction(jd_conjunction - 1.0,
+                                        &jd_conjunction) != HIJRI_EVENT_OK) {
+      return 0;
+    }
     jd_month_start = hijri__find_month_start_after_conjunction(
         jd_conjunction, loc, predicate);
     if (isnan(jd_month_start) || target_jd < jd_month_start) {

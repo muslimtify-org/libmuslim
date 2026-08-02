@@ -1003,7 +1003,12 @@ static void test_crescent_equivalence_property(void) {
     double jd_start = hijri_jd_from_gregorian(2015, 1, 1.0);
     double jd_end = hijri_jd_from_gregorian(2030, 12, 31.0);
     int crescent = 0, mismatches = 0, guard_band = 0;
-    double conjunction = hijri_find_next_conjunction(jd_start - 3.0);
+    double conjunction = 0.0;
+    int conj_search_failures = 0;
+    if (hijri_find_next_conjunction(jd_start - 3.0, &conjunction) !=
+        HIJRI_EVENT_OK) {
+      conj_search_failures++;
+    }
 
     while (conjunction <= jd_end + 2.0) {
       int day_offset;
@@ -1033,8 +1038,15 @@ static void test_crescent_equivalence_property(void) {
           mismatches++;
         }
       }
-      conjunction = hijri_find_next_conjunction(conjunction + 2.0);
+      if (hijri_find_next_conjunction(conjunction + 2.0, &conjunction) !=
+          HIJRI_EVENT_OK) {
+        conj_search_failures++;
+        break;
+      }
     }
+    snprintf(name, sizeof(name), "equiv_conj_search_failures_%s",
+             cities[index].name);
+    check_int(name, conj_search_failures, 0);
     snprintf(name, sizeof(name), "equiv_crescent_count_%s",
              cities[index].name);
     check_true(name, crescent >= 350);
@@ -1255,6 +1267,44 @@ static void test_muhammadiyah_official_calendar(void) {
   }
 }
 
+
+/* Status-return contract for the conjunction finders (the roadmap's
+ * pre-v1.0 gate). Non-finite input reports HIJRI_EVENT_NOT_FOUND with the
+ * result untouched; valid input reports OK with a Julian Day bit-identical
+ * to the pre-conversion implementation (values captured before the
+ * signature change; tolerance 1e-9 day = 86 microseconds, far below the
+ * bisection bracket of ~4e-13 day, so any solver change trips it). */
+static void test_conjunction_status_returns(void) {
+  double untouched = 12345.0;
+  double jd;
+
+  check_int("conj_status_nan_input",
+            hijri_find_previous_conjunction(NAN, &untouched),
+            HIJRI_EVENT_NOT_FOUND);
+  check_close("conj_status_nan_result_untouched", untouched, 12345.0, 0.0);
+  check_int("conj_status_inf_input",
+            hijri_find_next_conjunction(INFINITY, &untouched),
+            HIJRI_EVENT_NOT_FOUND);
+  check_close("conj_status_inf_result_untouched", untouched, 12345.0, 0.0);
+
+  check_int("conj_status_prev_ok",
+            hijri_find_previous_conjunction(
+                hijri_jd_from_gregorian(2025, 3, 1.0), &jd),
+            HIJRI_EVENT_OK);
+  check_close("conj_bitident_prev_2025_03_01", jd, 2460734.531549764, 1e-9);
+  check_int("conj_status_next_ok",
+            hijri_find_next_conjunction(
+                hijri_jd_from_gregorian(2024, 6, 1.0), &jd),
+            HIJRI_EVENT_OK);
+  check_close("conj_bitident_next_2024_06_01", jd, 2460468.026246262, 1e-9);
+  check_int("conj_status_relevant_ok",
+            hijri_find_relevant_conjunction(
+                hijri_jd_from_gregorian(2022, 4, 1.5), &jd),
+            HIJRI_EVENT_OK);
+  check_close("conj_bitident_relevant_2022_04_01", jd, 2459670.766591638,
+              1e-9);
+}
+
 int main(void) {
   test_julian_day();
   test_tabular_calendar();
@@ -1273,6 +1323,7 @@ int main(void) {
   test_pedoman_worked_example();
   test_kemenag_official_calendar();
   test_muhammadiyah_official_calendar();
+  test_conjunction_status_returns();
   check_true("all_predicate_enums_represented",
              HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET -
                          HIJRI_PREDICATE_MABIMS_1992 +
