@@ -61,6 +61,8 @@ headline rather than instead of it.
 | Group 3, library Sun vs apparent DE440 | lon 0.0084042 deg (signed: mean +0.0020391, min -0.0024953, max +0.0084042) |
 | Group 4, elongation error | 0.0070530 deg |
 | Group 4, frame mismatch (apparent vs mean reference) | 0.0055998 deg |
+| Group 6, Skyfield vs Horizons Sun, both apparent | lon 0.0000675 deg, lat 0.0000118 deg, dist 0.0 km |
+| Group 7, shipped geocentric elongation path vs DE440 | 0.0065798 deg |
 
 **Group 1 is harness verification.** Two independently written clients, two
 independent time-scale conversions and two independent frame transformations
@@ -68,7 +70,11 @@ agree on the apparent Moon to 0.0000668 deg. That is 0.0051 / 0.0000668 = 76x
 below the residual being measured, so the comparison machinery is not a limiting
 term in anything below it. This group compares two compiled-in tables and never
 calls the library, which is why it also carries an explicit non-degeneracy check
-against a table accidentally pasted twice.
+against a table accidentally pasted twice. Group 6 is the same verification for
+the Sun, against a Horizons Sun fixture retrieved on 2026-08-02 with the same
+curl and COMMAND='10': agreement to 0.0000675 deg. Without it the solar tables
+were compared only against the library, whose residual set their own
+tolerances, a circularity a review flagged and this group closes.
 
 **Group 2 isolates what the truncated series costs.** Removing nutation and
 aberration from the reference rather than leaving them in the residual gives
@@ -76,10 +82,11 @@ aberration from the reference rather than leaving them in the residual gives
 0.0051 / 0.0012755 = 4.0x. So roughly three quarters of the Moon's apparent
 longitude error is the omitted physics and the remaining quarter is the series.
 
-This confirms the claim already written at `hijri.h:71-73`, that the apparent
-residual "is essentially that omitted nutation, not series error". That claim
-was previously an inference from the size of nutation. It is now a measurement,
-and the measured ratio is 4x rather than anything larger.
+This confirms what the header long claimed, that the apparent residual is
+essentially the omitted nutation rather than series error. That claim was
+previously an inference from the size of nutation. It is now a measurement, the
+measured ratio is 4x rather than anything larger, and the header block, since
+rewritten on this branch, carries the measured figures.
 
 **Group 4 measures the frame question directly** rather than arguing it. See
 [Frame consistency](#frame-consistency).
@@ -115,14 +122,29 @@ Resulting bounds:
 | Moon altitude | 0.0051 deg | 3 deg (MABIMS 2021) | 3.0 / 0.0051 = 588x |
 | Sun altitude (sunset) | 0.0084042 deg | n/a, sets the evening | see below |
 | Sun-Moon elongation, analytic bound | 0.0084042 + 0.0051 = 0.0135042 deg | 6.4 deg (MABIMS 2021) | 6.4 / 0.0135042 = 474x |
-| Sun-Moon elongation, measured | 0.0070530 deg | 6.4 deg | 6.4 / 0.0070530 = 907x |
+| Sun-Moon elongation, longitude difference | 0.0070530 deg | 6.4 deg | 6.4 / 0.0070530 = 907x |
+| Sun-Moon elongation, shipped geocentric path | 0.0065798 deg | 6.4 deg | 6.4 / 0.0065798 = 972x |
 
 The analytic bound and the direct measurement agree in the expected direction:
-the measured 0.0070530 deg is smaller than the 0.0135042 deg worst case, by
-0.0135042 / 0.0070530 = 1.9x, because the two bodies' errors do not attain their
-maxima at the same epoch and do not always carry the same sign. Quote the
-measured figure where the epochs are these 24, and the analytic bound where they
-are not.
+the measured figures are smaller than the 0.0135042 deg worst case, by
+0.0135042 / 0.0070530 = 1.9x on the longitude difference, because the two
+bodies' errors do not attain their maxima at the same epoch and do not always
+carry the same sign. Quote the shipped-path figure where the epochs are these
+24, and the analytic bound where they are not.
+
+The two elongation rows measure different things and both are needed. The
+longitude-difference row is test-side arithmetic on ecliptic longitudes. The
+shipped-path row executes the code the criteria actually run,
+`hijri__angular_separation_deg` on the two bodies' RA/Dec at `hijri.h:1115-1118`
+via the ecliptic-to-equatorial conversion, compared against the spherical
+separation of the DE440 apparent directions. Before group 7 existed, no
+assertion exercised that path, and the published 907x claim was true of a
+test-local reimplementation rather than of the shipped code. One scope limit
+remains and is stated rather than papered over: the topocentric elongation,
+which is the quantity MABIMS 2021 actually thresholds, adds a parallax
+correction on top of the geocentric value, and that correction has no oracle
+measurement. Bounding it requires a topocentric reference computed for a
+specific observer, which no committed table provides.
 
 The sunset case is the one that does not reduce to a direct angle comparison.
 A solar longitude error propagates into the sunset instant through the Sun's
@@ -150,15 +172,17 @@ every ecliptic longitude by the same dpsi, so it cancels exactly in a
 Sun-minus-Moon difference provided both bodies share a frame. Here they do not,
 so dpsi is injected into the difference instead of cancelling.
 
-The inconsistency is real. Its measured consequence is 0.0070530 deg, which is
-6.4 / 0.0070530 = 907x below the MABIMS 2021 elongation threshold. The companion
+The inconsistency is real. Its measured consequence is 0.0070530 deg in
+longitude difference, and 0.0065798 deg on the shipped geocentric elongation
+path itself, which is 6.4 / 0.0065798 = 972x below the MABIMS 2021 elongation
+threshold. The companion
 frame-mismatch figure, the same reference computed both-apparent versus
 both-mean, is 0.0055998 deg, and it confirms the mechanism: the injected term is
 of exactly the size the frame difference predicts, and it accounts for
 0.0055998 / 0.0070530 = 79 percent of the total elongation error.
 
 **Conclusion: a real inconsistency, measured as immaterial at the 6.4 deg
-threshold.** At 907x below the threshold it cannot move a criterion outcome
+threshold.** At 972x below the threshold it cannot move a criterion outcome
 except on an evening already within 0.007 deg of the boundary, which is far
 tighter than the roughly 0.15 deg window that `2026-07-30-findings.md` identifies
 as the band where an ephemeris change can flip a decision. The proportionate
@@ -212,8 +236,11 @@ sun_apparent signed lon: mean 0.0020391 deg min -0.0024953 deg max 0.0084042 deg
 elongation_err max: 0.0070530 deg
 frame_mismatch max (apparent vs mean reference): 0.0055998 deg
 elongation_frame_unified max: 0.0083813 deg
+sun_terms_vs_tables max: 0.0004844 deg
+sky_vs_horizons_sun max deviation: lon 0.0000675 deg lat 0.0000118 deg dist 0.0 km
+elongation_shipped_path max: 0.0065798 deg
 max_lon_err=0.0051 deg  max_lat_err=0.0006 deg  max_dist_err=41.9 km
-Moon ephemeris tests: 299 checks, 0 failures
+Moon ephemeris tests: 419 checks, 0 failures
 ```
 
 Every measured figure in this note is one of those numbers or a division between
@@ -235,7 +262,8 @@ given Skyfield 1.54 and `de440s.bsp`. The committed tables are the record.
 Each of the four new tables was deliberately mutated, the suite rebuilt, and the
 result recorded verbatim in `tests/test_ephemeris_oracle.c`. One mutation per
 table, M1 through M3 and M5, plus M4 which mutates a `hijri.h` coefficient
-rather than a table. Four of the five were caught:
+rather than a table, plus M6 for the Horizons Sun fixture. Five of the six
+were caught:
 
 - **M1**, mean-of-date Moon longitude moved +0.01 deg: caught by `moon_geom_lon`.
 - **M2**, apparent Sun longitude moved +0.05 deg: caught twice, by
@@ -257,6 +285,12 @@ rather than a table. Four of the five were caught:
   all four tables were mutation-proven was false when first written.
   `check_group5_frame_counterfactual()` now reads it. The check counts differ
   between M1 to M4 and M5, 275 against 299, because that group was added later.
+- **M6**, Horizons Sun longitude moved +0.01 deg: caught by
+  `sky_vs_horizons_sun_lon`, with the suite reporting 419 checks and 1 failure.
+  M6 and the group 6 and 7 assertions it exercises were added after the review
+  found that the Sun rested on a single generation harness and that the shipped
+  elongation path had no assertion, which is why its check count is higher
+  still.
 
 M4 is a genuine limit of this fixture and is recorded as such rather than
 smoothed over. The check that would have to tighten is `moon_geom_lon`, bounded

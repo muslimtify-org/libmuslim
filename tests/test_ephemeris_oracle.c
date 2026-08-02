@@ -116,11 +116,26 @@
  * "agrees to the printing resolution", and 0.5 km is five printing units.
  *
  * GROUP 5, the frame-unification counterfactual. Measured 0.0083813 deg,
- * rounded up to leave 2.03x margin. */
+ * rounded up to leave 2.03x margin.
+ *
+ * GROUP 6, the solar harness, reuses the TOL_ORACLE_* bounds: measured
+ * lon 0.0000675 deg, lat 0.0000118 deg, dist 0.0 km, so the longitude bound
+ * keeps 1.48x margin, same deliberate tightness as group 1.
+ *
+ * GROUP 7, the shipped elongation path. Measured 0.0065798 deg; 0.014 leaves
+ * 2.13x margin.
+ *
+ * Coupling guard in group 5: the library's two solar frame terms against the
+ * same physics recorded independently in the tables. Measured 0.0004844 deg,
+ * which is the nutation Meeus ch. 25 truncates away (it keeps only the omega
+ * term of dpsi; the discarded terms reach about 0.0005 deg). 0.001 leaves
+ * 2.06x margin. */
 #define TOL_ORACLE_LON_DEG 0.0001
 #define TOL_ORACLE_LAT_DEG 0.0001
 #define TOL_ORACLE_DIST_KM 0.5
 #define TOL_ELONG_UNIFIED_DEG 0.017
+#define TOL_ELONG_SHIPPED_DEG 0.014
+#define TOL_SUN_TERMS_DEG 0.001
 
 /* MEASURED MUTATION SENSITIVITY of the four tables above.
  *
@@ -131,11 +146,13 @@
  * reverted afterwards; nothing in this file or in hijri.h carries a mutation.
  *
  * Coverage, one mutation per table: M1 SKY_MOON_GEOMETRIC, M2 SKY_SUN_APPARENT,
- * M3 SKY_MOON_APPARENT, M5 SKY_SUN_GEOMETRIC. M4 mutates a hijri.h coefficient
- * rather than a table and is recorded as an uncaught gap. M1 through M4 report
- * a 275-check suite and M5 reports 299, because M5 and the group 5 assertions
- * it exercises were added later, after a verification pass found that
- * SKY_SUN_GEOMETRIC had no assertion reading it at all.
+ * M3 SKY_MOON_APPARENT, M5 SKY_SUN_GEOMETRIC, M6 HORIZONS_SUN. M4 mutates a
+ * hijri.h coefficient rather than a table and is recorded as an uncaught gap.
+ * The check counts differ across the records -- 275 for M1 through M4, 299 for
+ * M5, 419 for M6 -- because the suite grew between rounds: M5 and group 5 were
+ * added after a verification pass found SKY_SUN_GEOMETRIC had no assertion
+ * reading it, and M6 with groups 6 and 7 after a review found the Sun rested
+ * on a single generation harness and the shipped elongation path was untested.
  *
  * M1  SKY_MOON_GEOMETRIC row 0 longitude, 272.4120166 -> 272.4220166 (+0.01)
  *     CAUGHT
@@ -194,7 +211,13 @@
  *     check_group5_frame_counterfactual() now reads it, which both closes that
  *     gap and makes the "unifying the frames measures worse" result
  *     reproducible from a checkout rather than resting on an uncommitted
- *     probe. */
+ *     probe.
+ *
+ * M6  HORIZONS_SUN row 0 longitude, 280.1533171 -> 280.1633171 (+0.01).
+ *     CAUGHT by the solar harness:
+ *       FAIL sky_vs_horizons_sun_lon at jd=2415020.5: got 280.1533846
+ *       want 280.1633171 (err 0.0099325 > tol 0.0001000)
+ *     Suite went to "419 checks, 1 failures", exit 1. */
 
 static int checks;
 static int failures;
@@ -451,6 +474,44 @@ static const double SKY_SUN_GEOMETRIC[24][4] = {
   {2460699.5, 304.2440353, -0.0001857, 147262969.0},
   {2469807.5, 280.7491331, 0.0001026, 147106964.8},
   {2488069.5, 280.6081995, 0.0000782, 147108215.8},
+};
+
+/* Second oracle for the SUN, so the body with the largest measured error does
+ * not rest on a single generation harness the way it briefly did. Retrieved on
+ * 2026-08-02 with the same curl as the Moon FIXTURE at the top of this file,
+ * changing only COMMAND='301' to COMMAND='10' (the Sun). Columns: jd_tt,
+ * apparent ecliptic longitude and latitude of date, apparent range converted
+ * from AU with 1 AU = 149597870.7 km.
+ *
+ * This table is compared against SKY_SUN_APPARENT, not against the library:
+ * it is the solar counterpart of group 1, closing the circularity in which
+ * the solar tables were only ever compared against the library whose residual
+ * set their own tolerances. */
+static const double HORIZONS_SUN[24][4] = {
+  {2415020.5, 280.1533171, 0.0000648, 147094540.8},
+  {2433282.5, 280.0044888, -0.0000093, 147091153.4},
+  {2458853.5, 284.0860699, -0.0001084, 147091188.1},
+  {2458931.7, 3.0186804, -0.0000703, 149116951.8},
+  {2459044.2, 111.7344289, -0.0001731, 152072021.9},
+  {2459122.9, 187.6834965, -0.0002434, 149796568.8},
+  {2459201.3, 266.3145303, -0.0001635, 147205533.1},
+  {2459318.6, 24.3673521, 0.0000245, 150043846.8},
+  {2459407.1, 109.5025371, 0.0001882, 152086401.4},
+  {2459502.8, 202.1524282, -0.0002236, 149172562.6},
+  {2459613.4, 314.0162256, -0.0002128, 147441091.8},
+  {2459688.2, 28.6315189, -0.0000318, 150208731.6},
+  {2459777.9, 114.8096238, -0.0000766, 152042538.3},
+  {2459860.5, 194.6960894, -0.0000902, 149496953.6},
+  {2459955.1, 290.0642635, 0.0001243, 147115383.1},
+  {2460048.7, 23.9874743, -0.0001817, 150013224.9},
+  {2460133.3, 105.4237166, -0.0000495, 152092994.9},
+  {2460229.6, 198.5048917, 0.0002204, 149337680.3},
+  {2460322.4, 292.1683368, -0.0001053, 147133997.9},
+  {2460451.8, 60.7289246, -0.0001121, 151410581.1},
+  {2460577.2, 181.1438807, 0.0001853, 150086332.2},
+  {2460699.5, 304.2385020, -0.0001745, 147262963.2},
+  {2469807.5, 280.7475650, 0.0001128, 147106965.9},
+  {2488069.5, 280.6033753, 0.0000877, 147108222.9},
 };
 
 /* Meeus, "Astronomical Algorithms" 2nd ed., worked Example 47.a:
@@ -711,7 +772,7 @@ static void check_group4_elongation(void) {
  * This is also the only assertion that reads SKY_SUN_GEOMETRIC, which is what
  * holds that table to the same mutation-proven standard as the other three. */
 static void check_group5_frame_counterfactual(void) {
-  double max_err = 0.0;
+  double max_err = 0.0, max_coupling = 0.0;
   int i;
   for (i = 0; i < 24; i++) {
     double jd = SKY_SUN_GEOMETRIC[i][0];
@@ -729,8 +790,108 @@ static void check_group5_frame_counterfactual(void) {
     if (err > max_err) max_err = err;
     check_within("elongation_frame_unified", jd, unified, ref_geo,
                  TOL_ELONG_UNIFIED_DEG);
+    /* Coupling guard. nut_ab above duplicates the two constants at
+     * hijri.h:505-506, and nothing else would notice if either side moved:
+     * with 2x margin on the assertion above, a changed library term drifts
+     * sun_mean out of the mean-of-date frame while everything still passes.
+     * The tables record the same physics independently -- apparent minus
+     * geometric solar longitude IS the applied nutation plus aberration, per
+     * the generator -- so asserting nut_ab against that difference fails if
+     * either the library constants or the tables move. */
+    {
+      /* SIGNED difference -- angdiff() takes an absolute value, which would
+       * compare a negative nut_ab against a positive magnitude and report a
+       * spurious doubling. */
+      double table_nut_ab = fmod(SKY_SUN_APPARENT[i][1] -
+                                 SKY_SUN_GEOMETRIC[i][1] + 540.0, 360.0) -
+                            180.0;
+      double coupling = fabs(nut_ab - table_nut_ab);
+      if (coupling > max_coupling) max_coupling = coupling;
+      check_within("sun_terms_vs_tables", jd, nut_ab, table_nut_ab,
+                   TOL_SUN_TERMS_DEG);
+    }
   }
   printf("elongation_frame_unified max: %.7f deg\n", max_err);
+  printf("sun_terms_vs_tables max: %.7f deg\n", max_coupling);
+}
+
+/* Group 6 -- solar harness verification, the Sun's counterpart of group 1.
+ * SKY_SUN_APPARENT against HORIZONS_SUN, two independently written clients on
+ * the same convention. Neither table involves the library, so like group 1
+ * this is deliberately a check of the comparison machinery, committed so the
+ * agreement is a recorded fact and a later edit to either table is caught. */
+static void check_group6_sun_harness(void) {
+  double max_lon = 0.0, max_lat = 0.0, max_dist = 0.0;
+  int i;
+  for (i = 0; i < 24; i++) {
+    double dlon = angdiff(SKY_SUN_APPARENT[i][1], HORIZONS_SUN[i][1]);
+    double dlat = fabs(SKY_SUN_APPARENT[i][2] - HORIZONS_SUN[i][2]);
+    double ddist = fabs(SKY_SUN_APPARENT[i][3] - HORIZONS_SUN[i][3]);
+    if (dlon > max_lon) max_lon = dlon;
+    if (dlat > max_lat) max_lat = dlat;
+    if (ddist > max_dist) max_dist = ddist;
+    check_angle_within("sky_vs_horizons_sun_lon", HORIZONS_SUN[i][0],
+                       SKY_SUN_APPARENT[i][1], HORIZONS_SUN[i][1],
+                       TOL_ORACLE_LON_DEG);
+    check_within("sky_vs_horizons_sun_lat", HORIZONS_SUN[i][0],
+                 SKY_SUN_APPARENT[i][2], HORIZONS_SUN[i][2],
+                 TOL_ORACLE_LAT_DEG);
+    check_within("sky_vs_horizons_sun_dist", HORIZONS_SUN[i][0],
+                 SKY_SUN_APPARENT[i][3], HORIZONS_SUN[i][3],
+                 TOL_ORACLE_DIST_KM);
+  }
+  printf("sky_vs_horizons_sun max deviation: lon %.7f deg lat %.7f deg "
+         "dist %.1f km\n", max_lon, max_lat, max_dist);
+}
+
+/* Spherical separation between two ecliptic (lon, lat) directions, degrees.
+ * Reference-side math only; the library side goes through its own RA/Dec
+ * path below. */
+static double ecl_separation_deg(double lon1, double lat1, double lon2,
+                                 double lat2) {
+  double l1 = lon1 * M_PI / 180.0, b1 = lat1 * M_PI / 180.0;
+  double l2 = lon2 * M_PI / 180.0, b2 = lat2 * M_PI / 180.0;
+  double c = sin(b1) * sin(b2) + cos(b1) * cos(b2) * cos(l1 - l2);
+  if (c > 1.0) c = 1.0;
+  if (c < -1.0) c = -1.0;
+  return acos(c) * 180.0 / M_PI;
+}
+
+/* Group 7 -- the SHIPPED elongation path. Groups 4 and 5 recompute a
+ * longitude difference in test code; nothing there executes the code the
+ * criteria actually run. hijri.h computes elongation with
+ * hijri__angular_separation_deg on RA/Dec (hijri.h:1115-1118), which goes
+ * through the ecliptic-to-equatorial conversion of both bodies. This group
+ * feeds the library's own RA/Dec through that same private function and
+ * compares against the spherical separation of the DE440 apparent directions,
+ * so a defect in the obliquity term or the separation formula is no longer
+ * invisible.
+ *
+ * Scope, stated so the published claims stay honest: this measures the
+ * GEOCENTRIC elongation path. The topocentric value adds the parallax
+ * correction, which depends on an observer location and is not measured
+ * here. */
+static void check_group7_shipped_elongation(void) {
+  double max_err = 0.0;
+  int i;
+  for (i = 0; i < 24; i++) {
+    double jd = SKY_SUN_APPARENT[i][0];
+    HijriSunPosition s = hijri_sun_position(jd);
+    HijriMoonPosition m = hijri_moon_position(jd);
+    /* The same call hijri.h:1115-1118 makes, on the same inputs. */
+    double lib_sep = hijri__angular_separation_deg(
+        m.right_ascension_deg, m.declination_deg, s.right_ascension_deg,
+        s.declination_deg);
+    double ref_sep = ecl_separation_deg(SKY_SUN_APPARENT[i][1],
+                                        SKY_SUN_APPARENT[i][2],
+                                        SKY_MOON_APPARENT[i][1],
+                                        SKY_MOON_APPARENT[i][2]);
+    double err = fabs(lib_sep - ref_sep);
+    if (err > max_err) max_err = err;
+    check_within("elongation_shipped_path", jd, lib_sep, ref_sep,
+                 TOL_ELONG_SHIPPED_DEG);
+  }
+  printf("elongation_shipped_path max: %.7f deg\n", max_err);
 }
 
 int main(void) {
@@ -741,6 +902,8 @@ int main(void) {
   check_group3_sun();
   check_group4_elongation();
   check_group5_frame_counterfactual();
+  check_group6_sun_harness();
+  check_group7_shipped_elongation();
   check_meeus_example_47a();
   check_delta_t();
   check_ut_to_tt_path();

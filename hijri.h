@@ -87,10 +87,13 @@
  *
  * A consequence worth knowing before "fixing" it: elongation is computed
  * between an apparent Sun and a mean-of-date Moon, which are different
- * frames. The measured effect is 0.0070530 deg, 907x below the 6.4 deg
- * MABIMS 2021 threshold. Making the frames consistent measures WORSE, 0.0083813
- * deg, because the mismatch partially cancels the solar truncation error. The
- * real limit is the ch. 25 solar theory, not the frame.
+ * frames. The shipped geocentric elongation path (the RA/Dec angular
+ * separation the criteria run) measures 0.0065798 deg against DE440, 972x
+ * below the 6.4 deg MABIMS 2021 threshold; the topocentric value adds a
+ * parallax correction that is not oracle-measured. Making the frames
+ * consistent measures WORSE, 0.0083813 deg in longitude difference, because
+ * the mismatch partially cancels the solar truncation error. The real limit
+ * is the ch. 25 solar theory, not the frame.
  * See docs/research/2026-08-02-cross-engine-error-bar.md.
  *
  * Judgement is still required near a criterion boundary. This ephemeris is

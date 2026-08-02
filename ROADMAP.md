@@ -212,12 +212,15 @@ longitude, applying both the aberration and the nutation term at
 date with neither, and `hijri.h:1115-1118` computes elongation as the angular
 separation between the two. Nutation in longitude would cancel exactly in that
 difference if both bodies shared a frame, so the mismatch injects it instead.
-The measured consequence is 0.0070530 deg of elongation error, which is
-6.4 / 0.0070530 = 907x below the MABIMS 2021 elongation threshold. The
-inconsistency is real and its effect is immaterial at that threshold, so the
-proportionate remedy is a correction to the header claim at `hijri.h:71-73`,
-which states that no nutation and no aberration are applied and is accurate for
-the Moon only. That header correction has been made.
+The measured consequence is 0.0070530 deg of longitude-difference error, and
+the shipped geocentric elongation path itself, the RA/Dec angular separation
+the criteria actually execute, measures 0.0065798 deg against DE440, which is
+6.4 / 0.0065798 = 972x below the MABIMS 2021 elongation threshold. The
+topocentric elongation adds a parallax correction that remains without an
+oracle measurement. The inconsistency is real and its effect is immaterial at
+that threshold, so the proportionate remedy was a correction to the header
+claim at `hijri.h:71`, which stated that no nutation and no aberration are
+applied, accurate for the Moon only. That header correction has been made.
 
 Unifying the frames in code is measured and NOT recommended, and the reason is
 counterintuitive enough to record so that a future reader does not attempt it
