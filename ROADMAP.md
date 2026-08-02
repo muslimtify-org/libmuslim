@@ -27,7 +27,7 @@ The library currently provides:
 - Dependency-free, single-header C implementation.
 - Strict C11 and C++17 compatibility.
 - Gregorian, Julian Day, and tabular Hijri calendar arithmetic.
-- Solar and abbreviated lunar-position calculations.
+- Solar positions and the full Meeus ch. 47 lunar series.
 - Sunset, moonset, and conjunction event calculations with explicit event
   status.
 - Candidate-crescent conjunction selection with signed Moon age.
@@ -48,10 +48,16 @@ The library currently provides:
   an observer location.
 - Synthetic threshold, boundary, unavailable-event, high-latitude, and
   orchestration tests.
+- Official-calendar fixtures for all three Indonesian-relevant criteria:
+  Umm al-Qura against the tabulated official calendar, MABIMS 2021 against
+  the Kemenag calendar, and Wujudul Hilal against the Maklumat PP
+  Muhammadiyah record, each with its provenance in `docs/research/`.
 
-The current lunar ephemeris is intentionally compact and approximate. Results
-near a criterion boundary must not be presented as observational-grade or as
-an official calendar declaration.
+The lunar ephemeris is no longer the limiting approximation, but the library
+still applies neither nutation nor aberration, and no second independent
+engine has confirmed the error bar yet. Results near a criterion boundary
+must not be presented as observational-grade or as an official calendar
+declaration.
 
 ## Before v1.0 — blocks the tag
 
@@ -59,14 +65,14 @@ Items that are expensive or impossible to change after tagging.
 
 ### Full Meeus ch. 47 lunar series
 
-Replace the body of `hijri_moon_position()`. It currently uses roughly six
-longitude terms, four latitude terms, and four distance terms of ELP2000-82B.
-The full series is public, introduces no dependency, and changes no public
-declaration.
-
-**Depends on:** nothing. Ranked first because it is self-contained — no new
-dependency, no API change — and because the comparison below is far more
-informative once the series it measures is the one intended to ship.
+**Done (2026-07).** `hijri_moon_position()` implements the complete series
+(`de57723`, PR #5): Meeus table 47.A in full (60 rows, longitude and
+distance) and table 47.B in full (60 rows, latitude), transcribed one row
+per line so the tables stay auditable against the book, with the `E`
+eccentricity factor applied to every term in the Sun's mean anomaly and the
+additive A1/A2/A3 terms present. No public struct or signature changed and
+the library still has no runtime dependency. Validated against Meeus' own
+worked example 47.a (`2cfb151`) and a JPL Horizons fixture (`1a90f12`).
 
 **Completion criteria:**
 
@@ -86,6 +92,19 @@ or datasets.
 approximation to establish a baseline, then again after the full series lands.
 The second run produces the measured error bar that near-boundary reporting
 and every fixture tolerance below require.
+
+**Progress: one engine of two.** `tests/test_moon_meeus.c` compares
+`hijri_moon_position()` against a JPL Horizons fixture (24 epochs,
+geocentric apparent ecliptic coordinates of date, retrieved 2026-07-30 with
+the request recorded verbatim in the file's header) and reports measured
+residuals rather than pass/fail alone: `max_lon_err=0.0051 deg
+max_lat_err=0.0006 deg max_dist_err=41.9 km`. That is the post-full-series
+run, and the longitude residual is consistent with the known systematic
+cause, since Horizons reports apparent positions while this library applies
+neither nutation nor aberration, and nutation in longitude alone reaches
+about 0.005 deg. The remaining work is a second independent implementation
+or dataset, and a research note recording the combined error bar that the
+uncertainty item below consumes.
 
 **Completion criteria:**
 
@@ -115,9 +134,15 @@ garbage-out on an invalid month) was judged out of scope for this gate.
 
 ### Build and compilation enforcement
 
-Testing layer 8 below claims strict C11 and C++17 compilation. The repository
-contains no build file, and no header is compiled as C++ anywhere, so the
-claim is currently unverified. Add a build entry point that checks it.
+**Done (2026-07).** `make check` is the single entry point (`b2ac140`,
+PR #8, GNU make required per `2fbebb1`). It builds every header, test, and
+example with `-std=c11 -Wall -Wextra -Wpedantic` and runs the suites, then
+compiles all three headers as C++17 in one translation unit, exceeding the
+criterion below, which asked only for `hijri.h`. It also regenerates the
+research baseline CSV and byte-compares it against the committed copy, so
+numerical drift fails the build rather than being noticed later. The
+language-compatibility claim is now verified by that command rather than by
+hand-run instructions.
 
 **Completion criteria:**
 
