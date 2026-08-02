@@ -100,6 +100,59 @@
  * 0.015 deg is the measured maximum rounded up to leave 2.13x margin. */
 #define TOL_ELONG_DEG 0.015
 
+/* MEASURED MUTATION SENSITIVITY of the four tables above.
+ *
+ * The Meeus 47.a block further down records an exhaustive 120-mutation sweep of
+ * the Sigma-l coefficients. The four Skyfield tables added here are held to the
+ * same standard: each was deliberately mutated, the suite was rebuilt and run,
+ * and the result below is what the binary actually printed. Every mutation was
+ * reverted afterwards; nothing in this file or in hijri.h carries a mutation.
+ *
+ * M1  SKY_MOON_GEOMETRIC row 0 longitude, 272.4120166 -> 272.4220166 (+0.01)
+ *     CAUGHT
+ *       FAIL moon_geom_lon at jd=2415020.5: got 272.4122702 want 272.4220166 (err 0.0097464 > tol 0.0030000)
+ *
+ * M2  SKY_SUN_APPARENT row 0 longitude, 280.1533846 -> 280.2033846 (+0.05)
+ *     CAUGHT, and caught twice -- the Sun table feeds group 4 as well, so the
+ *     elongation reference moves with it:
+ *       FAIL sun_apparent_lon at jd=2415020.5: got 280.1535706 want 280.2033846 (err 0.0498140 > tol 0.0170000)
+ *       FAIL elongation_vs_apparent_ref at jd=2415020.5: got 7.7413005 want 7.7867292 (err 0.0454287 > tol 0.0150000)
+ *
+ * M3  SKY_MOON_APPARENT body replaced with a verbatim copy of FIXTURE, i.e.
+ *     the same table pasted twice.
+ *     CAUGHT by the non-degeneracy guard, which is the only check in group 1
+ *     that can see this: every per-epoch comparison passes with a residual of
+ *     exactly zero, and the printed maximum collapses to zero:
+ *       sky_vs_horizons max deviation: lon 0.0000000 deg lat 0.0000000 deg dist 0.0 km
+ *       FAIL sky_vs_horizons_nondegenerate: expected a non-zero value, got 0.000000000
+ *     This is the mutation that justifies check_true_nonzero() existing. Without
+ *     it, a table pasted twice would report 275 checks and 0 failures.
+ *
+ * M4  hijri__moon_lr row 0 Sigma-l coefficient, 6288774 -> 6288775 (+1 unit).
+ *     NOT CAUGHT -- recorded as a gap, not as a pass.
+ *     The suite printed "Moon ephemeris tests: 275 checks, 0 failures" and
+ *     exited 0. The only visible movement anywhere in the output was the group 2
+ *     maximum, 0.0012755 -> 0.0012752 deg, a shift of 3e-7 deg; group 4's
+ *     maximum moved 0.0070530 -> 0.0070533 deg. moon_geom_lon did not fail.
+ *
+ *     Which check would need tightening, and why it cannot be: moon_geom_lon.
+ *     Its bound is TOL_GEOM_LON_DEG = 0.003 deg against a measured residual of
+ *     0.0012755 deg. A one-unit Sigma-l change moves lambda by at most 1e-6 deg,
+ *     so catching it would mean pinning the residual to within 3e-7 deg of its
+ *     unmutated value -- asserting the truncation error itself rather than
+ *     bounding it, which would then fail on any legitimate reference or
+ *     compiler change. The residual is about 1275x one coefficient unit, so no
+ *     achievable bound on this fixture reaches unit sensitivity.
+ *
+ *     This is the same hard limit the 47.a block already documents for the
+ *     Horizons fixture, and it is why the 1e-6 deg assertion against the
+ *     publisher's worked example remains the only per-coefficient check in this
+ *     file. The DE440 tables broaden the epoch coverage; they do not sharpen it.
+ *     Note that the 47.a check did not catch this mutation either -- the run
+ *     reported 0 failures overall, not merely 0 in groups 1 through 4 -- which
+ *     puts row 1 in the +1 direction among the MISSED majority the sweep below
+ *     counts at 87 / 120. */
+
 static int checks;
 static int failures;
 
