@@ -220,4 +220,4 @@ unambiguous, and an unknown convention is recorded as a gap rather than guessed.
 
 ## License
 
-MIT. Copyright 2025 muslimtify-org.
+MIT. Copyright 2025-2026 muslimtify-org.

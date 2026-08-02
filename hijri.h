@@ -83,10 +83,9 @@
  * -----------------------------------------------------------------------
  * LICENSE
  *
- * Public domain (or MIT, at your option, if your jurisdiction doesn't
- * recognize public domain). Provided as-is, no warranty, use at your own
- * risk -- especially for anything where getting the date wrong matters
- * religiously; see the accuracy caveat above.
+ * MIT -- see the full license text at the top of this file. Provided as-is,
+ * no warranty, use at your own risk -- especially for anything where getting
+ * the date wrong matters religiously; see the accuracy caveat above.
  */
 
 #ifndef HIJRI_H
