@@ -23,6 +23,12 @@
  * Columns are geocentric apparent ecliptic longitude and latitude of date, and
  * apparent range. Range was converted from AU to km with 1 AU = 149597870.7 km.
  *
+ * The SECOND oracle, Skyfield evaluating JPL DE440, has its provenance and
+ * generator transcription recorded at the SKY_MOON_APPARENT table further
+ * down, alongside the tables it produced; the Horizons Sun fixture
+ * (HORIZONS_SUN, COMMAND='10', retrieved 2026-08-02) is recorded at its own
+ * table. Two engines, both bodies, same 24 epochs.
+ *
  * TOLERANCES -- these are measured, not guessed.
  *
  *   Horizons reports APPARENT positions. Meeus ch. 47 yields GEOMETRIC longitude
@@ -174,6 +180,13 @@
  *     This is the mutation that justifies check_true_nonzero() existing. Without
  *     it, a table pasted twice would report 275 checks and 0 failures.
  *
+ *     Scope note, added after a review observed the max-only guard was weaker
+ *     than this record implied: the guard M3 exercised catches only a
+ *     byte-exact paste. A table copied with one row regenerated kept the max
+ *     nonzero and passed. Groups 1 and 6 now also assert the MINIMUM
+ *     per-epoch deviation nonzero, which fails if any single row is copied
+ *     verbatim (measured minima 6.6e-6 and 5.4e-6 deg).
+ *
  * M4  hijri__moon_lr row 0 Sigma-l coefficient, 6288774 -> 6288775 (+1 unit).
  *     NOT CAUGHT -- recorded as a gap, not as a pass.
  *     The suite printed "Moon ephemeris tests: 275 checks, 0 failures" and
@@ -217,7 +230,15 @@
  *     CAUGHT by the solar harness:
  *       FAIL sky_vs_horizons_sun_lon at jd=2415020.5: got 280.1533846
  *       want 280.1633171 (err 0.0099325 > tol 0.0001000)
- *     Suite went to "419 checks, 1 failures", exit 1. */
+ *     Suite went to "419 checks, 1 failures", exit 1.
+ *
+ * M7  SKY_MOON_APPARENT row 0 lon and lat replaced with the FIXTURE row 0
+ *     values, a single row copied verbatim rather than the whole table.
+ *     CAUGHT by the per-row minimum guard, and by nothing else -- every
+ *     per-epoch tolerance check passed:
+ *       FAIL sky_vs_horizons_min_nondegenerate: expected a non-zero value, got 0.000000000
+ *     Suite went to "422 checks, 1 failures", exit 1. This is the case the
+ *     M3 scope note records as invisible to the max-only guard. */
 
 static int checks;
 static int failures;
@@ -418,10 +439,15 @@ static const double SKY_MOON_GEOMETRIC[24][4] = {
  * drives every predicate in the library and elongation is a Sun-Moon angle,
  * that was the larger of the two gaps.
  *
- * Both Sun tables carry an ecliptic latitude column for format symmetry with
- * the Moon tables. The library models solar ecliptic latitude as zero, which
- * is correct to about 1.2 arcsec; that is recorded in the research note rather
- * than asserted here. */
+ * Column usage, stated so unread data does not look load-bearing. All four
+ * columns of SKY_SUN_APPARENT are read: longitude by groups 3 through 5 and 7,
+ * latitude and distance by the group 6 harness cross-check against
+ * HORIZONS_SUN. SKY_SUN_GEOMETRIC is read only in its jd and longitude
+ * columns; its latitude and distance are retained because the generator emits
+ * all four and a hand-trimmed table would no longer be its verbatim output.
+ * The library models solar ecliptic latitude as zero, which is correct to
+ * about 1.2 arcsec; that is recorded in the research note rather than
+ * asserted here. */
 static const double SKY_SUN_APPARENT[24][4] = {
   {2415020.5, 280.1533846, 0.0000530, 147094540.8},
   {2433282.5, 280.0045145, -0.0000206, 147091153.4},
@@ -645,12 +671,14 @@ static void check_ut_to_tt_path(void) {
 /* Group 1 -- harness verification. Two oracles, same convention, same epochs. */
 static void check_group1_harness(void) {
   double max_lon = 0.0, max_lat = 0.0, max_dist = 0.0;
+  double min_lon = 999.0;
   int i;
   for (i = 0; i < 24; i++) {
     double dlon = angdiff(SKY_MOON_APPARENT[i][1], FIXTURE[i][1]);
     double dlat = fabs(SKY_MOON_APPARENT[i][2] - FIXTURE[i][2]);
     double ddist = fabs(SKY_MOON_APPARENT[i][3] - FIXTURE[i][3]);
     if (dlon > max_lon) max_lon = dlon;
+    if (dlon < min_lon) min_lon = dlon;
     if (dlat > max_lat) max_lat = dlat;
     if (ddist > max_dist) max_dist = ddist;
     check_angle_within("sky_vs_horizons_lon", FIXTURE[i][0],
@@ -663,8 +691,13 @@ static void check_group1_harness(void) {
   }
   printf("sky_vs_horizons max deviation: lon %.7f deg lat %.7f deg dist %.1f km\n",
          max_lon, max_lat, max_dist);
-  /* A table pasted twice would print exactly zero. */
+  /* Non-degeneracy, per row rather than in aggregate. A max-only guard passes
+   * on a table copied from FIXTURE with a single row regenerated; asserting
+   * the MINIMUM per-epoch deviation nonzero catches any row copied verbatim.
+   * Valid because the measured per-epoch minimum is 6.6e-6 deg, comfortably
+   * nonzero at every epoch. */
   check_true_nonzero("sky_vs_horizons_nondegenerate", max_lon);
+  check_true_nonzero("sky_vs_horizons_min_nondegenerate", min_lon);
 }
 
 /* Group 2 -- what the truncated Meeus series actually costs, with the
@@ -822,12 +855,14 @@ static void check_group5_frame_counterfactual(void) {
  * agreement is a recorded fact and a later edit to either table is caught. */
 static void check_group6_sun_harness(void) {
   double max_lon = 0.0, max_lat = 0.0, max_dist = 0.0;
+  double min_lon = 999.0;
   int i;
   for (i = 0; i < 24; i++) {
     double dlon = angdiff(SKY_SUN_APPARENT[i][1], HORIZONS_SUN[i][1]);
     double dlat = fabs(SKY_SUN_APPARENT[i][2] - HORIZONS_SUN[i][2]);
     double ddist = fabs(SKY_SUN_APPARENT[i][3] - HORIZONS_SUN[i][3]);
     if (dlon > max_lon) max_lon = dlon;
+    if (dlon < min_lon) min_lon = dlon;
     if (dlat > max_lat) max_lat = dlat;
     if (ddist > max_dist) max_dist = ddist;
     check_angle_within("sky_vs_horizons_sun_lon", HORIZONS_SUN[i][0],
@@ -842,6 +877,10 @@ static void check_group6_sun_harness(void) {
   }
   printf("sky_vs_horizons_sun max deviation: lon %.7f deg lat %.7f deg "
          "dist %.1f km\n", max_lon, max_lat, max_dist);
+  /* Per-row non-degeneracy, as in group 1. Measured per-epoch minimum
+   * 5.4e-6 deg, nonzero at every epoch. */
+  check_true_nonzero("sky_vs_horizons_sun_nondegenerate", max_lon);
+  check_true_nonzero("sky_vs_horizons_sun_min_nondegenerate", min_lon);
 }
 
 /* Spherical separation between two ecliptic (lon, lat) directions, degrees.
