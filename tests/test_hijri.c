@@ -1168,6 +1168,93 @@ static void test_kemenag_official_calendar(void) {
   }
 }
 
+/* Official Muhammadiyah month starts of the wujudul-hilal era, from the
+ * primary sources: the annual Maklumat PP Muhammadiyah documents
+ * (muhammadiyah.or.id) setting Ramadan, Syawal, and Zulhijah for
+ * 1443-1446 H. No transcription layer -- these dates ARE the official
+ * announcements. Full analysis and the published hisab pins:
+ * docs/research/2026-08-01-muhammadiyah-reference.md.
+ *
+ * SCOPE BOUNDARY, do not extend: Muhammadiyah used hisab hakiki wujudul
+ * hilal through the END of 1446 H and switched to KHGT (a different,
+ * global criterion) from 1447 H. Dates from 1447 H onward must never be
+ * added to this fixture under HIJRI_PREDICATE_WUJUDUL_HILAL.
+ *
+ * Asserted as EQUALITIES (support == 12, early == 0), unlike the Kemenag
+ * fixture's floors: the measured score is perfect and the tightest margin
+ * in the set is ~0.9 deg (the 2024-03-10 razor case: published +0 deg
+ * 56' 28", our upper-limb quantity +1.06 deg) -- any change that flips
+ * these is a regression this fixture exists to catch. The set includes
+ * three 30-day negatives (belum wujud) and covers both failure modes of
+ * the criterion (Moon below horizon; ijtimak after the decision evening).
+ *
+ * Mutation-tested on 2026-08-01: shifting one start date by one day fails
+ * muh_never_early (actual=1); raising the predicate's limb threshold to
+ * 1.5 deg fails muh_official_starts_supported (actual=10) and the razor
+ * pin muh_maklumat_2024_03_10 (actual=0). Reverting either restores
+ * 485 checks, 0 failures. */
+static void test_muhammadiyah_official_calendar(void) {
+  static const int MUH_STARTS[][3] = {
+      {2022, 4, 2},  {2022, 5, 2},  {2022, 6, 30},
+      {2023, 3, 23}, {2023, 4, 21}, {2023, 6, 19},
+      {2024, 3, 11}, {2024, 4, 10}, {2024, 6, 8},
+      {2025, 3, 1},  {2025, 3, 31}, {2025, 5, 28}};
+  /* Decision evenings whose Maklumat publishes an explicit altitude and
+   * wujud/belum-wujud verdict (altitudes quoted in the research note). */
+  static const struct {
+    int y, m, d, wujud;
+    const char *name;
+  } MUH_PINS[] = {
+      {2022, 4, 1, 1, "muh_maklumat_2022_04_01"},
+      {2022, 5, 1, 1, "muh_maklumat_2022_05_01"},
+      {2022, 6, 29, 1, "muh_maklumat_2022_06_29"},
+      {2024, 3, 10, 1, "muh_maklumat_2024_03_10"},
+      {2024, 6, 6, 0, "muh_maklumat_2024_06_06"},
+      {2025, 2, 28, 1, "muh_maklumat_2025_02_28"},
+      {2025, 3, 29, 0, "muh_maklumat_2025_03_29"},
+      {2025, 5, 27, 1, "muh_maklumat_2025_05_27"}};
+  HijriLocation yogyakarta = {-(7.0 + 48.0 / 60.0), 110.0 + 21.0 / 60.0,
+                              90.0, "Yogyakarta"};
+  size_t index;
+  int support = 0, early = 0;
+
+  for (index = 0; index < sizeof(MUH_STARTS) / sizeof(MUH_STARTS[0]);
+       index++) {
+    double start_jd = floor(hijri_jd_from_gregorian(
+        MUH_STARTS[index][0], MUH_STARTS[index][1],
+        (double)MUH_STARTS[index][2]));
+    int offset;
+    for (offset = 1; offset <= 2; offset++) {
+      int gy, gm;
+      double gd_frac;
+      HijriMonthDecision decision;
+      hijri_gregorian_from_jd(start_jd - (double)offset + 0.5, &gy, &gm,
+                              &gd_frac);
+      decision = hijri_evaluate_evening(gy, gm, (int)floor(gd_frac),
+                                        &yogyakarta,
+                                        HIJRI_PREDICATE_WUJUDUL_HILAL);
+      if (decision.parameters.sunset_status != HIJRI_EVENT_OK) {
+        continue;
+      }
+      if (offset == 1) {
+        support += decision.month_starts_next_day;
+      } else {
+        early += decision.month_starts_next_day;
+      }
+    }
+  }
+  check_int("muh_official_starts_supported", support, 12);
+  check_int("muh_never_early", early, 0);
+
+  for (index = 0; index < sizeof(MUH_PINS) / sizeof(MUH_PINS[0]); index++) {
+    HijriMonthDecision decision = hijri_evaluate_evening(
+        MUH_PINS[index].y, MUH_PINS[index].m, MUH_PINS[index].d, &yogyakarta,
+        HIJRI_PREDICATE_WUJUDUL_HILAL);
+    check_int(MUH_PINS[index].name, decision.month_starts_next_day,
+              MUH_PINS[index].wujud);
+  }
+}
+
 int main(void) {
   test_julian_day();
   test_tabular_calendar();
@@ -1185,6 +1272,7 @@ int main(void) {
   test_crescent_equivalence_property();
   test_pedoman_worked_example();
   test_kemenag_official_calendar();
+  test_muhammadiyah_official_calendar();
   check_true("all_predicate_enums_represented",
              HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET -
                          HIJRI_PREDICATE_MABIMS_1992 +
