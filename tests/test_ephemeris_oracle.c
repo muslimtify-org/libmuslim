@@ -91,8 +91,9 @@
  * both-apparent versus both-mean -- measures 0.0055998 deg over the same
  * epochs.
  *
- * Both sit four orders of magnitude below the 6.4 deg MABIMS 2021 elongation
- * threshold, so the mixed-frame difference this library computes is not a
+ * Both sit far below the 6.4 deg MABIMS 2021 elongation threshold: 6.4 /
+ * 0.0070530 = 907x and 6.4 / 0.0055998 = 1143x, i.e. three orders of
+ * magnitude. So the mixed-frame difference this library computes is not a
  * source of criterion-outcome error at that threshold. The bound below exists
  * to pin current behaviour, so a later frame change shows up as a deliberate
  * diff rather than silent drift.
