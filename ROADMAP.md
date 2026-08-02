@@ -53,11 +53,14 @@ The library currently provides:
   the Kemenag calendar, and Wujudul Hilal against the Maklumat PP
   Muhammadiyah record, each with its provenance in `docs/research/`.
 
-The lunar ephemeris is no longer the limiting approximation, but the library
-still applies neither nutation nor aberration, and no second independent
-engine has confirmed the error bar yet. Results near a criterion boundary
-must not be presented as observational-grade or as an official calendar
-declaration.
+The lunar ephemeris is no longer the limiting approximation, but the lunar
+position still applies neither nutation nor aberration. A second independent
+engine has now confirmed the error bar: the Moon is within 0.0051 deg and the
+Sun within 0.0084042 deg of apparent truth in ecliptic longitude. Those
+figures are dominated by the physics the library deliberately omits, not by
+inaccuracy in the series, whose own truncation error measures 0.0012755 deg.
+Results near a criterion boundary must not be presented as observational-grade
+or as an official calendar declaration.
 
 ## Before v1.0 — blocks the tag
 
@@ -93,18 +96,27 @@ approximation to establish a baseline, then again after the full series lands.
 The second run produces the measured error bar that near-boundary reporting
 and every fixture tolerance below require.
 
-**Progress: one engine of two.** `tests/test_moon_meeus.c` compares
-`hijri_moon_position()` against a JPL Horizons fixture (24 epochs,
-geocentric apparent ecliptic coordinates of date, retrieved 2026-07-30 with
-the request recorded verbatim in the file's header) and reports measured
-residuals rather than pass/fail alone: `max_lon_err=0.0051 deg
-max_lat_err=0.0006 deg max_dist_err=41.9 km`. That is the post-full-series
-run, and the longitude residual is consistent with the known systematic
-cause, since Horizons reports apparent positions while this library applies
-neither nutation nor aberration, and nutation in longitude alone reaches
-about 0.005 deg. The remaining work is a second independent implementation
-or dataset, and a research note recording the combined error bar that the
-uncertainty item below consumes.
+**Done (2026-08).** Two independent oracles now cover both bodies: JPL
+Horizons (retrieved 2026-07-30) and Skyfield 1.54 evaluating JPL DE440 through
+`de440s.bsp`, compared in `tests/test_ephemeris_oracle.c` over 24 TT epochs
+spanning JD 2415020.5 to 2488069.5. The two oracles agree with each other to
+0.0000668 deg in longitude and 0.0 km in distance, which is what verifies the
+comparison harness before any library figure is read from it. Against a
+mean-of-date DE440 reference, with the deliberately omitted nutation and
+aberration taken out of the reference rather than left in the residual, the
+Meeus ch. 47 truncation error measures 0.0012755 deg. That is 4.0x smaller
+than the 0.0051 deg apparent residual, so the header's claim that the apparent
+residual is dominated by omitted nutation rather than by series error is now a
+measurement instead of an inference. `hijri_sun_position()` was compared
+against an oracle for the first time and measures 0.0084042 deg, inside the
+roughly 0.01 deg its documentation claims, with a two-sided signed spread that
+indicates truncation noise rather than a structural defect. The Sun is now the
+dominant term in the error bar, 6.6x larger than the Moon's truncation error,
+which matters because sunset drives every predicate here and elongation is a
+Sun-minus-Moon angle. The decomposition, the analytic propagation to altitude
+and elongation, and the measured mutation sensitivity of every new fixture are
+recorded in
+[`docs/research/2026-08-02-cross-engine-error-bar.md`](docs/research/2026-08-02-cross-engine-error-bar.md).
 
 **Completion criteria:**
 
@@ -187,6 +199,32 @@ raised under Scope.
 - Every public astronomical value has an explicit unit and convention.
 - Tests independently reproduce each derived public parameter.
 - No criterion relies on an ambiguously named altitude or elongation.
+
+### Sun and Moon reference-frame consistency
+
+**Open, measured 2026-08.** `hijri_sun_position()` returns an apparent
+longitude, applying both the aberration and the nutation term at
+`hijri.h:485-502`, while `hijri_moon_position()` returns the mean equinox of
+date with neither, and `hijri.h:1095-1100` computes elongation as the angular
+separation between the two. Nutation in longitude would cancel exactly in that
+difference if both bodies shared a frame, so the mismatch injects it instead.
+The measured consequence is 0.0070530 deg of elongation error, which is
+6.4 / 0.0070530 = 907x below the MABIMS 2021 elongation threshold. The
+inconsistency is real and its effect is immaterial at that threshold, so the
+proportionate remedy is a correction to the header claim at `hijri.h:71-73`,
+which states that no nutation and no aberration are applied and is accurate for
+the Moon only. Unifying the frames in code is not recommended on this evidence,
+since it would move the committed 2020-2025 baseline for no demonstrated
+decision benefit. Measurement and reasoning in
+[`docs/research/2026-08-02-cross-engine-error-bar.md`](docs/research/2026-08-02-cross-engine-error-bar.md).
+
+**Completion criteria:**
+
+- The header states accurately which body has nutation and aberration applied
+  and which does not.
+- Any change to the frames entering the elongation computation is deliberate
+  and reviewed, with the criterion-outcome delta across the 2020-2025 baseline
+  counted and recorded.
 
 ### Supported-date ranges
 
