@@ -84,6 +84,22 @@
  * 0.017 deg is the measured maximum rounded up to leave 2.02x margin. */
 #define TOL_SUN_LON_DEG 0.017
 
+/* Group 4, the library's Sun-minus-Moon longitude difference against a
+ * consistently framed both-apparent DE440 reference. Measured maximum over
+ * these 24 epochs, printed by this binary as "elongation_err max": 0.0070530
+ * deg. The companion "frame_mismatch max" line -- the same reference computed
+ * both-apparent versus both-mean -- measures 0.0055998 deg over the same
+ * epochs.
+ *
+ * Both sit four orders of magnitude below the 6.4 deg MABIMS 2021 elongation
+ * threshold, so the mixed-frame difference this library computes is not a
+ * source of criterion-outcome error at that threshold. The bound below exists
+ * to pin current behaviour, so a later frame change shows up as a deliberate
+ * diff rather than silent drift.
+ *
+ * 0.015 deg is the measured maximum rounded up to leave 2.13x margin. */
+#define TOL_ELONG_DEG 0.015
+
 static int checks;
 static int failures;
 
@@ -508,12 +524,47 @@ static void check_group3_sun(void) {
          signed_sum / 24.0, signed_min, signed_max);
 }
 
+/* Group 4 -- elongation, the quantity MABIMS 2021 thresholds at 6.4 deg.
+ *
+ * Nutation in longitude shifts every ecliptic longitude by the same dpsi, so
+ * it cancels exactly in a Sun-minus-Moon difference PROVIDED both bodies are
+ * expressed in the same frame. This library does not do that: the Sun is
+ * apparent (nutation applied) and the Moon is mean-of-date (nutation not
+ * applied), so dpsi is injected into the difference rather than cancelling.
+ * This group measures that injection directly instead of arguing about it. */
+static void check_group4_elongation(void) {
+  double max_err = 0.0, max_mismatch = 0.0;
+  int i;
+  for (i = 0; i < 24; i++) {
+    HijriMoonPosition m = hijri_moon_position(SKY_SUN_APPARENT[i][0]);
+    HijriSunPosition s = hijri_sun_position(SKY_SUN_APPARENT[i][0]);
+    /* As the library computes it: apparent Sun minus mean Moon. */
+    double lib_diff = angdiff(s.apparent_longitude_deg,
+                              m.geocentric_longitude_deg);
+    /* Consistent reference, both bodies apparent. */
+    double ref_app = angdiff(SKY_SUN_APPARENT[i][1], SKY_MOON_APPARENT[i][1]);
+    /* Consistent reference, both bodies mean-of-date. */
+    double ref_geo = angdiff(SKY_SUN_GEOMETRIC[i][1],
+                             SKY_MOON_GEOMETRIC[i][1]);
+    double err = fabs(lib_diff - ref_app);
+    double mismatch = fabs(ref_app - ref_geo);
+    if (err > max_err) max_err = err;
+    if (mismatch > max_mismatch) max_mismatch = mismatch;
+    check_within("elongation_vs_apparent_ref", SKY_SUN_APPARENT[i][0], lib_diff,
+                 ref_app, TOL_ELONG_DEG);
+  }
+  printf("elongation_err max: %.7f deg\n", max_err);
+  printf("frame_mismatch max (apparent vs mean reference): %.7f deg\n",
+         max_mismatch);
+}
+
 int main(void) {
   double max_lon = 0.0, max_lat = 0.0, max_dist = 0.0;
 
   check_group1_harness();
   check_group2_truncation();
   check_group3_sun();
+  check_group4_elongation();
   check_meeus_example_47a();
   check_delta_t();
   check_ut_to_tt_path();
