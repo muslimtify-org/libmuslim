@@ -208,8 +208,8 @@ raised under Scope.
 **Header corrected 2026-08. Code change measured and NOT recommended.**
 `hijri_sun_position()` returns an apparent
 longitude, applying both the aberration and the nutation term at
-`hijri.h:485-502`, while `hijri_moon_position()` returns the mean equinox of
-date with neither, and `hijri.h:1095-1100` computes elongation as the angular
+`hijri.h:504-506`, while `hijri_moon_position()` returns the mean equinox of
+date with neither, and `hijri.h:1115-1118` computes elongation as the angular
 separation between the two. Nutation in longitude would cancel exactly in that
 difference if both bodies shared a frame, so the mismatch injects it instead.
 The measured consequence is 0.0070530 deg of elongation error, which is

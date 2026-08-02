@@ -383,7 +383,7 @@ static const double SKY_MOON_GEOMETRIC[24][4] = {
 };
 
 /* hijri_sun_position() returns APPARENT longitude -- Meeus ch. 25 applies both
- * the aberration term and the nutation term (hijri.h:485-502) -- so it is
+ * the aberration term and the nutation term (hijri.h:504-506) -- so it is
  * compared against SKY_SUN_APPARENT. SKY_SUN_GEOMETRIC is committed alongside
  * it so the Sun's own decomposition is available on the same footing as the
  * Moon's, and so the frame-consistency check in group 4 has both frames
@@ -695,7 +695,7 @@ static void check_group4_elongation(void) {
  * frame mismatch group 4 measures".
  *
  * Undoes the aberration and nutation-in-longitude terms that
- * hijri_sun_position() applies at hijri.h:485-486, putting the Sun in the same
+ * hijri_sun_position() applies at hijri.h:505-506, putting the Sun in the same
  * mean-of-date frame as the Moon, then compares that unified difference
  * against a both-mean DE440 reference.
  *
@@ -717,7 +717,7 @@ static void check_group5_frame_counterfactual(void) {
     double jd = SKY_SUN_GEOMETRIC[i][0];
     double t = (jd - 2451545.0) / 36525.0;
     double omega = 125.04 - 1934.136 * t;
-    /* The two terms from hijri.h:485-486, subtracted back out. */
+    /* The two terms from hijri.h:505-506, subtracted back out. */
     double nut_ab = -0.00569 - 0.00478 * sin(omega * M_PI / 180.0);
     HijriSunPosition s = hijri_sun_position(jd);
     HijriMoonPosition m = hijri_moon_position(jd);

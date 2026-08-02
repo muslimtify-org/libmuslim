@@ -137,13 +137,14 @@ the sunset search uses.
 ## Frame consistency
 
 `hijri_sun_position()` returns an **apparent** longitude. It applies both the
-aberration term and the nutation term at `hijri.h:485-502`.
+aberration term and the nutation term at `hijri.h:504-506`.
 `hijri_moon_position()` returns the **mean equinox of date** with neither, and
-uses the mean obliquity at `hijri.h:739`. The file header at `hijri.h:71-73`
-states that no nutation and no aberration are applied. That statement is
-accurate for the Moon and inaccurate for the Sun.
+uses the mean obliquity at `hijri.h:760`. The file header at `hijri.h:71`
+previously stated that no nutation and no aberration are applied, a claim
+accurate for the Moon and inaccurate for the Sun. That header block has since
+been corrected on this branch and now distinguishes the two bodies explicitly.
 
-The elongation at `hijri.h:1095-1100` is then computed as the angular separation
+The elongation at `hijri.h:1115-1118` is then computed as the angular separation
 between these two differently framed directions. Nutation in longitude shifts
 every ecliptic longitude by the same dpsi, so it cancels exactly in a
 Sun-minus-Moon difference provided both bodies share a frame. Here they do not,
@@ -210,8 +211,9 @@ sun_apparent max lon: 0.0084042 deg
 sun_apparent signed lon: mean 0.0020391 deg min -0.0024953 deg max 0.0084042 deg
 elongation_err max: 0.0070530 deg
 frame_mismatch max (apparent vs mean reference): 0.0055998 deg
+elongation_frame_unified max: 0.0083813 deg
 max_lon_err=0.0051 deg  max_lat_err=0.0006 deg  max_dist_err=41.9 km
-Moon ephemeris tests: 275 checks, 0 failures
+Moon ephemeris tests: 299 checks, 0 failures
 ```
 
 Every measured figure in this note is one of those numbers or a division between
@@ -231,8 +233,9 @@ given Skyfield 1.54 and `de440s.bsp`. The committed tables are the record.
 ### Fixture sensitivity, and one known gap
 
 Each of the four new tables was deliberately mutated, the suite rebuilt, and the
-result recorded verbatim in `tests/test_ephemeris_oracle.c`. Three of four
-mutations were caught:
+result recorded verbatim in `tests/test_ephemeris_oracle.c`. One mutation per
+table, M1 through M3 and M5, plus M4 which mutates a `hijri.h` coefficient
+rather than a table. Four of the five were caught:
 
 - **M1**, mean-of-date Moon longitude moved +0.01 deg: caught by `moon_geom_lon`.
 - **M2**, apparent Sun longitude moved +0.05 deg: caught twice, by
@@ -247,6 +250,13 @@ mutations were caught:
   printed maxima moved, both far below any tolerance: group 2 shifted from
   0.0012755 to 0.0012752 deg, and group 4 from 0.0070530 to 0.0070533 deg,
   each about 3e-7 deg.
+- **M5**, mean-of-date Sun longitude moved +0.05 deg: caught by
+  `elongation_frame_unified`, with the suite reporting 299 checks and
+  1 failure. M5 was added after a verification pass observed that
+  `SKY_SUN_GEOMETRIC` was the one table no assertion read, so the claim that
+  all four tables were mutation-proven was false when first written.
+  `check_group5_frame_counterfactual()` now reads it. The check counts differ
+  between M1 to M4 and M5, 275 against 299, because that group was added later.
 
 M4 is a genuine limit of this fixture and is recorded as such rather than
 smoothed over. The check that would have to tighten is `moon_geom_lon`, bounded
@@ -264,13 +274,13 @@ instead by the 1e-6 deg assertion against Meeus's own printed worked Example
 - **The `hijri.h:71-73` header text was wrong about the Sun, and has been
   corrected.** It stated the file applies no nutation and no aberration. That
   holds for the Moon and not for `hijri_sun_position()`, which applies both at
-  `hijri.h:485-502`. The header now distinguishes the two bodies. The change is
+  `hijri.h:504-506`. The header now distinguishes the two bodies. The change is
   comment-only and the committed 2020-2025 baseline is byte-identical across it,
   which is the evidence that no behaviour moved.
-- **The mixed-frame elongation at `hijri.h:1095-1100` is left as it stands, and
+- **The mixed-frame elongation at `hijri.h:1115-1118` is left as it stands, and
   unifying the frames is measured to be a REGRESSION rather than an
   improvement.** Making both bodies mean-of-date, by removing the nutation and
-  aberration terms the library itself applies at `hijri.h:485-486` and
+  aberration terms the library itself applies at `hijri.h:505-506` and
   recomputing against a both-mean DE440 reference, gives 0.0083813 deg of
   elongation error against 0.0070530 deg for the current mixed frame. That is
   about 19 percent worse. The mismatch partially cancels the solar truncation
