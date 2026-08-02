@@ -68,6 +68,22 @@
 #define TOL_GEOM_LAT_DEG 0.0012
 #define TOL_GEOM_DIST_KM 10.0
 
+/* Group 3, library Sun against apparent DE440 -- the first oracle comparison
+ * hijri_sun_position() has ever had. Measured maximum over these 24 epochs,
+ * printed by this binary as "sun_apparent max lon": 0.0084042 deg. That sits
+ * inside the ~0.01 deg the header documents for Meeus ch. 25 low-precision
+ * solar theory, so the theory is performing as specified.
+ *
+ * Signed residuals over the same 24 epochs run -0.0024953 deg to +0.0084042
+ * deg with a mean of +0.0020391 deg. Both signs occur and the mean is about a
+ * quarter of the extreme, so this is a two-sided spread rather than a
+ * one-sided offset -- series truncation noise, not a structural error in a
+ * coefficient, sign or convention. Same discriminator this file already
+ * applies to the 385000.56 km distance constant.
+ *
+ * 0.017 deg is the measured maximum rounded up to leave 2.02x margin. */
+#define TOL_SUN_LON_DEG 0.017
+
 static int checks;
 static int failures;
 
@@ -75,6 +91,12 @@ static int failures;
 static double angdiff(double a, double b) {
   double d = fmod(a - b + 540.0, 360.0) - 180.0;
   return fabs(d);
+}
+
+/* Signed difference between two angles, in degrees, wrapped to [-180, 180).
+ * The sign is what separates a structural offset from truncation noise. */
+static double angsigned(double a, double b) {
+  return fmod(a - b + 540.0, 360.0) - 180.0;
 }
 
 static void check_within(const char *name, double jd, double actual,
@@ -210,6 +232,77 @@ static const double SKY_MOON_GEOMETRIC[24][4] = {
   {2460699.5, 237.7144129, -4.3684826, 399296.7},
   {2469807.5, 18.6607667, 3.3919358, 378667.7},
   {2488069.5, 157.3996232, 1.0927093, 371711.2},
+};
+
+/* hijri_sun_position() returns APPARENT longitude -- Meeus ch. 25 applies both
+ * the aberration term and the nutation term (hijri.h:485-502) -- so it is
+ * compared against SKY_SUN_APPARENT. SKY_SUN_GEOMETRIC is committed alongside
+ * it so the Sun's own decomposition is available on the same footing as the
+ * Moon's, and so the frame-consistency check in group 4 has both frames
+ * available without regenerating.
+ *
+ * Before this table existed, hijri_sun_position() had never been compared
+ * against any oracle: the previous test file was moon-only and the suite's
+ * only other use of it (tests/test_hijri.c:334) is unchecked. Since sunset
+ * drives every predicate in the library and elongation is a Sun-Moon angle,
+ * that was the larger of the two gaps.
+ *
+ * Both Sun tables carry an ecliptic latitude column for format symmetry with
+ * the Moon tables. The library models solar ecliptic latitude as zero, which
+ * is correct to about 1.2 arcsec; that is recorded in the research note rather
+ * than asserted here. */
+static const double SKY_SUN_APPARENT[24][4] = {
+  {2415020.5, 280.1533846, 0.0000530, 147094540.8},
+  {2433282.5, 280.0045145, -0.0000206, 147091153.4},
+  {2458853.5, 284.0860830, -0.0001191, 147091188.1},
+  {2458931.7, 3.0186935, -0.0000756, 149116951.8},
+  {2459044.2, 111.7344421, -0.0001621, 152072021.9},
+  {2459122.9, 187.6835096, -0.0002389, 149796568.8},
+  {2459201.3, 266.3145434, -0.0001726, 147205533.1},
+  {2459318.6, 24.3673652, 0.0000231, 150043846.8},
+  {2459407.1, 109.5025501, 0.0001991, 152086401.4},
+  {2459502.8, 202.1524413, -0.0002218, 149172562.6},
+  {2459613.4, 314.0162387, -0.0002237, 147441091.8},
+  {2459688.2, 28.6315322, -0.0000323, 150208731.6},
+  {2459777.9, 114.8096371, -0.0000655, 152042538.3},
+  {2459860.5, 194.6961027, -0.0000870, 149496953.6},
+  {2459955.1, 290.0642766, 0.0001134, 147115383.1},
+  {2460048.7, 23.9874874, -0.0001832, 150013224.9},
+  {2460133.3, 105.4237298, -0.0000388, 152092994.9},
+  {2460229.6, 198.5049047, 0.0002229, 149337680.3},
+  {2460322.4, 292.1683498, -0.0001163, 147133997.9},
+  {2460451.8, 60.7289375, -0.0001067, 151410581.1},
+  {2460577.2, 181.1438937, 0.0001909, 150086332.2},
+  {2460699.5, 304.2385149, -0.0001856, 147262963.2},
+  {2469807.5, 280.7475596, 0.0001027, 147106965.9},
+  {2488069.5, 280.6033268, 0.0000785, 147108222.9},
+};
+
+static const double SKY_SUN_GEOMETRIC[24][4] = {
+  {2415020.5, 280.1543331, 0.0000532, 147094536.4},
+  {2433282.5, 280.0112187, -0.0000204, 147091155.6},
+  {2458853.5, 284.0965068, -0.0001190, 147091188.1},
+  {2458931.7, 3.0291486, -0.0000757, 149116944.7},
+  {2459044.2, 111.7446231, -0.0001620, 152072021.1},
+  {2459122.9, 187.6940387, -0.0002389, 149796575.7},
+  {2459201.3, 266.3249832, -0.0001727, 147205538.2},
+  {2459318.6, 24.3778893, 0.0000233, 150043839.7},
+  {2459407.1, 109.5122957, 0.0001992, 152086396.8},
+  {2459502.8, 202.1625968, -0.0002219, 149172568.6},
+  {2459613.4, 314.0255348, -0.0002237, 147441095.3},
+  {2459688.2, 28.6413487, -0.0000326, 150208726.3},
+  {2459777.9, 114.8184544, -0.0000655, 152042531.5},
+  {2459860.5, 194.7052804, -0.0000869, 149496955.6},
+  {2459955.1, 290.0727669, 0.0001133, 147115390.6},
+  {2460048.7, 23.9959961, -0.0001832, 150013223.6},
+  {2460133.3, 105.4314457, -0.0000387, 152092987.2},
+  {2460229.6, 198.5128351, 0.0002228, 149337679.0},
+  {2460322.4, 292.1754179, -0.0001162, 147134004.9},
+  {2460451.8, 60.7359924, -0.0001069, 151410579.2},
+  {2460577.2, 181.1501822, 0.0001910, 150086326.5},
+  {2460699.5, 304.2440353, -0.0001857, 147262969.0},
+  {2469807.5, 280.7491331, 0.0001026, 147106964.8},
+  {2488069.5, 280.6081995, 0.0000782, 147108215.8},
 };
 
 /* Meeus, "Astronomical Algorithms" 2nd ed., worked Example 47.a:
@@ -390,11 +483,37 @@ static void check_group2_truncation(void) {
          max_lon, max_lat, max_dist);
 }
 
+/* Group 3 -- the Sun, measured against an oracle for the first time. */
+static void check_group3_sun(void) {
+  double max_lon = 0.0;
+  double signed_sum = 0.0, signed_min = 0.0, signed_max = 0.0;
+  int i;
+  for (i = 0; i < 24; i++) {
+    HijriSunPosition s = hijri_sun_position(SKY_SUN_APPARENT[i][0]);
+    double dlon = angdiff(s.apparent_longitude_deg, SKY_SUN_APPARENT[i][1]);
+    double sdlon = angsigned(s.apparent_longitude_deg, SKY_SUN_APPARENT[i][1]);
+    if (dlon > max_lon) max_lon = dlon;
+    if (i == 0 || sdlon < signed_min) signed_min = sdlon;
+    if (i == 0 || sdlon > signed_max) signed_max = sdlon;
+    signed_sum += sdlon;
+    check_angle_within("sun_apparent_lon", SKY_SUN_APPARENT[i][0],
+                       s.apparent_longitude_deg, SKY_SUN_APPARENT[i][1],
+                       TOL_SUN_LON_DEG);
+  }
+  printf("sun_apparent max lon: %.7f deg\n", max_lon);
+  /* One-sided offset => structural error. Two-sided spread with near-zero
+   * mean => truncation noise. Same discriminator this file already applies
+   * to the 385000.56 km distance constant. */
+  printf("sun_apparent signed lon: mean %.7f deg min %.7f deg max %.7f deg\n",
+         signed_sum / 24.0, signed_min, signed_max);
+}
+
 int main(void) {
   double max_lon = 0.0, max_lat = 0.0, max_dist = 0.0;
 
   check_group1_harness();
   check_group2_truncation();
+  check_group3_sun();
   check_meeus_example_47a();
   check_delta_t();
   check_ut_to_tt_path();
