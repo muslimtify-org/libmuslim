@@ -1008,6 +1008,7 @@ static void test_crescent_equivalence_property(void) {
     if (hijri_find_next_conjunction(jd_start - 3.0, &conjunction) !=
         HIJRI_EVENT_OK) {
       conj_search_failures++;
+      conjunction = jd_end + 3.0; /* skip the sweep; the counter reports it */
     }
 
     while (conjunction <= jd_end + 2.0) {

@@ -963,7 +963,6 @@ hijri_find_previous_conjunction(double jd_before, double *result_jd) {
   jd_start = jd_before - 33.0;
   prev_jd = jd_start;
   prev_diff = hijri__moon_sun_wrapped_diff(prev_jd);
-  found_jd = 0.0;
 
   for (double jd = jd_start + step; jd <= jd_before; jd += step) {
     double diff = hijri__moon_sun_wrapped_diff(jd);
