@@ -58,6 +58,16 @@
 #define TOL_LAT_DEG 0.02
 #define TOL_DIST_KM 100.0
 
+/* Group 2, library against mean-of-date DE440 -- the truncation error alone,
+ * with nutation and aberration removed from the reference rather than left in
+ * the residual. Measured maximum over these 24 epochs, printed by this binary
+ * as "moon_truncation max": lon 0.0012755 deg, lat 0.0005528 deg, dist 5.0 km.
+ * Each bound below is that measured maximum rounded up to leave roughly 2x
+ * margin -- 2.35x on longitude, 2.17x on latitude, 2x on distance. */
+#define TOL_GEOM_LON_DEG 0.003
+#define TOL_GEOM_LAT_DEG 0.0012
+#define TOL_GEOM_DIST_KM 10.0
+
 static int checks;
 static int failures;
 
@@ -165,6 +175,41 @@ static const double SKY_MOON_APPARENT[24][4] = {
   {2460699.5, 237.7144878, -4.3684739, 399260.0},
   {2469807.5, 18.6647836, 3.3919492, 378705.4},
   {2488069.5, 157.4003361, 1.0927267, 371679.8},
+};
+
+/* SKY_MOON_GEOMETRIC is the MEAN equinox of date: instantaneous geocentric
+ * vector, no light-time, no aberration, and nutation in longitude subtracted
+ * via IAU 2000B. This is the convention hijri_moon_position() actually
+ * targets (Meeus ch. 47), so this table -- not the apparent one -- measures
+ * what the truncated series really costs.
+ *
+ * IAU 2000B is accurate to about 0.001 arcsec (2.8e-7 deg), three orders of
+ * magnitude below the residual measured here, so it is not a limiting term. */
+static const double SKY_MOON_GEOMETRIC[24][4] = {
+  {2415020.5, 272.4120166, 1.1083031, 368389.7},
+  {2433282.5, 61.4124549, 3.7816016, 399601.8},
+  {2458853.5, 33.9190904, -4.7719955, 399012.2},
+  {2458931.7, 350.0108155, -4.8406393, 406005.8},
+  {2459044.2, 29.6157657, -4.5133349, 403690.6},
+  {2459122.9, 351.3640981, -5.0051258, 402682.9},
+  {2459201.3, 307.2408668, -3.8918022, 379106.7},
+  {2459318.6, 46.1518018, -2.2062300, 405957.0},
+  {2459407.1, 127.3886479, 4.3443166, 392626.7},
+  {2459502.8, 319.3980522, -5.0379296, 381755.9},
+  {2459613.4, 336.2809758, -4.9759193, 371934.2},
+  {2459688.2, 234.2579205, -0.1535774, 365686.5},
+  {2459777.9, 345.1527443, -4.5958729, 371042.3},
+  {2459860.5, 350.7312116, -4.1560708, 373339.1},
+  {2459955.1, 149.5691689, 4.7492669, 404619.6},
+  {2460048.7, 304.8012322, -5.2706743, 369313.4},
+  {2460133.3, 345.6415830, -3.5820558, 366236.2},
+  {2460229.6, 169.0009665, 3.1010524, 403614.2},
+  {2460322.4, 311.4853337, -4.6555416, 362493.4},
+  {2460451.8, 214.3811407, -1.7207197, 398501.7},
+  {2460577.2, 77.6250778, 5.0077643, 377072.9},
+  {2460699.5, 237.7144129, -4.3684826, 399296.7},
+  {2469807.5, 18.6607667, 3.3919358, 378667.7},
+  {2488069.5, 157.3996232, 1.0927093, 371711.2},
 };
 
 /* Meeus, "Astronomical Algorithms" 2nd ed., worked Example 47.a:
@@ -319,10 +364,37 @@ static void check_group1_harness(void) {
   check_true_nonzero("sky_vs_horizons_nondegenerate", max_lon);
 }
 
+/* Group 2 -- what the truncated Meeus series actually costs, with the
+ * deliberate omissions removed rather than inferred. */
+static void check_group2_truncation(void) {
+  double max_lon = 0.0, max_lat = 0.0, max_dist = 0.0;
+  int i;
+  for (i = 0; i < 24; i++) {
+    HijriMoonPosition m = hijri_moon_position(SKY_MOON_GEOMETRIC[i][0]);
+    double dlon = angdiff(m.geocentric_longitude_deg, SKY_MOON_GEOMETRIC[i][1]);
+    double dlat = fabs(m.geocentric_latitude_deg - SKY_MOON_GEOMETRIC[i][2]);
+    double ddist = fabs(m.distance_km - SKY_MOON_GEOMETRIC[i][3]);
+    if (dlon > max_lon) max_lon = dlon;
+    if (dlat > max_lat) max_lat = dlat;
+    if (ddist > max_dist) max_dist = ddist;
+    check_angle_within("moon_geom_lon", SKY_MOON_GEOMETRIC[i][0],
+                       m.geocentric_longitude_deg, SKY_MOON_GEOMETRIC[i][1],
+                       TOL_GEOM_LON_DEG);
+    check_within("moon_geom_lat", SKY_MOON_GEOMETRIC[i][0],
+                 m.geocentric_latitude_deg, SKY_MOON_GEOMETRIC[i][2],
+                 TOL_GEOM_LAT_DEG);
+    check_within("moon_geom_dist", SKY_MOON_GEOMETRIC[i][0], m.distance_km,
+                 SKY_MOON_GEOMETRIC[i][3], TOL_GEOM_DIST_KM);
+  }
+  printf("moon_truncation max: lon %.7f deg lat %.7f deg dist %.1f km\n",
+         max_lon, max_lat, max_dist);
+}
+
 int main(void) {
   double max_lon = 0.0, max_lat = 0.0, max_dist = 0.0;
 
   check_group1_harness();
+  check_group2_truncation();
   check_meeus_example_47a();
   check_delta_t();
   check_ut_to_tt_path();
