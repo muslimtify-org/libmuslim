@@ -56,11 +56,14 @@ The library currently provides:
 The lunar ephemeris is no longer the limiting approximation, but the lunar
 position still applies neither nutation nor aberration. A second independent
 engine has now confirmed the error bar: the Moon is within 0.0051 deg and the
-Sun within 0.0084042 deg of apparent truth in ecliptic longitude. Those
-figures are dominated by the physics the library deliberately omits, not by
-inaccuracy in the series, whose own truncation error measures 0.0012755 deg.
-Results near a criterion boundary must not be presented as observational-grade
-or as an official calendar declaration.
+Sun within 0.0084042 deg of apparent truth in ecliptic longitude. The two
+figures have different causes and should not be read together. The Moon's is
+dominated by the omitted physics, since the Meeus ch. 47 series itself measures
+only 0.0012755 deg. The Sun's is series truncation, because Meeus ch. 25 does
+apply nutation and aberration, and at 0.0084042 deg against a documented
+~0.01 deg it is now the larger of the two error sources. Results near a
+criterion boundary must not be presented as observational-grade or as an
+official calendar declaration.
 
 ## Before v1.0 — blocks the tag
 
