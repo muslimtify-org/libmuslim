@@ -282,11 +282,14 @@ instead by the 1e-6 deg assertion against Meeus's own printed worked Example
   the number. The tolerance `TOL_ELONG_DEG` pins current behaviour, so if the
   frame is ever unified the diff will be deliberate and visible rather than
   silent drift.
-  This comparison was computed with a throwaway probe rather than a committed
-  test, so it is a recorded measurement and not a standing assertion. It is
-  reproducible from the committed fixtures: undo the two solar terms, difference
-  against `SKY_SUN_GEOMETRIC` minus `SKY_MOON_GEOMETRIC`, and take the maximum
-  over the 24 epochs.
+  This comparison was first computed with a throwaway probe. It is now a
+  committed standing assertion, `check_group5_frame_counterfactual()` in
+  `tests/test_ephemeris_oracle.c`, which prints `elongation_frame_unified max`
+  and bounds it with `TOL_ELONG_UNIFIED_DEG`. The figure is therefore
+  reproducible from a checkout by running the binary, not merely described here.
+  That group is also the only assertion reading `SKY_SUN_GEOMETRIC`, which is
+  what holds that table to the same mutation-proven standard as the other three
+  (mutation M5).
 - **Solar latitude is modelled as zero.** The Sun tables carry an ecliptic
   latitude column for format symmetry but no assertion is made against it. Zero
   is correct to about 1.2 arcsec, which is 3.3e-4 deg and well inside the
