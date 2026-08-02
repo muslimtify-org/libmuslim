@@ -1,0 +1,47 @@
+name: Auto-assign
+
+# Assign every new issue and pull request to the maintainer.
+#
+# GitHub has no repository setting for this, and it does not assign an author
+# to their own issue or PR, so a workflow is the smallest thing that actually
+# works. No third-party action is used: the `gh` CLI ships on every runner, so
+# this adds no supply-chain surface to a repository whose whole point is having
+# no dependencies.
+
+on:
+  issues:
+    types: [opened, reopened]
+  # pull_request_target rather than pull_request so that PRs opened from forks
+  # get a token with write permission. That trigger runs in the BASE repo
+  # context with secrets available, which is only safe because this workflow
+  # never checks out or executes any code from the pull request. Do not add a
+  # checkout step here.
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    steps:
+      - name: assign to maintainer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          # Both event types expose the number under a different key, so pick
+          # whichever one this run actually has.
+          NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          ASSIGNEES: ${{ github.event.issue.assignees[0].login }}${{ github.event.pull_request.assignees[0].login }}
+        run: |
+          # Reopening an item that someone has already assigned should not
+          # silently reassign it. Only act when there is no assignee at all.
+          if [ -n "$ASSIGNEES" ]; then
+            echo "already assigned to $ASSIGNEES, leaving it alone"
+            exit 0
+          fi
+          gh api "repos/$REPO/issues/$NUMBER/assignees" \
+            -f "assignees[]=rizukirr" > /dev/null
+          echo "assigned #$NUMBER to rizukirr"
