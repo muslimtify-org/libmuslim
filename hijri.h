@@ -66,7 +66,7 @@
  *     longitude  0.0051 deg      latitude  0.0006 deg      distance  41.9 km
  *
  * It also reproduces Meeus's own printed worked Example 47.a to every digit
- * the book gives. See tests/test_moon_meeus.c, which carries both checks.
+ * the book gives. See tests/test_ephemeris_oracle.c, which carries both checks.
  *
  * WHAT THIS STILL DOES NOT DO. No nutation and no aberration are applied, so
  * these are geometric positions referred to the mean equinox of date. The
@@ -530,7 +530,7 @@ HIJRIDEF HijriSunPosition hijri_sun_position(double jd_tt) {
  * has an even F multiple, every 47.B row an odd one -- which a corrupted table
  * would be unlikely to satisfy by accident.
  *
- * The decisive check is not either of those, though: tests/test_moon_meeus.c
+ * The decisive check is not either of those, though: tests/test_ephemeris_oracle.c
  * asserts Meeus's own printed worked Example 47.a, and this implementation
  * reproduces lambda, beta and Delta to every digit the book prints. That is
  * reproducible from this repository alone and does not rely on trusting either

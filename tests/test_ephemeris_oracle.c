@@ -3,7 +3,7 @@
  * Skyfield/JPL DE440.
  *
  * Build:  gcc -std=c11 -Wall -Wextra -Wpedantic -O2 tests/test_ephemeris_oracle.c -lm \
- *             -o /tmp/libmuslim-test-moon
+ *             -o /tmp/libmuslim-test-ephemeris
  *
  * The fixture below was retrieved on 2026-07-30 with:
  *

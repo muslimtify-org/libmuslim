@@ -194,7 +194,7 @@ checked only by remembering to run a command — `prayertimes.h` once shipped
 broken under its own documented build line because nobody ran it, and the first
 CI run caught a macOS/glibc difference no local check could have.
 
-`tests/test_moon_meeus.c` validates the lunar series against a vendored JPL
+`tests/test_ephemeris_oracle.c` validates the lunar series against a vendored JPL
 Horizons fixture, Meeus's own printed worked example, and published ΔT values.
 `tests/test_hijri.c` covers calendar arithmetic, predicate thresholds, and a
 longitude sweep asserting each observer's own local evening is used.
