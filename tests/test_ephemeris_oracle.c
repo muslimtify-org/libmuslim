@@ -1,6 +1,8 @@
-/* test_moon_meeus.c -- validates hijri_moon_position() against JPL Horizons.
+/* test_ephemeris_oracle.c -- validates hijri_sun_position() and
+ * hijri_moon_position() against two independent oracles: JPL Horizons and
+ * Skyfield/JPL DE440.
  *
- * Build:  gcc -std=c11 -Wall -Wextra -Wpedantic -O2 tests/test_moon_meeus.c -lm \
+ * Build:  gcc -std=c11 -Wall -Wextra -Wpedantic -O2 tests/test_ephemeris_oracle.c -lm \
  *             -o /tmp/libmuslim-test-moon
  *
  * The fixture below was retrieved on 2026-07-30 with:
