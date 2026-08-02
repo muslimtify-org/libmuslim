@@ -126,9 +126,10 @@ are not.
 
 The sunset case is the one that does not reduce to a direct angle comparison.
 A solar longitude error propagates into the sunset instant through the Sun's
-apparent motion. The Sun moves about 0.9856 deg per day in longitude, so
-0.0084042 deg is about 0.0085 days of solar motion, but the relevant rate at the
-horizon is the Earth's rotation at roughly 15 deg per hour of hour angle, which
+apparent motion. The Sun moves about 0.9856 deg per day in longitude, a standard
+published rate and not a measurement from this run, so 0.0084042 deg is about
+0.0085 days of solar motion, but the relevant rate at the horizon is the Earth's
+rotation at roughly 15 deg per hour of hour angle, likewise standard, which
 converts 0.0084042 deg of position error into under 3 seconds of sunset time.
 That is not a separate measurement, only the same figure expressed in the unit
 the sunset search uses.
@@ -213,8 +214,15 @@ max_lon_err=0.0051 deg  max_lat_err=0.0006 deg  max_dist_err=41.9 km
 Moon ephemeris tests: 275 checks, 0 failures
 ```
 
-Every figure in this note is one of those numbers or a division between two of
-them, and every division is written out where it is claimed.
+Every measured figure in this note is one of those numbers or a division between
+two of them, and every division is written out where it is claimed. The note
+also cites figures that are not measurements from this run, and each is labelled
+with its source where it appears: the 3 deg and 6.4 deg MABIMS 2021 thresholds,
+IAU 2000B's 0.001 arcsec accuracy, the roughly 1.2 arcsec solar ecliptic
+latitude the library models as zero, the 0.15 deg near-boundary band from
+docs/research/2026-07-30-findings.md, the 0.003 deg TOL_GEOM_LON_DEG bound, the
+1e-6 deg per-coefficient sensitivity, and the two standard rates used in the
+sunset conversion below.
 
 The Skyfield tables themselves are not reproducible from a checkout, because the
 generator is not committed. They are reproducible from the recorded method above
@@ -235,9 +243,10 @@ mutations were caught:
   passed with a residual of exactly zero. Without that guard the suite would
   have reported 275 checks and 0 failures on a table pasted twice.
 - **M4**, one `hijri__moon_lr` longitude coefficient changed by +1 unit:
-  **NOT caught.** The suite reported 275 checks, 0 failures and exited 0. The
-  only movement anywhere in the output was the group 2 maximum shifting from
-  0.0012755 to 0.0012752 deg, about 3e-7 deg.
+  **NOT caught.** The suite reported 275 checks, 0 failures and exited 0. Two
+  printed maxima moved, both far below any tolerance: group 2 shifted from
+  0.0012755 to 0.0012752 deg, and group 4 from 0.0070530 to 0.0070533 deg,
+  each about 3e-7 deg.
 
 M4 is a genuine limit of this fixture and is recorded as such rather than
 smoothed over. The check that would have to tighten is `moon_geom_lon`, bounded
