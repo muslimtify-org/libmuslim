@@ -95,16 +95,16 @@ and every fixture tolerance below require.
 
 ### Status-return conventions
 
-Replace failure-only returns with explicit status values where callers need to
-distinguish invalid input, unavailable events, unsupported dates, and
-numerical failure. `hijri_find_conjunction()`,
-`hijri_find_previous_conjunction()`, `hijri_find_next_conjunction()`, and
-`hijri_find_relevant_conjunction()` currently return a bare `double` with no
-failure channel.
-
-**`hijri.h` is not tagged v1.0 until this lands.** The header comment already
-reads `v1.0` while no git tag exists, and the in-repo Rust interop consumes
-only `prayertimes.h`, so the break is as cheap as it will ever be.
+**Done (2026-08).** The three surviving finders return `HijriEventStatus`
+with the Julian Day in an out-parameter (`HIJRI_EVENT_NOT_FOUND` on
+non-finite input or an empty window); the ambiguous
+`hijri_find_conjunction()` was removed while the pre-1.0 window made that
+free. Numerical invariance was proven by the byte-unchanged research
+baseline and 1e-9-day conjunction pins. The header now reads `v1.0.0-rc1`;
+the remaining step is deliberate: bump to `v1.0.0` and `git tag v1.0.0`
+when the release is called. Deferred with a recorded disposition: input
+validation for the pure-arithmetic tabular converters (garbage-in
+garbage-out on an invalid month) was judged out of scope for this gate.
 
 **Completion criteria:**
 
