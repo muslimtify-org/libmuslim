@@ -103,6 +103,24 @@
  *
  * See the explicitly documented local predicates below.
  *
+ * TWO SIDEREAL TIMES, DELIBERATELY. Solar hour angles use apparent sidereal
+ * time (hijri__gast_deg) and lunar ones use mean sidereal time
+ * (hijri__gmst_deg). That is not an inconsistency to be tidied up: the Sun's
+ * right ascension here is apparent, referred to the true equinox, and the
+ * Moon's is mean-of-date, so each is paired with the sidereal time referred to
+ * the same equinox it is. Collapsing them to one clock reintroduces an error
+ * equal to the equation of the equinoxes, up to about 16 arcsec of hour angle
+ * or 1.05 s of sunset. Measured before the fix: see issue #29 and
+ * docs/research/2026-08-05-solar-hour-angle-frame.md.
+ *
+ * SOLAR PARALLAX IS OMITTED FROM SUNSET, ON PURPOSE. hijri_find_sunset() uses
+ * a geocentric Sun. The roughly 8.8 arcsec of solar horizontal parallax would
+ * move sunset by up to about 1 s. It is left out because the official
+ * conventions this library exists to reproduce leave it out: the Pedoman Hisab
+ * Muhammadiyah computes sunset as h = -(s.d. + R' + Dip), with no parallax
+ * term (docs/research/2026-08-01-wujudul-hilal-convention.md). Adding it would
+ * move the library AWAY from the published calendars it is validated against.
+ *
  * -----------------------------------------------------------------------
  * LICENSE
  *
