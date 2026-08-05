@@ -431,6 +431,20 @@ static double hijri__altitude_deg(double ra_deg, double dec_deg, double jd_ut,
   return HIJRI__RAD2DEG(asin(sin_alt));
 }
 
+/* Same as hijri__altitude_deg() but referred to the true equinox. Use this for
+ * the SUN, whose right ascension is apparent; use hijri__altitude_deg() for the
+ * MOON, whose right ascension is mean-of-date. See hijri__eqeq_deg(). */
+static double hijri__altitude_gast_deg(double ra_deg, double dec_deg,
+                                       double jd_ut,
+                                       const HijriLocation *loc) {
+  double H = HIJRI__DEG2RAD(hijri__norm_deg(
+      hijri__norm_deg(hijri__gast_deg(jd_ut) + loc->longitude_deg) - ra_deg));
+  double phi = HIJRI__DEG2RAD(loc->latitude_deg);
+  double dec = HIJRI__DEG2RAD(dec_deg);
+  double sin_alt = sin(phi) * sin(dec) + cos(phi) * cos(dec) * cos(H);
+  return HIJRI__RAD2DEG(asin(sin_alt));
+}
+
 static double hijri__angular_separation_deg(double ra1, double dec1, double ra2,
                                             double dec2) {
   double r1 = HIJRI__DEG2RAD(ra1), d1 = HIJRI__DEG2RAD(dec1);
@@ -853,7 +867,7 @@ HIJRIDEF void hijri_moon_topocentric(const HijriMoonPosition *geo, double jd_ut,
 HIJRIDEF double hijri_sun_altitude(double jd_ut, const HijriLocation *loc) {
   double jd_tt = hijri_jd_tt_from_ut(jd_ut);
   HijriSunPosition sun = hijri_sun_position(jd_tt);
-  return hijri__altitude_deg(sun.right_ascension_deg, sun.declination_deg,
+  return hijri__altitude_gast_deg(sun.right_ascension_deg, sun.declination_deg,
                              jd_ut, loc);
 }
 
@@ -1145,7 +1159,7 @@ hijri_compute_evening_parameters(int gy, int gm, int gd,
                            &moon_ra_topo, &moon_dec_topo);
 
     p.sun_center_geometric_altitude_deg =
-        hijri__altitude_deg(sun.right_ascension_deg, sun.declination_deg,
+        hijri__altitude_gast_deg(sun.right_ascension_deg, sun.declination_deg,
                             p.jd_sunset_ut, loc);
     p.moon_center_geometric_altitude_deg =
         hijri__altitude_deg(moon_ra_topo, moon_dec_topo, p.jd_sunset_ut, loc);
@@ -1343,7 +1357,7 @@ hijri_yallop_evaluate_evening(int gy, int gm, int gd,
     sun = hijri_sun_position(jd_tt);
     moon = hijri_moon_position(jd_tt);
     sun_altitude =
-        hijri__altitude_deg(sun.right_ascension_deg, sun.declination_deg,
+        hijri__altitude_gast_deg(sun.right_ascension_deg, sun.declination_deg,
                             result.jd_best_time_ut, loc);
     moon_geocentric_altitude =
         hijri__altitude_deg(moon.right_ascension_deg, moon.declination_deg,
@@ -1396,7 +1410,7 @@ hijri_odeh_evaluate_evening(int gy, int gm, int gd,
     sun = hijri_sun_position(jd_tt);
     moon = hijri_moon_position(jd_tt);
     sun_altitude =
-        hijri__altitude_deg(sun.right_ascension_deg, sun.declination_deg,
+        hijri__altitude_gast_deg(sun.right_ascension_deg, sun.declination_deg,
                             result.jd_best_time_ut, loc);
     moon_geocentric_altitude =
         hijri__altitude_deg(moon.right_ascension_deg, moon.declination_deg,
