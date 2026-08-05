@@ -489,6 +489,20 @@ HIJRIDEF double hijri_jd_tt_from_ut(double jd_ut) {
   return jd_ut + hijri_delta_t_seconds(jd_ut) / 86400.0;
 }
 
+/* Nutation in longitude, leading term only (Meeus 22.1 truncated to the
+ * 17.20" Omega term). This is deliberately NOT a better nutation model: the
+ * same value defines the true equinox that hijri_sun_position()'s apparent
+ * right ascension is referred to AND the equation-of-the-equinoxes correction
+ * applied to sidereal time in hijri__eqeq_deg(). Sharing one expression makes
+ * that pairing exact by construction, so the model's own truncation error
+ * stays inside the Meeus ch. 25 budget already documented rather than leaking
+ * into the hour angle as a fresh residual. Improving this term without
+ * improving hijri_sun_position() in the same way would REINTRODUCE the bug
+ * this helper exists to fix. */
+static double hijri__nutation_longitude_deg(double T) {
+  return -0.00478 * sin(HIJRI__DEG2RAD(125.04 - 1934.136 * T));
+}
+
 /* ---- Solar position (Meeus low-precision solar theory) ---------------------
  */
 
@@ -506,7 +520,7 @@ HIJRIDEF HijriSunPosition hijri_sun_position(double jd_tt) {
 
   double omega = 125.04 - 1934.136 * T;
   double apparent_longitude =
-      true_longitude - 0.00569 - 0.00478 * sin(HIJRI__DEG2RAD(omega));
+      true_longitude - 0.00569 + hijri__nutation_longitude_deg(T);
 
   double eps0 =
       23.439291 - 0.0130042 * T - 0.00000016 * T * T + 0.000000504 * T * T * T;

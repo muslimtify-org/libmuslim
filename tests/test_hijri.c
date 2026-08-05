@@ -1069,6 +1069,24 @@ static void test_crescent_equivalence_property(void) {
  * rounding, and tight enough to refute the superseded design that added
  * the dip credit on the altitude side only (that lands 16.7' off).
  * See docs/research/2026-08-01-wujudul-hilal-convention.md. */
+/* Task 1 pins hijri_sun_position() against values captured from the
+ * pre-refactor header on 2026-08-05, so extracting the nutation term into a
+ * shared helper cannot change the solar position by even one ulp. These are
+ * printed with %.17g, i.e. round-trip exact for IEEE754 double. */
+static void test_solar_position_pin(void) {
+  HijriSunPosition a = hijri_sun_position(2451545.0);
+  HijriSunPosition b = hijri_sun_position(2460322.4);
+
+  check_close("solar_position_unchanged_ra", a.right_ascension_deg,
+              281.28235602161232, 1e-12);
+  check_close("solar_position_unchanged_dec", a.declination_deg,
+              -23.032515829102056, 1e-12);
+  check_close("solar_position_unchanged_ra_2", b.right_ascension_deg,
+              293.94767749148741, 1e-12);
+  check_close("solar_position_unchanged_dec_2", b.declination_deg,
+              -21.614342073587583, 1e-12);
+}
+
 static void test_pedoman_worked_example(void) {
   HijriLocation yogyakarta = {-(7.0 + 48.0 / 60.0), 110.0 + 21.0 / 60.0,
                               90.0, "Yogyakarta"};
@@ -1331,6 +1349,7 @@ int main(void) {
   test_umm_al_qura_table_boundaries();
   test_moonset_crossing_convention();
   test_crescent_equivalence_property();
+  test_solar_position_pin();
   test_pedoman_worked_example();
   test_kemenag_official_calendar();
   test_muhammadiyah_official_calendar();
