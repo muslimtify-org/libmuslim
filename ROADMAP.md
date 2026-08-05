@@ -244,6 +244,46 @@ Meeus ch. 25 low-precision solar theory. Measurement and reasoning in
   figure above, since unifying the frames costs accuracy rather than gaining it
   for as long as the ch. 25 solar theory is the limiting term.
 
+### Solar hour angle reference frame
+
+**Done (2026-08).** Issue #29 is resolved. Every solar altitude call in
+`hijri.h` paired an apparent solar right ascension, referred to the true
+equinox, with mean sidereal time, referred to the mean equinox, so the solar
+hour angle carried the equation of the equinoxes as error, up to about 16
+arcsec. A second sidereal time, `hijri__gast_deg()`, apparent sidereal time,
+now feeds the four solar altitude call sites through `hijri__altitude_gast_deg()`,
+while every lunar path keeps `hijri__gmst_deg()` unchanged, because
+`hijri_moon_position()` is mean-of-date and was already correctly paired. The
+equation of the equinoxes is derived from the same nutation helper
+`hijri_sun_position()` itself uses, `hijri__nutation_longitude_deg()`, so the
+pairing is exact by construction rather than approximate. Measured against
+Skyfield 1.54 on JPL DE421 over the same 24 epochs used throughout this
+roadmap, the library's one-term approximation deviates from the full IAU
+2000B series by at most 0.0004829 deg, a 9x reduction in the hour angle error
+rather than an elimination of it. The regenerated 2020-2025 research baseline
+moves `sunset_jd` by at most 1.05338 s and `moonset_jd` by exactly 0.00000 s,
+with no `local_decision`, `yallop_model_zone`, or `odeh_model_zone` change
+anywhere in it. Solar parallax remains deliberately omitted from sunset, to
+match the Pedoman Hisab Muhammadiyah's own `h = -(s.d. + R' + Dip)` sunset
+convention, which likewise omits it. This change does not improve agreement
+with any official calendar, its own magnitude of 0.004 deg is far smaller
+than the 0.85 deg gap on the two unexplained Kemenag Rajab starts documented
+in `docs/research/2026-08-01-kemenag-reference.md`, and it should not be read
+as bearing on that gap. Full measurement, decomposition, and the deferred
+horizon-dip question for the MABIMS 2021 threshold are in
+[`docs/research/2026-08-05-solar-hour-angle-frame.md`](docs/research/2026-08-05-solar-hour-angle-frame.md).
+
+**Completion criteria:**
+
+- The solar right ascension and the sidereal time it is combined with are
+  referred to the same equinox at every solar altitude call site.
+- Lunar paths are unaffected, verified by an exact zero movement in
+  `moonset_jd` across the committed research baseline.
+- The equation of the equinoxes used is cross-checked against an independent
+  ephemeris oracle and the check is proven falsifiable by a recorded
+  mutation.
+- The header documents both sidereal times and why they coexist.
+
 ### Supported-date ranges
 
 Document and test the reliable date range of every numerical backend and

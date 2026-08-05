@@ -103,6 +103,31 @@
  *
  * See the explicitly documented local predicates below.
  *
+ * TWO SIDEREAL TIMES, DELIBERATELY. Solar hour angles use apparent sidereal
+ * time (hijri__gast_deg) and lunar ones use mean sidereal time
+ * (hijri__gmst_deg). That is not an inconsistency to be tidied up: the Sun's
+ * right ascension here is apparent, referred to the true equinox, and the
+ * Moon's is mean-of-date, so each is paired with the sidereal time referred to
+ * the same equinox it is. Collapsing them to one clock reintroduces an error
+ * equal to the equation of the equinoxes, up to about 16 arcsec of hour angle
+ * or 1.05 s of sunset. Measured before the fix: see issue #29 and
+ * docs/research/2026-08-05-solar-hour-angle-frame.md.
+ *
+ * Do not read that 1.05 s as the library's sunset accuracy. Sidereal time is a
+ * function of UT1, and these entry points take a Julian date callers will in
+ * practice populate from UTC. UT1 minus UTC ranges over plus or minus 0.9 s by
+ * construction, the same order as the entire correction above, and no table
+ * this library carries can remove it. Correcting the frame removes a
+ * deterministic bias, it does not buy sub-second sunset precision.
+ *
+ * SOLAR PARALLAX IS OMITTED FROM SUNSET, ON PURPOSE. hijri_find_sunset() uses
+ * a geocentric Sun. The roughly 8.8 arcsec of solar horizontal parallax would
+ * move sunset by up to about 1 s. It is left out because the official
+ * conventions this library exists to reproduce leave it out: the Pedoman Hisab
+ * Muhammadiyah computes sunset as h = -(s.d. + R' + Dip), with no parallax
+ * term (docs/research/2026-08-01-wujudul-hilal-convention.md). Adding it would
+ * move the library AWAY from the published calendars it is validated against.
+ *
  * -----------------------------------------------------------------------
  * LICENSE
  *
@@ -392,20 +417,67 @@ static double hijri__gmst_deg(double jd_ut) {
   return hijri__norm_deg(gmst);
 }
 
+static double hijri__nutation_longitude_deg(double T);
+
+/* Equation of the equinoxes: GAST - GMST = delta-psi * cos(epsilon).
+ *
+ * GMST above is the hour angle of the MEAN equinox. hijri_sun_position()
+ * returns an APPARENT right ascension, referred to the TRUE equinox (Meeus
+ * ch. 25 applies nutation and aberration to the longitude and corrects the
+ * obliquity). An hour angle is only meaningful when the sidereal time and the
+ * right ascension are referred to the SAME equinox, so solar hour angles use
+ * GAST and lunar ones keep GMST -- hijri_moon_position() is mean-of-date and
+ * uses mean obliquity, so GMST is already correct for it.
+ *
+ * delta-psi comes from the same helper hijri_sun_position() uses, so the
+ * equinox the right ascension is referred to and the equinox the sidereal time
+ * is corrected to are the same one, whatever that helper's own accuracy. The
+ * two calls evaluate it at T from UT here and T from TT there, differing by
+ * Delta T, which leaves a residual of about 1e-5 arcsec on a 16 arcsec term.
+ * Consistent to that level, not literally exact. See issue #29. */
+static double hijri__eqeq_deg(double jd_ut) {
+  double T = (jd_ut - 2451545.0) / 36525.0;
+  return hijri__nutation_longitude_deg(T) * cos(HIJRI__DEG2RAD(23.4393));
+}
+
+static double hijri__gast_deg(double jd_ut) {
+  return hijri__norm_deg(hijri__gmst_deg(jd_ut) + hijri__eqeq_deg(jd_ut));
+}
+
 static double hijri__hour_angle_deg(double jd_ut, double longitude_deg,
                                     double ra_deg) {
   double lst = hijri__norm_deg(hijri__gmst_deg(jd_ut) + longitude_deg);
   return hijri__norm_deg(lst - ra_deg);
 }
 
-static double hijri__altitude_deg(double ra_deg, double dec_deg, double jd_ut,
-                                  const HijriLocation *loc) {
-  double H =
-      HIJRI__DEG2RAD(hijri__hour_angle_deg(jd_ut, loc->longitude_deg, ra_deg));
+/* Altitude from a sidereal time the caller chooses. The two wrappers below
+ * differ ONLY in which sidereal time they pass, so the trigonometry lives here
+ * once: a correction to the altitude formula cannot be applied to one body and
+ * missed on the other. */
+static double hijri__altitude_from_sidereal_deg(double sidereal_deg,
+                                                double ra_deg, double dec_deg,
+                                                const HijriLocation *loc) {
+  double H = HIJRI__DEG2RAD(hijri__norm_deg(
+      hijri__norm_deg(sidereal_deg + loc->longitude_deg) - ra_deg));
   double phi = HIJRI__DEG2RAD(loc->latitude_deg);
   double dec = HIJRI__DEG2RAD(dec_deg);
   double sin_alt = sin(phi) * sin(dec) + cos(phi) * cos(dec) * cos(H);
   return HIJRI__RAD2DEG(asin(sin_alt));
+}
+
+/* For the MOON, whose right ascension is mean-of-date. */
+static double hijri__altitude_deg(double ra_deg, double dec_deg, double jd_ut,
+                                  const HijriLocation *loc) {
+  return hijri__altitude_from_sidereal_deg(hijri__gmst_deg(jd_ut), ra_deg,
+                                           dec_deg, loc);
+}
+
+/* For the SUN, whose right ascension is apparent. See hijri__eqeq_deg(). */
+static double hijri__altitude_gast_deg(double ra_deg, double dec_deg,
+                                       double jd_ut,
+                                       const HijriLocation *loc) {
+  return hijri__altitude_from_sidereal_deg(hijri__gast_deg(jd_ut), ra_deg,
+                                           dec_deg, loc);
 }
 
 static double hijri__angular_separation_deg(double ra1, double dec1, double ra2,
@@ -489,6 +561,20 @@ HIJRIDEF double hijri_jd_tt_from_ut(double jd_ut) {
   return jd_ut + hijri_delta_t_seconds(jd_ut) / 86400.0;
 }
 
+/* Nutation in longitude, leading term only (Meeus 22.1 truncated to the
+ * 17.20" Omega term). This is deliberately NOT a better nutation model: the
+ * same value defines the true equinox that hijri_sun_position()'s apparent
+ * right ascension is referred to AND the equation-of-the-equinoxes correction
+ * applied to sidereal time in hijri__eqeq_deg(). Sharing one expression ties
+ * the two together, so the model's own truncation error
+ * stays inside the Meeus ch. 25 budget already documented rather than leaking
+ * into the hour angle as a fresh residual. Improving this term without
+ * improving hijri_sun_position() in the same way would REINTRODUCE the bug
+ * this helper exists to fix. */
+static double hijri__nutation_longitude_deg(double T) {
+  return -0.00478 * sin(HIJRI__DEG2RAD(125.04 - 1934.136 * T));
+}
+
 /* ---- Solar position (Meeus low-precision solar theory) ---------------------
  */
 
@@ -506,7 +592,7 @@ HIJRIDEF HijriSunPosition hijri_sun_position(double jd_tt) {
 
   double omega = 125.04 - 1934.136 * T;
   double apparent_longitude =
-      true_longitude - 0.00569 - 0.00478 * sin(HIJRI__DEG2RAD(omega));
+      true_longitude - 0.00569 + hijri__nutation_longitude_deg(T);
 
   double eps0 =
       23.439291 - 0.0130042 * T - 0.00000016 * T * T + 0.000000504 * T * T * T;
@@ -816,8 +902,8 @@ HIJRIDEF void hijri_moon_topocentric(const HijriMoonPosition *geo, double jd_ut,
 HIJRIDEF double hijri_sun_altitude(double jd_ut, const HijriLocation *loc) {
   double jd_tt = hijri_jd_tt_from_ut(jd_ut);
   HijriSunPosition sun = hijri_sun_position(jd_tt);
-  return hijri__altitude_deg(sun.right_ascension_deg, sun.declination_deg,
-                             jd_ut, loc);
+  return hijri__altitude_gast_deg(sun.right_ascension_deg,
+                                  sun.declination_deg, jd_ut, loc);
 }
 
 HIJRIDEF double hijri_moon_altitude(double jd_ut, const HijriLocation *loc) {
@@ -1108,8 +1194,8 @@ hijri_compute_evening_parameters(int gy, int gm, int gd,
                            &moon_ra_topo, &moon_dec_topo);
 
     p.sun_center_geometric_altitude_deg =
-        hijri__altitude_deg(sun.right_ascension_deg, sun.declination_deg,
-                            p.jd_sunset_ut, loc);
+        hijri__altitude_gast_deg(sun.right_ascension_deg,
+                                 sun.declination_deg, p.jd_sunset_ut, loc);
     p.moon_center_geometric_altitude_deg =
         hijri__altitude_deg(moon_ra_topo, moon_dec_topo, p.jd_sunset_ut, loc);
     p.moon_upper_limb_apparent_altitude_deg =
@@ -1306,8 +1392,9 @@ hijri_yallop_evaluate_evening(int gy, int gm, int gd,
     sun = hijri_sun_position(jd_tt);
     moon = hijri_moon_position(jd_tt);
     sun_altitude =
-        hijri__altitude_deg(sun.right_ascension_deg, sun.declination_deg,
-                            result.jd_best_time_ut, loc);
+        hijri__altitude_gast_deg(sun.right_ascension_deg,
+                                 sun.declination_deg, result.jd_best_time_ut,
+                                 loc);
     moon_geocentric_altitude =
         hijri__altitude_deg(moon.right_ascension_deg, moon.declination_deg,
                             result.jd_best_time_ut, loc);
@@ -1359,8 +1446,9 @@ hijri_odeh_evaluate_evening(int gy, int gm, int gd,
     sun = hijri_sun_position(jd_tt);
     moon = hijri_moon_position(jd_tt);
     sun_altitude =
-        hijri__altitude_deg(sun.right_ascension_deg, sun.declination_deg,
-                            result.jd_best_time_ut, loc);
+        hijri__altitude_gast_deg(sun.right_ascension_deg,
+                                 sun.declination_deg, result.jd_best_time_ut,
+                                 loc);
     moon_geocentric_altitude =
         hijri__altitude_deg(moon.right_ascension_deg, moon.declination_deg,
                             result.jd_best_time_ut, loc);
