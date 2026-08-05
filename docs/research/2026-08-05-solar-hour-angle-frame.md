@@ -49,7 +49,7 @@ Before this fix, every solar hour angle carried the full equation of the equinox
 
 ## Solar parallax remains omitted, on purpose
 
-`hijri_find_sunset()` continues to use a geocentric Sun, with no parallax correction, worth roughly 0.6 to 1.0 second of sunset at the four decomposition sites above. This is not an oversight left by this change. The official conventions the library exists to reproduce leave it out: the Pedoman Hisab Muhammadiyah computes sunset as `h = -(s.d. + R' + Dip)`, with no parallax term, documented at `docs/research/2026-08-01-wujudul-hilal-convention.md:128`. Adding solar parallax would move the library away from the published calendar it is validated against, not toward it. Task 5 of the implementing plan recorded the same decision in the `hijri.h` header, next to the two-sidereal-time documentation.
+`hijri_find_sunset()` continues to use a geocentric Sun, with no parallax correction, worth roughly 0.6 to 1.0 second of sunset at the four decomposition sites above. This is not an oversight left by this change. The official conventions the library exists to reproduce leave it out: the Pedoman Hisab Muhammadiyah computes sunset as `h = -(s.d. + R' + Dip)`, with no parallax term, documented at `docs/research/2026-08-01-wujudul-hilal-convention.md:128-129`. Adding solar parallax would move the library away from the published calendar it is validated against, not toward it. Task 5 of the implementing plan recorded the same decision in the `hijri.h` header, next to the two-sidereal-time documentation.
 
 ## This does not improve agreement with any official calendar
 
