@@ -976,7 +976,18 @@ static void check_group7_shipped_elongation(void) {
  * group with, verbatim:
  *   FAIL eqeq at jd=2415020.5: got -0.0043072 want 0.0044419 (err 0.0087491 > tol 0.0010000)
  * Reverting restores 448 checks, 0 failures. The fixture therefore detects a
- * sign error, which is the most likely way this term is got wrong. */
+ * sign error, which is the most likely way this term is got wrong.
+ *
+ * MUTATION M9 (2026-08-05): making hijri__eqeq_deg() return 0.0, which is
+ * exactly the pre-fix behaviour of pairing an apparent solar right ascension
+ * with MEAN sidereal time, fails this group with, verbatim:
+ *   FAIL eqeq at jd=2415020.5: got 0.0000000 want 0.0044419 (err 0.0044419 > tol 0.0010000)
+ * 20 of the 24 epochs fail, not all 24: at the remaining four the true
+ * equation of the equinoxes is itself smaller than TOL_EQEQ_DEG, so zero is
+ * within tolerance there. That is the honest detection rate, and it is the
+ * more important of the two mutations, because it proves this fixture would
+ * catch a silent regression to the old frame pairing rather than only a
+ * fat-fingered sign. Reverting restores 448 checks, 0 failures. */
 
 /* Group 8: the equation of the equinoxes the library applies to solar hour
  * angles, against Skyfield's full IAU 2000B value.
