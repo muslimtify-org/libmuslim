@@ -128,6 +128,19 @@
  * term (docs/research/2026-08-01-wujudul-hilal-convention.md). Adding it would
  * move the library AWAY from the published calendars it is validated against.
  *
+ * HORIZON DIP IS OMITTED FROM THE SET SOLVERS, ALSO ON PURPOSE. loc->elevation_m
+ * does not lower the sunset target. Do not "fix" this. It has been measured
+ * twice and both times the correction was the error. For Wujudul Hilal the dip
+ * cancels, because the Pedoman applies it to sunset AND to the altitude, so
+ * adding it on one side only lands 17 arcmin out (see
+ * docs/research/2026-08-01-wujudul-hilal-convention.md). For MABIMS 2021 it
+ * does not cancel, but applying it makes agreement with the official Kemenag
+ * calendar WORSE, 33 of 37 official month starts supported dropping to 32,
+ * which fails the committed fixture floor at tests/test_hijri.c. Dip delays
+ * sunset, so the Moon is lower, so a threshold read from below can only lose
+ * months. Measured 2026-08-05, see
+ * docs/research/2026-08-05-solar-hour-angle-frame.md.
+ *
  * -----------------------------------------------------------------------
  * LICENSE
  *
