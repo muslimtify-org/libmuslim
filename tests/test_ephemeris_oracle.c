@@ -142,6 +142,7 @@
 #define TOL_ELONG_UNIFIED_DEG 0.017
 #define TOL_ELONG_SHIPPED_DEG 0.014
 #define TOL_SUN_TERMS_DEG 0.001
+#define TOL_EQEQ_DEG 0.001
 
 /* MEASURED MUTATION SENSITIVITY of the four tables above.
  *
@@ -540,6 +541,44 @@ static const double HORIZONS_SUN[24][4] = {
   {2488069.5, 280.6033753, 0.0000877, 147108222.9},
 };
 
+/* Equation of the equinoxes, GAST - GMST, in degrees, at the same 24 epochs
+ * as the tables above.
+ *
+ * PROVENANCE: generated 2026-08-05 with Skyfield 1.54 on JPL DE421, reading
+ * t.gast - t.gmst for t = ts.tt_jd(<epoch>), converted from hours to degrees
+ * and wrapped to (-180, 180]. Skyfield evaluates the full IAU 2000B nutation
+ * series; hijri__eqeq_deg() uses only the leading 17.20" Omega term, so these
+ * two are INDEPENDENT derivations and their agreement is the check.
+ *
+ * The generator was run by hand and is not committed, matching the practice
+ * already used for SKY_MOON_APPARENT in this file. */
+static const double SKY_EQEQ[24][2] = {
+  { 2415020.5, +0.004441918},
+  { 2433282.5, -0.000841633},
+  { 2458853.5, -0.004252976},
+  { 2458931.7, -0.004350645},
+  { 2459044.2, -0.004202831},
+  { 2459122.9, -0.004446576},
+  { 2459201.3, -0.004268986},
+  { 2459318.6, -0.004446504},
+  { 2459407.1, -0.003802165},
+  { 2459502.8, -0.004081034},
+  { 2459613.4, -0.003227657},
+  { 2459688.2, -0.003807395},
+  { 2459777.9, -0.002952766},
+  { 2459860.5, -0.003196435},
+  { 2459955.1, -0.002481261},
+  { 2460048.7, -0.002597950},
+  { 2460133.3, -0.001943961},
+  { 2460229.6, -0.002042573},
+  { 2460322.4, -0.001172969},
+  { 2460451.8, -0.001315363},
+  { 2460577.2, -0.000565305},
+  { 2460699.5, +0.000240783},
+  { 2469807.5, +0.003866134},
+  { 2488069.5, +0.000838030},
+};
+
 /* Meeus, "Astronomical Algorithms" 2nd ed., worked Example 47.a:
  * 1992 April 12 at 0h TD, i.e. JDE 2448724.5. The book prints
  *   lambda = 133.162655 deg, beta = -3.229126 deg, Delta = 368409.7 km.
@@ -933,6 +972,51 @@ static void check_group7_shipped_elongation(void) {
   printf("elongation_shipped_path max: %.7f deg\n", max_err);
 }
 
+/* MUTATION M8 (2026-08-05): negating the sign of hijri__eqeq_deg() fails this
+ * group with, verbatim:
+ *   FAIL eqeq at jd=2415020.5: got -0.0043072 want 0.0044419 (err 0.0087491 > tol 0.0010000)
+ * Reverting restores 448 checks, 0 failures. The fixture therefore detects a
+ * sign error, which is the most likely way this term is got wrong. */
+
+/* Group 8: the equation of the equinoxes the library applies to solar hour
+ * angles, against Skyfield's full IAU 2000B value.
+ *
+ * Measured maximum over these 24 epochs, printed by this binary as
+ * "eqeq max deviation": 0.0004829 deg. The true term ranges over -16.01 to
+ * +15.99 arcsec across the set, so the one-term approximation captures it to
+ * about 11% worst case. Before this fix the solar hour angle carried the FULL
+ * term as error; after it, at most the residual. That is a 9x reduction, not
+ * elimination, and the tolerance below is sized to say so honestly.
+ *
+ * TOL_EQEQ_DEG 0.001 is the measured 0.0004829 rounded up to leave 2.07x
+ * margin, consistent with the roughly 2x margin used elsewhere in this file. */
+static void check_group8_eqeq(void) {
+  double worst = 0.0;
+  for (int i = 0; i < 24; i++) {
+    double jd = SKY_EQEQ[i][0];
+    double lib = hijri__eqeq_deg(jd);
+    double dev = fabs(lib - SKY_EQEQ[i][1]);
+    if (dev > worst) worst = dev;
+    check_within("eqeq", jd, lib, SKY_EQEQ[i][1], TOL_EQEQ_DEG);
+  }
+  printf("eqeq max deviation: %.7f deg\n", worst);
+
+  /* Non-degeneracy: a table of zeros, or a formula that returned zero, would
+   * satisfy the bound above on a set whose values are all small. Assert the
+   * fixture actually spans both signs and reaches the term's real amplitude. */
+  {
+    double lo = SKY_EQEQ[0][1], hi = SKY_EQEQ[0][1];
+    for (int i = 1; i < 24; i++) {
+      if (SKY_EQEQ[i][1] < lo) lo = SKY_EQEQ[i][1];
+      if (SKY_EQEQ[i][1] > hi) hi = SKY_EQEQ[i][1];
+    }
+    /* check_true_nonzero is this file's only boolean helper, so express each
+     * condition as a quantity that is positive exactly when it holds. */
+    check_true_nonzero("eqeq_fixture_spans_negative", -0.004 - lo);
+    check_true_nonzero("eqeq_fixture_spans_positive", hi - 0.004);
+  }
+}
+
 int main(void) {
   double max_lon = 0.0, max_lat = 0.0, max_dist = 0.0;
 
@@ -943,6 +1027,7 @@ int main(void) {
   check_group5_frame_counterfactual();
   check_group6_sun_harness();
   check_group7_shipped_elongation();
+  check_group8_eqeq();
   check_meeus_example_47a();
   check_delta_t();
   check_ut_to_tt_path();

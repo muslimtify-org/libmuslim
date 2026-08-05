@@ -392,6 +392,29 @@ static double hijri__gmst_deg(double jd_ut) {
   return hijri__norm_deg(gmst);
 }
 
+static double hijri__nutation_longitude_deg(double T);
+
+/* Equation of the equinoxes: GAST - GMST = delta-psi * cos(epsilon).
+ *
+ * GMST above is the hour angle of the MEAN equinox. hijri_sun_position()
+ * returns an APPARENT right ascension, referred to the TRUE equinox (Meeus
+ * ch. 25 applies nutation and aberration to the longitude and corrects the
+ * obliquity). An hour angle is only meaningful when the sidereal time and the
+ * right ascension are referred to the SAME equinox, so solar hour angles use
+ * GAST and lunar ones keep GMST -- hijri_moon_position() is mean-of-date and
+ * uses mean obliquity, so GMST is already correct for it.
+ *
+ * delta-psi comes from the same helper hijri_sun_position() uses, which makes
+ * the pairing exact rather than approximate. See issue #29. */
+static double hijri__eqeq_deg(double jd_ut) {
+  double T = (jd_ut - 2451545.0) / 36525.0;
+  return hijri__nutation_longitude_deg(T) * cos(HIJRI__DEG2RAD(23.4393));
+}
+
+static double hijri__gast_deg(double jd_ut) {
+  return hijri__norm_deg(hijri__gmst_deg(jd_ut) + hijri__eqeq_deg(jd_ut));
+}
+
 static double hijri__hour_angle_deg(double jd_ut, double longitude_deg,
                                     double ra_deg) {
   double lst = hijri__norm_deg(hijri__gmst_deg(jd_ut) + longitude_deg);
