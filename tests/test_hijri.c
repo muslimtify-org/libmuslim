@@ -1071,20 +1071,40 @@ static void test_crescent_equivalence_property(void) {
  * See docs/research/2026-08-01-wujudul-hilal-convention.md. */
 /* Task 1 pins hijri_sun_position() against values captured from the
  * pre-refactor header on 2026-08-05, so extracting the nutation term into a
- * shared helper cannot change the solar position by even one ulp. These are
- * printed with %.17g, i.e. round-trip exact for IEEE754 double. */
+ * shared helper cannot change the solar position. These are printed with
+ * %.17g, i.e. round-trip exact for IEEE754 double.
+ *
+ * The tolerance is 1e-9, not 1e-12, because 1e-12 is a non-portable claim.
+ * hijri_sun_position computes L0 = 280.46646 + 36000.76983*T + ..., which
+ * reaches 8931.887617 deg at jd_tt 2460322.4 before hijri__norm_deg reduces
+ * it. One ulp of that intermediate propagates to 1.933e-12 deg in the
+ * returned right ascension. arm64 has FMA in its base ISA and macOS
+ * contracts by default, x86-64 does not without -mfma, and that one
+ * difference moves the result by exactly that quantum, so a 1e-12 tolerance
+ * sits below the smallest difference two architectures can exhibit.
+ *
+ * Measured on GitHub Actions run 31014887576, macos-latest:
+ *   FAIL exact/solar_position_unchanged_ra_2 actual=293.947677491489
+ *   expected=293.947677491487 diff=0.000000000002 tol=0.000000000001
+ *
+ * 1e-9 is about 500x above the 1.933e-12 architecture quantum, and about
+ * 5 million times below the 0.00478 deg error a sign or algebra mistake in
+ * the shared nutation term would produce, so it still fails loudly for any
+ * real defect. .github/workflows/ci.yml already restricts `make baseline`
+ * to ubuntu-latest for the same underlying reason, this file now follows
+ * that precedent. */
 static void test_solar_position_pin(void) {
   HijriSunPosition a = hijri_sun_position(2451545.0);
   HijriSunPosition b = hijri_sun_position(2460322.4);
 
   check_close("solar_position_unchanged_ra", a.right_ascension_deg,
-              281.28235602161232, 1e-12);
+              281.28235602161232, 1e-9);
   check_close("solar_position_unchanged_dec", a.declination_deg,
-              -23.032515829102056, 1e-12);
+              -23.032515829102056, 1e-9);
   check_close("solar_position_unchanged_ra_2", b.right_ascension_deg,
-              293.94767749148741, 1e-12);
+              293.94767749148741, 1e-9);
   check_close("solar_position_unchanged_dec_2", b.declination_deg,
-              -21.614342073587583, 1e-12);
+              -21.614342073587583, 1e-9);
 }
 
 static void test_pedoman_worked_example(void) {
