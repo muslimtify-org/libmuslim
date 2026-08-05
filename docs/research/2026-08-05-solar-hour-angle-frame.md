@@ -55,11 +55,32 @@ Before this fix, every solar hour angle carried the full equation of the equinox
 
 This fix should not be read as closing, or even meaningfully narrowing, any gap against an official calendar. The magnitude of the change is 0.004 deg, the largest movement measured anywhere in the criterion parameters above once converted from seconds and arcseconds back to degrees of altitude. The only unexplained gap this library currently has against an official calendar is the two Kemenag-published Rajab starts (1447, 2025-12-21, and 1448, 2026-12-10) that fail the MABIMS 2021 altitude threshold at Sabang by about 0.85 deg, documented in `docs/research/2026-08-01-kemenag-reference.md`. That gap is roughly 200 times larger than the size of this fix. Nothing in this note or in the fix it documents offers an explanation for it, and no claim to the contrary should be inferred from the fact that both concern solar or lunar frame conventions. This fix corrects a real reference-frame defect, measured and mutation-tested, and it is unrelated in scale and in cause to the Rajab discrepancy.
 
-## Deferred item: horizon dip and the MABIMS 2021 threshold
+## Resolved: horizon dip and the MABIMS 2021 threshold
 
-Horizon dip is omitted from the local predicate solvers in `hijri.h`. For the Wujudul Hilal upper-limb quantity, this has been proven to cancel: `test_pedoman_worked_example` passes, because an elevated observer's later sunset lets the Moon descend by almost exactly the dip credit that the altitude side would otherwise gain, matching the cancellation documented in `docs/research/2026-08-01-wujudul-hilal-convention.md`.
+Horizon dip is omitted from the local predicate solvers in `hijri.h`. For the Wujudul Hilal upper-limb quantity this was already proven to cancel, which is why `test_pedoman_worked_example` passes: an elevated observer's later sunset lets the Moon descend by almost exactly the dip credit the altitude side would otherwise gain. See `docs/research/2026-08-01-wujudul-hilal-convention.md`.
 
-That cancellation has NOT been shown to hold for the MABIMS 2021 altitude threshold, which uses a different quantity than the Wujudul Hilal upper-limb test. At Sabang, dip is worth roughly 22 seconds of sunset and roughly 0.09 deg of Moon altitude, a magnitude comparable to the two failing Rajab months' 0.85 deg gap only in the sense that both are altitude-threshold questions, not in size. This is recorded as an open item for a future measurement, not resolved by this fix.
+An earlier version of this note recorded the MABIMS 2021 case as an open question, on the grounds that MABIMS thresholds a different quantity so the cancellation might not carry over. Measured on 2026-08-05, it does not carry over, and the conclusion is the opposite of what "unresolved" suggested. Applying dip makes agreement with the official calendar WORSE, so the library's omission is correct and must not be changed.
+
+Measured over the 37 Kemenag official month starts at Sabang, elevation 10 m, dip 0.0928 deg:
+
+```
+                       shipped (no dip)   with dip in sunset
+  support /37                33                  32
+  early   /37                 0                   0
+
+  max Moon altitude shift from dip: 0.0919 deg (5.52 arcmin)
+```
+
+The month that flips is 2025-05-27, which sits at altitude 3.0073 deg, only 0.0073 deg above the 3.0 deg threshold. Dip moves it to 2.9220 deg and it fails.
+
+The mechanism is monotonic, not a coincidence of this site or this elevation. Dip lowers the sunset target, so sunset is later, so the Moon has descended further, so its altitude is lower. MABIMS thresholds altitude at 3.0 deg from below, so a lower altitude can only turn a pass into a fail and never a fail into a pass. Applying dip is therefore strictly more conservative and can never raise support at any location.
+
+Two consequences worth stating plainly:
+
+1. `tests/test_hijri.c:1203` asserts `support_topo >= 33`. Applying dip yields 32, so the change would fail a committed official-calendar fixture. The fixture is the guard that catches this.
+2. The never-early property is unaffected, 0 of 37 under both. Omitting dip makes the library more permissive, but not permissively enough to declare a month early anywhere in this window.
+
+This is the second time dip has looked like a defect in this project and turned out not to be one. The first was in Muhammadiyah's name, recorded at `docs/research/2026-08-01-wujudul-hilal-convention.md:123`, where the proposed correction would have introduced a 17 arcmin error. Both cases share a shape: dip appears on one side of a comparison, and the reason it is safe to omit is that it also appears, cancelling or dominating, on the other.
 
 ## Reproducing these figures
 
