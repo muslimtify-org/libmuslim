@@ -167,6 +167,12 @@
  * deliberately unbounded, see the group comment. */
 #define TOL_ELONG_CONV_DEG 0.014
 
+/* Group 12, Skyfield DE440 against Horizons, airless topocentric altitude.
+ * Measured maximum, printed as "sky_vs_horizons_topo max": jakarta 0.0001098
+ * deg, high60 0.0001015 deg. Bound is the larger rounded up to roughly 2x
+ * margin. This bounds oracle agreement, not library accuracy. */
+#define TOL_ORACLE_TOPO_DEG 0.00025
+
 /* MEASURED MUTATION SENSITIVITY of the four tables above.
  *
  * The Meeus 47.a block further down records an exhaustive 120-mutation sweep of
@@ -775,6 +781,71 @@ static const double SKY_DELTA_T[24][2] = {
   {2469807.5, 71.4428713},
   {2488069.5, 95.9270748},
 };
+/* Horizons cross-check for the topocentric altitude, retrieved 2026-08-07
+ * with the observer-site query recorded in
+ * docs/research/2026-08-07-topocentric-error-bar.md. Columns are jd_tt and
+ * airless elevation in degrees. APPARENT='AIRLESS' is explicit in the query,
+ * because the refracted column would differ by up to 0.57 deg near the
+ * horizon and the discrepancy would look like a library defect.
+ *
+ * Two sites only, jakarta and high60. These tables are compared against
+ * SKY_TOPO_*, not against the library. No change to hijri.h can alter that
+ * comparison. It exists so that a transcription or convention error in either
+ * oracle is caught by disagreement rather than trusted, which is the same role
+ * group 1 plays for the geocentric tables. Bracketing the latitude range is
+ * sufficient for that role, so mecca and mid45 are not fetched. */
+static const double HORIZONS_TOPO_JAKARTA[24][2] = {
+  {2415020.5, 23.972500},
+  {2433282.5, -55.212337},
+  {2458853.5, -86.611709},
+  {2458931.7, 82.682774},
+  {2459044.2, -10.157960},
+  {2459122.9, -3.926439},
+  {2459201.3, -60.618915},
+  {2459318.6, 26.811896},
+  {2459407.1, -31.951995},
+  {2459502.8, 5.892524},
+  {2459613.4, -43.005674},
+  {2459688.2, 60.679984},
+  {2459777.9, -66.482372},
+  {2459860.5, -39.029630},
+  {2459955.1, 5.928681},
+  {2460048.7, 17.911560},
+  {2460133.3, 61.461577},
+  {2460229.6, 74.053515},
+  {2460322.4, -36.863375},
+  {2460451.8, -25.552503},
+  {2460577.2, 9.681605},
+  {2460699.5, 71.533711},
+  {2469807.5, -78.103159},
+  {2488069.5, 39.057641},
+};
+static const double HORIZONS_TOPO_HIGH60[24][2] = {
+  {2415020.5, -52.543271},
+  {2433282.5, 43.445448},
+  {2458853.5, 16.027865},
+  {2458931.7, -13.087502},
+  {2459044.2, -20.782715},
+  {2459122.9, -36.450266},
+  {2459201.3, -8.059234},
+  {2459318.6, -15.475172},
+  {2459407.1, 50.679424},
+  {2459502.8, -49.535635},
+  {2459613.4, -26.103422},
+  {2459688.2, -38.104758},
+  {2459777.9, -10.077554},
+  {2459860.5, 19.121654},
+  {2459955.1, -14.539826},
+  {2460048.7, 0.176695},
+  {2460133.3, -29.811329},
+  {2460229.6, -6.688829},
+  {2460322.4, -34.585092},
+  {2460451.8, -35.086032},
+  {2460577.2, -3.110602},
+  {2460699.5, -31.798232},
+  {2469807.5, 10.759672},
+  {2488069.5, 22.723118},
+};
 /* Meeus, "Astronomical Algorithms" 2nd ed., worked Example 47.a:
  * 1992 April 12 at 0h TD, i.e. JDE 2448724.5. The book prints
  *   lambda = 133.162655 deg, beta = -3.229126 deg, Delta = 368409.7 km.
@@ -1164,7 +1235,7 @@ static void check_group11_elongation(void) {
   int s, i;
   for (s = 0; s < 4; s++) {
     const TopoSite *site = &TOPO_SITES[s];
-    double max_conv = 0.0, max_full = 0.0;
+    double max_conv = 0.0, max_full = 0.0, max_cost = 0.0;
     char label[64];
 
     for (i = 0; i < TOPO_EPOCH_COUNT; i++) {
@@ -1185,6 +1256,16 @@ static void check_group11_elongation(void) {
       if (dc > max_conv) max_conv = dc;
       if (df > max_full) max_full = df;
 
+      /* Oracle-internal, no library code involved: the difference between a
+       * fully topocentric elongation and one that omits solar parallax. This
+       * is the price of the Pedoman convention, isolated. The printed
+       * elong_full above is NOT this quantity, because it also carries the
+       * library's own implementation error. */
+      {
+        double cost = fabs(site->table[i][3] - site->table[i][2]);
+        if (cost > max_cost) max_cost = cost;
+      }
+
       sprintf(label, "elong_conv_%s", site->name);
       check_within(label, jd_tt, elong, site->table[i][2], TOL_ELONG_CONV_DEG);
     }
@@ -1193,7 +1274,55 @@ static void check_group11_elongation(void) {
     printf("elong_full max %-8s = %.7f deg (%.2f arcsec)  <- cost of the "
            "geocentric-Sun convention, not an error\n",
            site->name, max_full, max_full * 3600.0);
+    printf("elong_convention_cost max %-8s = %.7f deg (%.2f arcsec)  "
+           "<- oracle-internal, the isolated price of omitting solar parallax\n",
+           site->name, max_cost, max_cost * 3600.0);
   }
+}
+
+/* Group 12 -- two engines, same convention, same epochs, no library code. */
+static void check_group12_oracle_vs_oracle(void) {
+  const double (*sky[2])[4] = {SKY_TOPO_JAKARTA, SKY_TOPO_HIGH60};
+  const double (*hor[2])[2] = {HORIZONS_TOPO_JAKARTA, HORIZONS_TOPO_HIGH60};
+  const char *names[2] = {"jakarta", "high60"};
+  int n_rows = 0, n_distinct = 0;
+  int s, i;
+
+  for (s = 0; s < 2; s++) {
+    double max_err = 0.0;
+    char label[64];
+    for (i = 0; i < TOPO_EPOCH_COUNT; i++) {
+      double d = fabs(sky[s][i][1] - hor[s][i][1]);
+      if (d > max_err) max_err = d;
+      n_rows++;
+      if (d > 0.0) n_distinct++;
+      sprintf(label, "sky_vs_horizons_topo_%s", names[s]);
+      check_within(label, sky[s][i][0], sky[s][i][1], hor[s][i][1],
+                   TOL_ORACLE_TOPO_DEG);
+    }
+    printf("sky_vs_horizons_topo max %-8s = %.7f deg\n", names[s], max_err);
+  }
+
+  /* Guard against one table having been copied from the other, which every
+   * per-epoch tolerance check above would happily pass. This is the failure
+   * mode mutation M7 records and mutation M13 exercises.
+   *
+   * An earlier version of this guard required the MINIMUM difference across
+   * all rows to be non-zero. That is wrong, and the reason is worth keeping.
+   * Horizons prints 6 decimal places and Skyfield 7, so the two engines can
+   * land bit-identical at a row purely by rounding. They do exactly that at
+   * jd 2458853.5 for jakarta, where both read -86.611709. One coincident row
+   * zeroed the minimum and failed the guard on genuinely good data.
+   *
+   * Count instead. A copied table makes EVERY row identical, so requiring
+   * more than three quarters of rows to differ separates a real copy from
+   * incidental rounding collisions. Written as 4*n_distinct - 3*n_rows so it
+   * can be handed to check_true_nonzero, which passes only on a positive
+   * value. */
+  printf("sky_vs_horizons_topo distinct rows = %d of %d\n",
+         n_distinct, n_rows);
+  check_true_nonzero("sky_vs_horizons_topo_nondegenerate_rows",
+                     (double)(4 * n_distinct - 3 * n_rows));
 }
 
 /* Group 1 -- harness verification. Two oracles, same convention, same epochs. */
@@ -1532,6 +1661,7 @@ int main(void) {
   check_group9_topo_altitude();
   check_group10_counterfactual();
   check_group11_elongation();
+  check_group12_oracle_vs_oracle();
   check_meeus_example_47a();
   check_delta_t();
   check_ut_to_tt_path();
