@@ -12,9 +12,21 @@ Every number below is printed by `./build/tests/test_ephemeris_oracle`. Where a 
 
 MABIMS 2021 thresholds the topocentric altitude at 3 deg and the topocentric elongation at 6.4 deg. Those are the quantities the criteria consume. PR #16 measured positions and the geocentric elongation path, which reads 0.0065798 deg against DE440 on the shipped path. It did not measure the parallax correction that sits between a geocentric position and a topocentric observable, and it did not measure the hour angle chain that turns that correction into an altitude.
 
-The only external anchor on the topocentric chain was a single number. `test_pedoman_worked_example()` compares `moon_upper_limb_apparent_altitude_deg` against the Pedoman Hisab Muhammadiyah worked example and lands 27.2 arcsec from the book, at one epoch, at one site, against a publication computed with its own ephemeris. That one residual jointly constrains the sunset instant, the geocentric Moon position, the parallax correction, the hour angle, the semidiameter and the refraction constant, and it had never been attributed to causes.
+The only external anchor on the topocentric chain was a single number. `test_pedoman_worked_example()` compares `moon_upper_limb_apparent_altitude_deg` against the Pedoman Hisab Muhammadiyah worked example and lands 16.77 arcsec from the book, at one epoch, at one site, against a publication computed with its own ephemeris. Issue #17 and earlier notes quote 27.2 arcsec for this residual. That figure was correct when it was written and is now stale, see the measurement below. That one residual jointly constrains the sunset instant, the geocentric Moon position, the parallax correction, the hour angle, the semidiameter and the refraction constant, and it had never been attributed to causes.
 
-This note replaces that anecdote with a measured bar across four latitudes and 22 epochs, decomposed by cause. It does not close the 27.2 arcsec residual, because that residual includes the sunset sampling instant and this measurement deliberately excludes it. See the licensing section below.
+This note replaces that anecdote with a measured bar across four latitudes and 22 epochs, decomposed by cause. It does not close that residual, because the residual includes the sunset sampling instant and this measurement deliberately excludes it.
+
+### The residual moved, and nobody had measured it
+
+PR #30 paired apparent solar right ascension with apparent sidereal time, fixing a frame mismatch in the sunset solver. Its own research note recorded, correctly, that the change improved agreement with no official calendar. What went unmeasured at the time is what it did to the one independent worked-example anchor. Evaluating the same fixture across that merge:
+
+```
+                library h'b     book h'b      residual
+pre  PR #30      -0.875292      -0.867728     -27.23 arcsec
+post PR #30      -0.872387      -0.867728     -16.77 arcsec
+```
+
+The frame fix removed 10.46 arcsec, 38 percent of the residual, from the only external check the topocentric chain had. The pre-PR #30 value matches the -0.875292 recorded in issue #17 exactly, which confirms that the 27.2 arcsec figure quoted there describes a code state that no longer exists rather than a discrepancy in this measurement. Issue #17 should be corrected. See the licensing section below.
 
 ## Method
 
