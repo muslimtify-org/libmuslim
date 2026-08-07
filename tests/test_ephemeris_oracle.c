@@ -279,7 +279,114 @@
  *     per-epoch tolerance check passed:
  *       FAIL sky_vs_horizons_min_nondegenerate: expected a non-zero value, got 0.000000000
  *     Suite went to "422 checks, 1 failures", exit 1. This is the case the
- *     M3 scope note records as invisible to the max-only guard. */
+ *     M3 scope note records as invisible to the max-only guard.
+ *
+ * M10 through M14 cover the seven tables added for the topocentric error bar:
+ * SKY_TOPO_JAKARTA, SKY_TOPO_MECCA, SKY_TOPO_MID45, SKY_TOPO_HIGH60,
+ * SKY_DELTA_T, HORIZONS_TOPO_JAKARTA and HORIZONS_TOPO_HIGH60. They cover the
+ * distinct failure modes rather than one mutation per table, which is the
+ * pattern M1 through M9 already follow. Row 0 is jd 2415020.5 throughout, and
+ * it is inside TOPO_EPOCH_COUNT, so a row 0 mutation is visible to groups 9
+ * through 12. Rows 22 and 23 are excluded from those groups by amendment A4
+ * and a mutation there would not be caught, by design. All five below were run
+ * against the suite at 782 checks and every one was reverted.
+ *
+ * M10 SKY_TOPO_JAKARTA row 0 altitude, 23.9726098 -> 23.9826098 (+0.01).
+ *     CAUGHT, by the oracle-versus-oracle harness and by it alone:
+ *       FAIL sky_vs_horizons_topo_jakarta at jd=2415020.5: got 23.9826098 want 23.9725000 (err 0.0101098 > tol 0.0002500)
+ *     Suite went to "782 checks, 1 failures", exit 1. Group 9 did not fire:
+ *     TOL_TOPO_ALT_DEG is 0.011 deg and a 0.01 deg shift stays inside it. What
+ *     pins each row of this table individually is group 12's 0.00025 deg
+ *     oracle-agreement bound, which is two orders tighter because it compares
+ *     two references to each other rather than a truncated model to a
+ *     reference.
+ *
+ * M11 SKY_TOPO_HIGH60 row 0 altitude, -52.5432747 -> -52.5332747 (+0.01).
+ *     CAUGHT twice, by the library check and by the oracle harness:
+ *       FAIL topo_alt_high60 at jd=2415020.5: got -52.5475899 want -52.5332747 (err 0.0143152 > tol 0.0110000)
+ *       FAIL sky_vs_horizons_topo_high60 at jd=2415020.5: got -52.5332747 want -52.5432710 (err 0.0099963 > tol 0.0002500)
+ *     Suite went to "782 checks, 2 failures", exit 1.
+ *     Recorded separately from M10 because a single shared tolerance could in
+ *     principle be dominated by one site and leave another effectively
+ *     unchecked. Group 9 fires here and not at M10 because the library
+ *     residual at this row is already 0.0043152 deg and the shift adds to it
+ *     rather than cancelling against it.
+ *
+ * M12 SKY_TOPO_MECCA row 0 convention-matched elongation, 7.1372572 ->
+ *     7.1472572 (+0.01).
+ *     NOT CAUGHT -- recorded as executed, not as a pass. The suite printed
+ *     "782 checks, 0 failures" and exited 0. The reason is directional, not a
+ *     dead column: the library reads 7.1417163 at this row, so its unmutated
+ *     residual is +0.0044591 deg, and adding 0.01 to the reference moves the
+ *     reference TOWARD the library, leaving err 0.0055409 against
+ *     TOL_ELONG_CONV_DEG = 0.014.
+ *
+ *     The same cell IS pinned in the other direction, and at twice the size in
+ *     this one. Both were run:
+ *       -0.01, 7.1372572 -> 7.1272572:
+ *       FAIL elong_conv_mecca at jd=2415020.5: got 7.1417163 want 7.1272572 (err 0.0144591 > tol 0.0140000)
+ *       +0.02, 7.1372572 -> 7.1572572:
+ *       FAIL elong_conv_mecca at jd=2415020.5: got 7.1417163 want 7.1572572 (err 0.0155409 > tol 0.0140000)
+ *     Each of those went to "782 checks, 1 failures", exit 1.
+ *
+ *     Which check would need tightening, and why it cannot be:
+ *     elong_conv_mecca. Its bound has to clear the library's own elongation
+ *     error, printed as "elong_conv max mecca" at 0.0060859 deg, 21.91 arcsec,
+ *     which is truncation in the shipped series and not something a fixture
+ *     can remove. A bound tight enough to catch 0.01 deg in the shrinking
+ *     direction at every row would sit below that residual and fail on correct
+ *     data. This is the same hard limit M4 records for the Sigma-l
+ *     coefficients, so it is a bounded gap rather than a fixable weakness.
+ *
+ * M13 HORIZONS_TOPO_JAKARTA body replaced with a verbatim copy of the first
+ *     two columns of SKY_TOPO_JAKARTA.
+ *     CAUGHT by the row-counting degeneracy guard, and by nothing else --
+ *     every per-epoch tolerance check in group 12 passed, with a residual of
+ *     exactly zero at every jakarta row:
+ *       sky_vs_horizons_topo distinct rows = 22 of 44
+ *       FAIL sky_vs_horizons_topo_nondegenerate_rows: expected a non-zero value, got -44.000000000
+ *     Suite went to "782 checks, 1 failures", exit 1.
+ *     This is the mode M7 documents and this mutation is what justifies the
+ *     guard existing. Copying one of the two site tables zeroes 22 of the 44
+ *     compared rows, so 4*22 - 3*44 = -44, and check_true_nonzero rejects a
+ *     non-positive value. Note the guard was reformulated from a per-row
+ *     minimum to a row count by amendment A13, because Horizons prints 6
+ *     decimals and Skyfield 7 and the two collide exactly at jd 2458853.5.
+ *     The count form still catches the wholesale copy, which is the failure
+ *     mode it exists for.
+ *
+ * M14 SKY_DELTA_T row 2, 69.3630814 -> 74.3630814 (+5.0 s).
+ *     CAUGHT by group 9, at three of the four sites:
+ *       FAIL topo_alt_jakarta at jd=2458853.5: got -86.5941837 want -86.6117090 (err 0.0175253 > tol 0.0110000)
+ *       FAIL topo_alt_mecca at jd=2458853.5: got -16.3053050 want -16.3240946 (err 0.0187896 > tol 0.0110000)
+ *       FAIL topo_alt_mid45 at jd=2458853.5: got 18.7998061 want 18.7855430 (err 0.0142631 > tol 0.0110000)
+ *     Suite went to "782 checks, 3 failures", exit 1.
+ *
+ *     Which groups caught it and which did not is the informative part, since
+ *     groups 9 through 11 all derive UT1 from this table.
+ *
+ *     Group 9 caught it because the library is driven at a UT1 taken from this
+ *     table while the Skyfield altitude it is compared against is fixed, so
+ *     5 s of Earth rotation, 75.2 arcsec of hour angle, lands as an altitude
+ *     error. high60 did not fire, the hour-angle-to-altitude projection there
+ *     leaving 0.0093031 deg against the 0.011 deg bound.
+ *
+ *     Group 10 did NOT catch it, and correctly so. Its reference is computed
+ *     in this file from the same perturbed UT1, so the shift cancels on both
+ *     sides and every printed counterfactual maximum was identical to
+ *     baseline, jakarta 0.0006067 deg through high60 0.0037087 deg. That
+ *     cancellation is the whole reason group 10 can isolate the
+ *     spherical-Earth term from Earth rotation.
+ *
+ *     Group 11 did not catch it either. Elongation is an angle between two
+ *     bodies and is nearly independent of the observer's rotation phase.
+ *
+ *     Group 13 did not catch it. A 5 s shift leaves that row's model error at
+ *     about 5.0 s, inside TOL_DELTA_T_SEC = 11.0 s and below the unmutated
+ *     graded maximum of 5.3532 s, so neither the assertion nor the two printed
+ *     arcsec figures moved. That bound is deliberately loose, existing to
+ *     catch a model regression rather than to certify accuracy, and group 9 is
+ *     what actually pins this table's values. */
 
 static int checks;
 static int failures;
