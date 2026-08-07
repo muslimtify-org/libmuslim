@@ -145,11 +145,19 @@
 #define TOL_EQEQ_DEG 0.001
 
 /* Group 9, library topocentric altitude against airless DE440. Measured
- * maximum over 4 sites and 24 epochs, printed by this binary as
+ * maximum over 4 sites and the first TOPO_EPOCH_COUNT epochs, printed by
+ * this binary as
  * "topo_alt max": jakarta 0.0028647 deg, mecca 0.0033521 deg, mid45 0.0048619
  * deg, high60 0.0055047 deg. The bound below is the largest of those rounded
  * up to leave roughly 2x margin. */
 #define TOL_TOPO_ALT_DEG 0.011
+
+/* Group 10, the spherical-Earth approximation isolated. Measured maximum,
+ * printed as "topo_counterfactual max": jakarta 2.18, mecca 6.77, mid45 12.63,
+ * high60 13.35 arcsec. Bound is the largest rounded up to roughly 2x margin.
+ * This is the flattening term issue #17 records as not worth fixing at MABIMS
+ * latitudes, now measured rather than asserted. */
+#define TOL_TOPO_CF_DEG 0.0075
 
 /* MEASURED MUTATION SENSITIVITY of the four tables above.
  *
@@ -1069,6 +1077,66 @@ static void check_group9_topo_altitude(void) {
   }
 }
 
+/* Group 10 -- the parallax and hour-angle code alone.
+ *
+ * Both sides are fed the SAME geocentric position, taken from
+ * SKY_MOON_GEOMETRIC, which is already mean-of-date geocentric at these exact
+ * epochs. Lunar series truncation is therefore removed from the INPUT rather
+ * than left in the answer, and what remains is the spherical-Earth
+ * approximation in hijri_moon_topocentric() plus any coding defect.
+ *
+ * Subtracting this from group 9 gives the truncation and frame share by
+ * measurement instead of by argument. That subtraction is the whole reason
+ * issue #17 asks for a decomposition rather than a single number. */
+static void check_group10_counterfactual(void) {
+  int s, i;
+  for (s = 0; s < 4; s++) {
+    const TopoSite *site = &TOPO_SITES[s];
+    HijriLocation loc;
+    double max_err = 0.0, max_band = 0.0;
+    int n_band = 0;
+    char label[64];
+
+    loc.latitude_deg = site->lat_deg;
+    loc.longitude_deg = site->lon_deg;
+    loc.elevation_m = 0.0;
+    loc.name = NULL; /* HijriLocation has a fourth member, hijri.h:175 */
+
+    for (i = 0; i < TOPO_EPOCH_COUNT; i++) {
+      double jd_tt = SKY_MOON_GEOMETRIC[i][0];
+      double jd_ut = jd_tt - SKY_DELTA_T[i][1] / 86400.0;
+      HijriMoonPosition geo = hijri_moon_position(jd_tt);
+      double ra_lib, dec_lib, ra_ref, dec_ref;
+      double alt_lib, alt_ref, err;
+
+      /* Same geocentric input to both, the library's own, so the only
+       * difference between the two sides is the Earth-shape substitution. */
+      hijri_moon_topocentric(&geo, jd_ut, site->lat_deg, site->lon_deg, 0.0,
+                             &ra_lib, &dec_lib);
+      ref_topocentric(geo.right_ascension_deg, geo.declination_deg,
+                      geo.horizontal_parallax_deg, jd_ut,
+                      site->lat_deg, site->lon_deg, &ra_ref, &dec_ref);
+
+      alt_lib = hijri__altitude_deg(ra_lib, dec_lib, jd_ut, &loc);
+      alt_ref = hijri__altitude_deg(ra_ref, dec_ref, jd_ut, &loc);
+      err = fabs(alt_lib - alt_ref);
+      if (err > max_err) max_err = err;
+
+      if (fabs(site->table[i][1]) < HORIZON_BAND_DEG) {
+        n_band++;
+        if (err > max_band) max_band = err;
+      }
+
+      sprintf(label, "topo_cf_%s", site->name);
+      check_within(label, jd_tt, alt_lib, alt_ref, TOL_TOPO_CF_DEG);
+    }
+    printf("topo_counterfactual max %-8s = %.7f deg (%.2f arcsec)  "
+           "near-horizon %.7f deg (%.2f arcsec) over %d rows\n",
+           site->name, max_err, max_err * 3600.0,
+           max_band, max_band * 3600.0, n_band);
+  }
+}
+
 /* Group 1 -- harness verification. Two oracles, same convention, same epochs. */
 static void check_group1_harness(void) {
   double max_lon = 0.0, max_lat = 0.0, max_dist = 0.0;
@@ -1403,6 +1471,7 @@ int main(void) {
   check_group8_eqeq();
   check_group10_ref_selftest();
   check_group9_topo_altitude();
+  check_group10_counterfactual();
   check_meeus_example_47a();
   check_delta_t();
   check_ut_to_tt_path();
