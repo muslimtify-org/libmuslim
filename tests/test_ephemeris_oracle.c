@@ -173,6 +173,17 @@
  * margin. This bounds oracle agreement, not library accuracy. */
 #define TOL_ORACLE_TOPO_DEG 0.00025
 
+/* Group 13, hijri_delta_t_seconds() against IERS. The bound applies only to
+ * the 20 epochs where the reference is IERS data, rows 2 through 21, printed
+ * as "delta_t max error IERS-graded": 5.3532 s. The all-epoch figure
+ * 134.8783 s is printed alongside but not asserted, because rows 0 and 1
+ * predate IERS coverage and rows 22 and 23 are past it.
+ *
+ * The bound exists to catch a regression in the model, not to certify its
+ * accuracy. The accuracy statement that matters is the sunset-anchored
+ * residual printed by this group, 79.02 arcsec. */
+#define TOL_DELTA_T_SEC 11.0
+
 /* MEASURED MUTATION SENSITIVITY of the four tables above.
  *
  * The Meeus 47.a block further down records an exhaustive 120-mutation sweep of
@@ -1325,6 +1336,101 @@ static void check_group12_oracle_vs_oracle(void) {
                      (double)(4 * n_distinct - 3 * n_rows));
 }
 
+/* Group 13 -- what hijri_delta_t_seconds() costs, reported two ways.
+ *
+ * Reporting only the first number would be alarming and misleading. Reporting
+ * only the second would hide a real model defect. Both are printed.
+ *
+ * TT SPECIFIED: if the instant of interest is known in TT, as it is for every
+ * fixture in this file, a UT must be derived to get sidereal time. Deriving it
+ * with a delta-T model that is wrong by dT seconds puts the sidereal time off
+ * by dT seconds of Earth rotation, which is 15*dT arcsec of hour angle. This
+ * is the artifact groups 9 through 11 avoid by taking UT1 from SKY_DELTA_T,
+ * and it is by far the larger of the two numbers.
+ *
+ * SUNSET ANCHORED: on the shipped path nobody supplies a UT. hijri_find_sunset
+ * bisects hijri_sun_altitude to FIND one. A delta-T error moves the Sun's
+ * evaluated position by dT seconds of solar motion, about 0.09 arcsec in right
+ * ascension for dT = 2.2 s, so the recovered sunset instant in UT is barely
+ * affected. The Moon is then evaluated at that essentially correct UT with a
+ * TT that is dT late, costing dT seconds of lunar motion, while the sidereal
+ * time is computed from the correct UT and is clean.
+ *
+ * The second number is the one that belongs in any user-facing error bar.
+ *
+ * CAVEAT ON THE REFERENCE. SKY_DELTA_T is Skyfield's delta-T, which is IERS
+ * data only from 1962 onward. Before that it is a reconstruction, and it is
+ * not tight: it reads -1.9754351 s at 1900 against the widely accepted
+ * -2.72 s, and 28.9320000 s at 1950 against 29.15 s. That 0.745 s gap at 1900
+ * is a third of the 2.2 s model error this group exists to attribute, so the
+ * two pre-1962 epochs cannot grade hijri_delta_t_seconds() and are reported
+ * separately rather than folded into the bound. The two post-2050 epochs are
+ * forecasts on both sides and are excluded from the bound for the same reason
+ * in the opposite direction.
+ *
+ * This does NOT affect groups 9 through 11. Those derive UT1 from this same
+ * table, and Skyfield placed its own observer with the same value, so the two
+ * sides are self-consistent whatever the absolute truth is. */
+static void check_group13_delta_t(void) {
+  double max_dt_err = 0.0, max_dt_err_graded = 0.0;
+  double max_ha_arcsec = 0.0, max_anchored_arcsec = 0.0;
+  int i;
+
+  for (i = 0; i < 24; i++) {
+    double jd_tt = SKY_DELTA_T[i][0];
+    double true_dt = SKY_DELTA_T[i][1];
+    double jd_ut = jd_tt - true_dt / 86400.0;
+    double lib_dt = hijri_delta_t_seconds(jd_ut);
+    double dt_err = fabs(lib_dt - true_dt);
+    double ha_arcsec, anchored_arcsec;
+    HijriMoonPosition a, b;
+
+    if (dt_err > max_dt_err) max_dt_err = dt_err;
+
+    /* TT specified: the derived UT is wrong by dt_err, so the sidereal time
+     * is wrong by dt_err of Earth rotation. 1.00273790935 converts a solar
+     * interval to a sidereal one, 15 converts seconds of time to arcsec. */
+    ha_arcsec = dt_err * 1.00273790935 * 15.0;
+    if (ha_arcsec > max_ha_arcsec) max_ha_arcsec = ha_arcsec;
+
+    /* Sunset anchored: lunar motion over dt_err seconds, measured rather
+     * than assumed, by evaluating the Moon at both times. */
+    a = hijri_moon_position(jd_tt);
+    b = hijri_moon_position(jd_tt + dt_err / 86400.0);
+    anchored_arcsec =
+        hijri__angular_separation_deg(a.right_ascension_deg,
+                                      a.declination_deg,
+                                      b.right_ascension_deg,
+                                      b.declination_deg) * 3600.0;
+    if (anchored_arcsec > max_anchored_arcsec)
+      max_anchored_arcsec = anchored_arcsec;
+
+    /* Bound only the epochs where the reference is IERS data. Rows 0 and 1
+     * are 1900 and 1950, before IERS coverage. Rows 22 and 23 are 2050 and
+     * 2100, past it. Both regimes are printed below but not asserted. */
+    if (i >= 2 && i < TOPO_EPOCH_COUNT) {
+      check_within("delta_t_model", jd_tt, lib_dt, true_dt, TOL_DELTA_T_SEC);
+      if (dt_err > max_dt_err_graded) max_dt_err_graded = dt_err;
+    } else {
+      printf("delta_t ungraded epoch jd %.1f: library %.4f s, reference "
+             "%.4f s, difference %.4f s (reference is reconstruction or "
+             "forecast, not IERS data)\n", jd_tt, lib_dt, true_dt, dt_err);
+    }
+  }
+
+  printf("delta_t max error all epochs     = %.4f s\n", max_dt_err);
+  printf("delta_t max error IERS-graded     = %.4f s\n", max_dt_err_graded);
+  printf("delta_t TT-specified hour angle  = %.2f arcsec\n", max_ha_arcsec);
+  printf("delta_t sunset-anchored residual = %.2f arcsec\n",
+         max_anchored_arcsec);
+
+  /* The whole argument for not treating delta-T as the dominant error rests
+   * on the anchored residual being far smaller than the TT-specified one.
+   * Assert it rather than leaving it as prose. */
+  check_true_nonzero("delta_t_anchored_below_fixed",
+                     max_ha_arcsec - max_anchored_arcsec);
+}
+
 /* Group 1 -- harness verification. Two oracles, same convention, same epochs. */
 static void check_group1_harness(void) {
   double max_lon = 0.0, max_lat = 0.0, max_dist = 0.0;
@@ -1662,6 +1768,7 @@ int main(void) {
   check_group10_counterfactual();
   check_group11_elongation();
   check_group12_oracle_vs_oracle();
+  check_group13_delta_t();
   check_meeus_example_47a();
   check_delta_t();
   check_ut_to_tt_path();
