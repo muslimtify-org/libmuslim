@@ -707,6 +707,79 @@ static void check_ut_to_tt_path(void) {
   check_true_nonzero("ut_to_tt_conversion_is_applied", moved);
 }
 
+/* Rigorous geocentric-to-topocentric reference, Meeus 11.1 and 40.6/40.7.
+ *
+ * This is the library's own algorithm done exactly. hijri_moon_topocentric()
+ * substitutes bare sin(phi) and cos(phi) where Meeus has rho*sin(phi') and
+ * rho*cos(phi'), dropping Earth flattening. Feeding both this function and the
+ * library the same geocentric position isolates that approximation, with lunar
+ * series truncation removed from the input rather than left in the answer.
+ *
+ * WGS84: a = 6378137.0 m, 1/f = 298.257223563, so b/a = 1 - f. */
+static void ref_rho_phi(double lat_deg, double *rho_sin_phi,
+                        double *rho_cos_phi) {
+  const double f = 1.0 / 298.257223563;
+  double phi = lat_deg * M_PI / 180.0;
+  double b_over_a = 1.0 - f;
+  double u = atan(b_over_a * tan(phi));
+  *rho_sin_phi = b_over_a * sin(u);
+  *rho_cos_phi = cos(u);
+}
+
+/* Topocentric right ascension and declination from a geocentric position,
+ * using the ellipsoidal rho terms. Mirrors hijri_moon_topocentric() exactly
+ * except for those two substitutions. */
+static void ref_topocentric(double ra_deg, double dec_deg,
+                            double parallax_deg, double jd_ut,
+                            double lat_deg, double lon_deg,
+                            double *ra_topo_deg, double *dec_topo_deg) {
+  double rho_sin_phi, rho_cos_phi;
+  double H, dec, pi_r, delta_ra, ra_topo, dec_topo;
+
+  ref_rho_phi(lat_deg, &rho_sin_phi, &rho_cos_phi);
+
+  H = hijri__hour_angle_deg(jd_ut, lon_deg, ra_deg) * M_PI / 180.0;
+  dec = dec_deg * M_PI / 180.0;
+  pi_r = parallax_deg * M_PI / 180.0;
+
+  delta_ra = atan2(-rho_cos_phi * sin(pi_r) * sin(H),
+                   cos(dec) - rho_cos_phi * sin(pi_r) * cos(H));
+  ra_topo = ra_deg * M_PI / 180.0 + delta_ra;
+  dec_topo = atan2((sin(dec) - rho_sin_phi * sin(pi_r)) * cos(delta_ra),
+                   cos(dec) - rho_cos_phi * sin(pi_r) * cos(H));
+
+  *ra_topo_deg = hijri__norm_deg(ra_topo * 180.0 / M_PI);
+  *dec_topo_deg = dec_topo * 180.0 / M_PI;
+}
+
+/* Group 10a -- the reference's own Earth geometry, checked before it is
+ * trusted to grade anything.
+ *
+ * At the equator and at the pole the ellipsoid and the sphere agree exactly.
+ * In between, rho*cos(phi') must EXCEED cos(phi), and the direction is worth
+ * stating because it is easy to get backwards. rho*cos(phi') is the point's
+ * distance from the rotation axis in equatorial radii. Flattening shortens
+ * the radius, rho = 0.998331 at latitude 45, but it also drops the geocentric
+ * latitude below the geodetic one, 44.8076 against 45, and that second effect
+ * dominates for axis distance. Measured: rho*cos(phi') = 0.708293171 against
+ * cos(45) = 0.707106781, a surplus of 0.001186390. The companion term
+ * rho*sin(phi') does fall below sin(phi), 0.703552 against 0.707107, which is
+ * the flattening pulling the surface in along the axis. */
+static void check_group10_ref_selftest(void) {
+  double rs, rc;
+
+  ref_rho_phi(0.0, &rs, &rc);
+  check_within("ref_rho_sin_phi_equator", 0.0, rs, 0.0, 1e-12);
+  check_within("ref_rho_cos_phi_equator", 0.0, rc, 1.0, 1e-12);
+
+  ref_rho_phi(45.0, &rs, &rc);
+  check_true_nonzero("ref_rho_cos_phi_45_exceeds_spherical",
+                     rc - cos(45.0 * M_PI / 180.0));
+
+  ref_rho_phi(90.0, &rs, &rc);
+  check_within("ref_rho_cos_phi_pole", 0.0, rc, 0.0, 1e-12);
+}
+
 /* Group 1 -- harness verification. Two oracles, same convention, same epochs. */
 static void check_group1_harness(void) {
   double max_lon = 0.0, max_lat = 0.0, max_dist = 0.0;
@@ -1039,6 +1112,7 @@ int main(void) {
   check_group6_sun_harness();
   check_group7_shipped_elongation();
   check_group8_eqeq();
+  check_group10_ref_selftest();
   check_meeus_example_47a();
   check_delta_t();
   check_ut_to_tt_path();
