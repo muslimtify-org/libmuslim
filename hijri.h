@@ -89,12 +89,20 @@
  * between an apparent Sun and a mean-of-date Moon, which are different
  * frames. The shipped geocentric elongation path (the RA/Dec angular
  * separation the criteria run) measures 0.0065798 deg against DE440, 972x
- * below the 6.4 deg MABIMS 2021 threshold; the topocentric value adds a
- * parallax correction that is not oracle-measured. Making the frames
+ * below the 6.4 deg MABIMS 2021 threshold. The topocentric value is now
+ * oracle-measured too, against a topocentric Moon and a geocentric Sun paired
+ * exactly as this file pairs them: 0.0069925 deg at worst (Jakarta), 21.91 to
+ * 25.17 arcsec across the four measured sites. That sits alongside the
+ * geocentric 0.0065798 deg, so the parallax correction adds very little error
+ * of its own, and both stay about three orders of magnitude below the 6.4 deg
+ * threshold. The geocentric-Sun convention the Pedoman deliberately keeps
+ * costs 7.33 to 8.66 arcsec of omitted solar parallax on its own, an
+ * oracle-internal quantity that involves no library code. Making the frames
  * consistent measures WORSE, 0.0083813 deg in longitude difference, because
  * the mismatch partially cancels the solar truncation error. The real limit
  * is the ch. 25 solar theory, not the frame.
- * See docs/research/2026-08-02-cross-engine-error-bar.md.
+ * See docs/research/2026-08-02-cross-engine-error-bar.md and
+ * docs/research/2026-08-07-topocentric-error-bar.md.
  *
  * Judgement is still required near a criterion boundary. This ephemeris is
  * far tighter than the thresholds the visibility criteria in this file use,

@@ -144,6 +144,46 @@
 #define TOL_SUN_TERMS_DEG 0.001
 #define TOL_EQEQ_DEG 0.001
 
+/* Group 9, library topocentric altitude against airless DE440. Measured
+ * maximum over 4 sites and the first TOPO_EPOCH_COUNT epochs, printed by
+ * this binary as
+ * "topo_alt max": jakarta 0.0028647 deg, mecca 0.0033521 deg, mid45 0.0048619
+ * deg, high60 0.0055047 deg. The bound below is the largest of those rounded
+ * up to leave roughly 2x margin. */
+#define TOL_TOPO_ALT_DEG 0.011
+
+/* Group 10, the spherical-Earth approximation isolated. Measured maximum,
+ * printed as "topo_counterfactual max": jakarta 2.18, mecca 6.77, mid45 12.63,
+ * high60 13.35 arcsec. Bound is the largest rounded up to roughly 2x margin.
+ * This is the flattening term issue #17 records as not worth fixing at MABIMS
+ * latitudes, now measured rather than asserted. */
+#define TOL_TOPO_CF_DEG 0.0075
+
+/* Group 11, topocentric elongation against a convention-matched reference.
+ * Measured maximum, printed as "elong_conv max": jakarta 0.0069925, mecca
+ * 0.0060859, mid45 0.0064134, high60 0.0064678 deg. Bound is the largest
+ * rounded up to roughly 2x margin. For scale, the MABIMS 2021 topocentric
+ * elongation threshold is 6.4 deg. The separately printed "elong_full max" is
+ * deliberately unbounded, see the group comment. */
+#define TOL_ELONG_CONV_DEG 0.014
+
+/* Group 12, Skyfield DE440 against Horizons, airless topocentric altitude.
+ * Measured maximum, printed as "sky_vs_horizons_topo max": jakarta 0.0001098
+ * deg, high60 0.0001015 deg. Bound is the larger rounded up to roughly 2x
+ * margin. This bounds oracle agreement, not library accuracy. */
+#define TOL_ORACLE_TOPO_DEG 0.00025
+
+/* Group 13, hijri_delta_t_seconds() against IERS. The bound applies only to
+ * the 20 epochs where the reference is IERS data, rows 2 through 21, printed
+ * as "delta_t max error IERS-graded": 5.3532 s. The all-epoch figure
+ * 134.8783 s is printed alongside but not asserted, because rows 0 and 1
+ * predate IERS coverage and rows 22 and 23 are past it.
+ *
+ * The bound exists to catch a regression in the model, not to certify its
+ * accuracy. The accuracy statement that matters is the sunset-anchored
+ * residual printed by this group, 2.93 arcsec. */
+#define TOL_DELTA_T_SEC 11.0
+
 /* MEASURED MUTATION SENSITIVITY of the four tables above.
  *
  * The Meeus 47.a block further down records an exhaustive 120-mutation sweep of
@@ -239,7 +279,114 @@
  *     per-epoch tolerance check passed:
  *       FAIL sky_vs_horizons_min_nondegenerate: expected a non-zero value, got 0.000000000
  *     Suite went to "422 checks, 1 failures", exit 1. This is the case the
- *     M3 scope note records as invisible to the max-only guard. */
+ *     M3 scope note records as invisible to the max-only guard.
+ *
+ * M10 through M14 cover the seven tables added for the topocentric error bar:
+ * SKY_TOPO_JAKARTA, SKY_TOPO_MECCA, SKY_TOPO_MID45, SKY_TOPO_HIGH60,
+ * SKY_DELTA_T, HORIZONS_TOPO_JAKARTA and HORIZONS_TOPO_HIGH60. They cover the
+ * distinct failure modes rather than one mutation per table, which is the
+ * pattern M1 through M9 already follow. Row 0 is jd 2415020.5 throughout, and
+ * it is inside TOPO_EPOCH_COUNT, so a row 0 mutation is visible to groups 9
+ * through 12. Rows 22 and 23 are excluded from those groups by amendment A4
+ * and a mutation there would not be caught, by design. All five below were run
+ * against the suite at 782 checks and every one was reverted.
+ *
+ * M10 SKY_TOPO_JAKARTA row 0 altitude, 23.9726098 -> 23.9826098 (+0.01).
+ *     CAUGHT, by the oracle-versus-oracle harness and by it alone:
+ *       FAIL sky_vs_horizons_topo_jakarta at jd=2415020.5: got 23.9826098 want 23.9725000 (err 0.0101098 > tol 0.0002500)
+ *     Suite went to "782 checks, 1 failures", exit 1. Group 9 did not fire:
+ *     TOL_TOPO_ALT_DEG is 0.011 deg and a 0.01 deg shift stays inside it. What
+ *     pins each row of this table individually is group 12's 0.00025 deg
+ *     oracle-agreement bound, which is two orders tighter because it compares
+ *     two references to each other rather than a truncated model to a
+ *     reference.
+ *
+ * M11 SKY_TOPO_HIGH60 row 0 altitude, -52.5432747 -> -52.5332747 (+0.01).
+ *     CAUGHT twice, by the library check and by the oracle harness:
+ *       FAIL topo_alt_high60 at jd=2415020.5: got -52.5475899 want -52.5332747 (err 0.0143152 > tol 0.0110000)
+ *       FAIL sky_vs_horizons_topo_high60 at jd=2415020.5: got -52.5332747 want -52.5432710 (err 0.0099963 > tol 0.0002500)
+ *     Suite went to "782 checks, 2 failures", exit 1.
+ *     Recorded separately from M10 because a single shared tolerance could in
+ *     principle be dominated by one site and leave another effectively
+ *     unchecked. Group 9 fires here and not at M10 because the library
+ *     residual at this row is already 0.0043152 deg and the shift adds to it
+ *     rather than cancelling against it.
+ *
+ * M12 SKY_TOPO_MECCA row 0 convention-matched elongation, 7.1372572 ->
+ *     7.1472572 (+0.01).
+ *     NOT CAUGHT -- recorded as executed, not as a pass. The suite printed
+ *     "782 checks, 0 failures" and exited 0. The reason is directional, not a
+ *     dead column: the library reads 7.1417163 at this row, so its unmutated
+ *     residual is +0.0044591 deg, and adding 0.01 to the reference moves the
+ *     reference TOWARD the library, leaving err 0.0055409 against
+ *     TOL_ELONG_CONV_DEG = 0.014.
+ *
+ *     The same cell IS pinned in the other direction, and at twice the size in
+ *     this one. Both were run:
+ *       -0.01, 7.1372572 -> 7.1272572:
+ *       FAIL elong_conv_mecca at jd=2415020.5: got 7.1417163 want 7.1272572 (err 0.0144591 > tol 0.0140000)
+ *       +0.02, 7.1372572 -> 7.1572572:
+ *       FAIL elong_conv_mecca at jd=2415020.5: got 7.1417163 want 7.1572572 (err 0.0155409 > tol 0.0140000)
+ *     Each of those went to "782 checks, 1 failures", exit 1.
+ *
+ *     Which check would need tightening, and why it cannot be:
+ *     elong_conv_mecca. Its bound has to clear the library's own elongation
+ *     error, printed as "elong_conv max mecca" at 0.0060859 deg, 21.91 arcsec,
+ *     which is truncation in the shipped series and not something a fixture
+ *     can remove. A bound tight enough to catch 0.01 deg in the shrinking
+ *     direction at every row would sit below that residual and fail on correct
+ *     data. This is the same hard limit M4 records for the Sigma-l
+ *     coefficients, so it is a bounded gap rather than a fixable weakness.
+ *
+ * M13 HORIZONS_TOPO_JAKARTA body replaced with a verbatim copy of the first
+ *     two columns of SKY_TOPO_JAKARTA.
+ *     CAUGHT by the row-counting degeneracy guard, and by nothing else --
+ *     every per-epoch tolerance check in group 12 passed, with a residual of
+ *     exactly zero at every jakarta row:
+ *       sky_vs_horizons_topo distinct rows = 22 of 44
+ *       FAIL sky_vs_horizons_topo_nondegenerate_rows: expected a non-zero value, got -44.000000000
+ *     Suite went to "782 checks, 1 failures", exit 1.
+ *     This is the mode M7 documents and this mutation is what justifies the
+ *     guard existing. Copying one of the two site tables zeroes 22 of the 44
+ *     compared rows, so 4*22 - 3*44 = -44, and check_true_nonzero rejects a
+ *     non-positive value. Note the guard was reformulated from a per-row
+ *     minimum to a row count by amendment A13, because Horizons prints 6
+ *     decimals and Skyfield 7 and the two collide exactly at jd 2458853.5.
+ *     The count form still catches the wholesale copy, which is the failure
+ *     mode it exists for.
+ *
+ * M14 SKY_DELTA_T row 2, 69.3630814 -> 74.3630814 (+5.0 s).
+ *     CAUGHT by group 9, at three of the four sites:
+ *       FAIL topo_alt_jakarta at jd=2458853.5: got -86.5941837 want -86.6117090 (err 0.0175253 > tol 0.0110000)
+ *       FAIL topo_alt_mecca at jd=2458853.5: got -16.3053050 want -16.3240946 (err 0.0187896 > tol 0.0110000)
+ *       FAIL topo_alt_mid45 at jd=2458853.5: got 18.7998061 want 18.7855430 (err 0.0142631 > tol 0.0110000)
+ *     Suite went to "782 checks, 3 failures", exit 1.
+ *
+ *     Which groups caught it and which did not is the informative part, since
+ *     groups 9 through 11 all derive UT1 from this table.
+ *
+ *     Group 9 caught it because the library is driven at a UT1 taken from this
+ *     table while the Skyfield altitude it is compared against is fixed, so
+ *     5 s of Earth rotation, 75.2 arcsec of hour angle, lands as an altitude
+ *     error. high60 did not fire, the hour-angle-to-altitude projection there
+ *     leaving 0.0093031 deg against the 0.011 deg bound.
+ *
+ *     Group 10 did NOT catch it, and correctly so. Its reference is computed
+ *     in this file from the same perturbed UT1, so the shift cancels on both
+ *     sides and every printed counterfactual maximum was identical to
+ *     baseline, jakarta 0.0006067 deg through high60 0.0037087 deg. That
+ *     cancellation is the whole reason group 10 can isolate the
+ *     spherical-Earth term from Earth rotation.
+ *
+ *     Group 11 did not catch it either. Elongation is an angle between two
+ *     bodies and is nearly independent of the observer's rotation phase.
+ *
+ *     Group 13 did not catch it. A 5 s shift leaves that row's model error at
+ *     about 5.0 s, inside TOL_DELTA_T_SEC = 11.0 s and below the unmutated
+ *     graded maximum of 5.3532 s, so neither the assertion nor the two printed
+ *     arcsec figures moved. That bound is deliberately loose, existing to
+ *     catch a model regression rather than to certify accuracy, and group 9 is
+ *     what actually pins this table's values. */
 
 static int checks;
 static int failures;
@@ -579,6 +726,244 @@ static const double SKY_EQEQ[24][2] = {
   { 2488069.5, +0.000838030},
 };
 
+
+/* Topocentric fixtures for issue #17.
+ *
+ * PROVENANCE: generated 2026-08-07 with Skyfield 1.54 on JPL DE440
+ * (de440s.bsp), one table per observer site, all at elevation 0. Columns are
+ * jd_tt, airless topocentric altitude of the Moon in degrees, elongation
+ * between the topocentric Moon and the GEOCENTRIC Sun, and elongation between
+ * the topocentric Moon and the topocentric Sun. All in degrees.
+ *
+ * The third column deliberately mirrors this library's own convention, which
+ * pairs a topocentric Moon with a geocentric Sun at hijri.h:1220 because the
+ * Pedoman Hisab convention omits solar parallax. Comparing against the fourth
+ * column instead would charge that deliberate choice as library error. Both
+ * are committed so the implementation error and the cost of the convention can
+ * be reported as two separate numbers.
+ *
+ * Sites: jakarta (-6.2, 106.8), mecca (21.4, 39.8), mid45 (45.0, 0.0),
+ * high60 (60.0, 0.0).
+ *
+ * altaz() is called with no arguments, which is airless. The library computes
+ * geometric altitude and folds refraction into its sunset target at
+ * hijri.h:912-913 and hijri.h:958, so a refracted reference would double count
+ * and show as a spurious 0.57 deg discrepancy.
+ *
+ * The generator was run by hand and is not committed, matching the practice
+ * already used for SKY_MOON_APPARENT and the Horizons curl in this file. Its
+ * full text is recorded in docs/research/2026-08-07-topocentric-error-bar.md. */
+static const double SKY_TOPO_JAKARTA[24][4] = {
+  {2415020.5, 23.9726098, 6.9105472, 6.9129388},
+  {2433282.5, -55.2123304, 140.7542108, 140.7518455},
+  {2458853.5, -86.6117090, 109.7044169, 109.7020107},
+  {2458931.7, 82.6827749, 13.9728851, 13.9732619},
+  {2459044.2, -10.1579578, 81.2911161, 81.2909534},
+  {2459122.9, -3.9264361, 163.6945176, 163.6963612},
+  {2459201.3, -60.6189138, 41.0074376, 41.0062161},
+  {2459318.6, 26.8118952, 22.6868325, 22.6851908},
+  {2459407.1, -31.9519982, 17.6044698, 17.6060718},
+  {2459502.8, 5.8925277, 118.0363850, 118.0376342},
+  {2459613.4, -43.0056754, 23.4860320, 23.4837625},
+  {2459688.2, 60.6799821, 153.8929349, 153.8927263},
+  {2459777.9, -66.4823674, 129.1461816, 129.1439441},
+  {2459860.5, -39.0296353, 155.1662247, 155.1643468},
+  {2459955.1, 5.9286803, 139.4355855, 139.4339590},
+  {2460048.7, 17.9115629, 80.1502263, 80.1506575},
+  {2460133.3, 61.4615788, 119.2867686, 119.2880251},
+  {2460229.6, 74.0535195, 29.6421382, 29.6433892},
+  {2460322.4, -36.8633726, 20.5958816, 20.5936615},
+  {2460451.8, -25.5525048, 154.3089790, 154.3101308},
+  {2460577.2, 9.6816084, 102.5171842, 102.5169899},
+  {2460699.5, 71.5337108, 66.4722941, 66.4746141},
+  {2469807.5, -78.1118239, 98.0512976, 98.0489160},
+  {2488069.5, 39.1643192, 123.9558617, 123.9582612},
+};
+static const double SKY_TOPO_MECCA[24][4] = {
+  {2415020.5, -46.8762790, 7.1372572, 7.1386511},
+  {2433282.5, 15.2407090, 140.3797870, 140.3784391},
+  {2458853.5, -16.3240946, 108.8799340, 108.8785676},
+  {2458931.7, 23.1242996, 13.6253519, 13.6261831},
+  {2459044.2, -58.6560203, 82.1063464, 82.1042967},
+  {2459122.9, -67.6190975, 163.0147428, 163.0141919},
+  {2459201.3, -20.8848655, 40.1765965, 40.1778594},
+  {2459318.6, -27.0546116, 22.4664899, 22.4646206},
+  {2459407.1, 39.2647754, 17.6792265, 17.6813973},
+  {2459502.8, -64.1279465, 117.4902792, 117.4886922},
+  {2459613.4, -66.8969802, 22.4059436, 22.4060358},
+  {2459688.2, -10.9582824, 153.3998596, 153.3975019},
+  {2459777.9, -42.0420657, 130.2387855, 130.2387920},
+  {2459860.5, 20.9025474, 154.7858254, 154.7841981},
+  {2459955.1, -41.8269745, 139.7005545, 139.6983276},
+  {2460048.7, 43.4399389, 79.5051455, 79.5066955},
+  {2460133.3, -9.0253236, 118.9784455, 118.9771790},
+  {2460229.6, 15.5024440, 28.7919656, 28.7943029},
+  {2460322.4, -71.7904414, 19.5326851, 19.5327108},
+  {2460451.8, -82.0483122, 153.5633460, 153.5621308},
+  {2460577.2, -29.1230198, 102.9869391, 102.9854806},
+  {2460699.5, 6.2841576, 65.7208140, 65.7219816},
+  {2469807.5, -27.7042197, 97.0587501, 97.0573967},
+  {2488069.5, 67.7002498, 122.8333409, 122.8347115},
+};
+static const double SKY_TOPO_MID45[24][4] = {
+  {2415020.5, -66.8716568, 7.6869971, 7.6869256},
+  {2433282.5, 49.9926044, 140.7684469, 140.7686942},
+  {2458853.5, 18.7855430, 108.9627942, 108.9629137},
+  {2458931.7, -13.7870749, 13.8592911, 13.8590916},
+  {2459044.2, -33.8639192, 82.6532008, 82.6517175},
+  {2459122.9, -49.4787814, 162.4227323, 162.4207894},
+  {2459201.3, 0.2297160, 40.3384518, 40.3399131},
+  {2459318.6, -29.9084542, 21.9012587, 21.9007826},
+  {2459407.1, 64.2972996, 18.2344553, 18.2354401},
+  {2459502.8, -63.3987265, 116.8534941, 116.8512074},
+  {2459613.4, -29.4708980, 22.0777854, 22.0790125},
+  {2459688.2, -44.2677226, 153.7573229, 153.7552358},
+  {2459777.9, -8.6302195, 130.3868544, 130.3880195},
+  {2459860.5, 32.6975508, 155.0414078, 155.0405293},
+  {2459955.1, -29.3031720, 140.1331414, 140.1321295},
+  {2460048.7, 12.9663543, 79.0831086, 79.0836992},
+  {2460133.3, -37.9326667, 119.4730406, 119.4714394},
+  {2460229.6, -12.8653977, 28.8291877, 28.8308280},
+  {2460322.4, -37.2118004, 19.2130770, 19.2140936},
+  {2460451.8, -42.5292543, 153.3020733, 153.3006110},
+  {2460577.2, -18.0612196, 103.5883998, 103.5877462},
+  {2460699.5, -32.0474879, 65.9110558, 65.9105539},
+  {2469807.5, 10.1896324, 97.0232165, 97.0234371},
+  {2488069.5, 27.6526863, 122.4072841, 122.4071252},
+};
+static const double SKY_TOPO_HIGH60[24][4] = {
+  {2415020.5, -52.5432747, 7.6997330, 7.6996556},
+  {2433282.5, 43.4455046, 140.8683633, 140.8686722},
+  {2458853.5, 16.0279310, 109.0745215, 109.0746089},
+  {2458931.7, -13.0875932, 14.0906511, 14.0898554},
+  {2459044.2, -20.7826710, 82.6237855, 82.6227881},
+  {2459122.9, -36.4502330, 162.3620836, 162.3601097},
+  {2459201.3, -8.0591760, 40.4979869, 40.4988915},
+  {2459318.6, -15.4751959, 21.8430087, 21.8428672},
+  {2459407.1, 50.6794611, 18.2957849, 18.2965281},
+  {2459502.8, -49.5356163, 116.8142785, 116.8122416},
+  {2459613.4, -26.1033484, 22.2293872, 22.2302783},
+  {2459688.2, -38.1048510, 153.8479424, 153.8461267},
+  {2459777.9, -10.0774525, 130.2434783, 130.2443497},
+  {2459860.5, 19.1216784, 155.0377311, 155.0366025},
+  {2459955.1, -14.5398190, 140.0842135, 140.0834596},
+  {2460048.7, 0.1766407, 79.2161017, 79.2161076},
+  {2460133.3, -29.8114237, 119.6704020, 119.6692865},
+  {2460229.6, -6.6888936, 28.9156615, 28.9172278},
+  {2460322.4, -34.5850465, 19.3852683, 19.3858824},
+  {2460451.8, -35.0859490, 153.4736682, 153.4727199},
+  {2460577.2, -3.1106005, 103.5892151, 103.5891624},
+  {2460699.5, -31.7983023, 66.0516007, 66.0509639},
+  {2469807.5, 10.7645064, 97.1497503, 97.1500123},
+  {2488069.5, 22.6711368, 122.5088872, 122.5087142},
+};
+
+/* True delta-T at the same 24 epochs, TT minus UT1 in seconds, read from
+ * Skyfield's bundled IERS data.
+ *
+ * This table exists because hijri_delta_t_seconds() at hijri.h:558 applies the
+ * Espenak-Meeus 2005-2050 polynomial across 1986-2050, and that polynomial is
+ * a 2007-vintage forecast. Earth has since rotated faster than forecast, so
+ * the model reads about 2.2 s high in the 2020s. 2.2 s of UT is 33.7 arcsec of
+ * hour angle, which is larger than the entire 27.2 arcsec residual issue #17
+ * exists to explain.
+ *
+ * Every group below that grades the topocentric chain therefore derives UT1
+ * from THIS table, never from hijri_delta_t_seconds(), so that the parallax
+ * and hour-angle code is measured without a delta-T artifact standing in front
+ * of it. Group 13 measures the delta-T model separately, which is the only
+ * honest way to report both. */
+static const double SKY_DELTA_T[24][2] = {
+  {2415020.5, -1.9754351},
+  {2433282.5, 28.9320000},
+  {2458853.5, 69.3630814},
+  {2458931.7, 69.4054885},
+  {2459044.2, 69.4104422},
+  {2459122.9, 69.3576225},
+  {2459201.3, 69.3628483},
+  {2459318.6, 69.3616458},
+  {2459407.1, 69.3394758},
+  {2459502.8, 69.2887904},
+  {2459613.4, 69.2911019},
+  {2459688.2, 69.2827043},
+  {2459777.9, 69.2372800},
+  {2459860.5, 69.1875428},
+  {2459955.1, 69.2009568},
+  {2460048.7, 69.2130511},
+  {2460133.3, 69.2152108},
+  {2460229.6, 69.1694982},
+  {2460322.4, 69.1757138},
+  {2460451.8, 69.2052242},
+  {2460577.2, 69.1268053},
+  {2460699.5, 69.1392032},
+  {2469807.5, 71.4428713},
+  {2488069.5, 95.9270748},
+};
+/* Horizons cross-check for the topocentric altitude, retrieved 2026-08-07
+ * with the observer-site query recorded in
+ * docs/research/2026-08-07-topocentric-error-bar.md. Columns are jd_tt and
+ * airless elevation in degrees. APPARENT='AIRLESS' is explicit in the query,
+ * because the refracted column would differ by up to 0.57 deg near the
+ * horizon and the discrepancy would look like a library defect.
+ *
+ * Two sites only, jakarta and high60. These tables are compared against
+ * SKY_TOPO_*, not against the library. No change to hijri.h can alter that
+ * comparison. It exists so that a transcription or convention error in either
+ * oracle is caught by disagreement rather than trusted, which is the same role
+ * group 1 plays for the geocentric tables. Bracketing the latitude range is
+ * sufficient for that role, so mecca and mid45 are not fetched. */
+static const double HORIZONS_TOPO_JAKARTA[24][2] = {
+  {2415020.5, 23.972500},
+  {2433282.5, -55.212337},
+  {2458853.5, -86.611709},
+  {2458931.7, 82.682774},
+  {2459044.2, -10.157960},
+  {2459122.9, -3.926439},
+  {2459201.3, -60.618915},
+  {2459318.6, 26.811896},
+  {2459407.1, -31.951995},
+  {2459502.8, 5.892524},
+  {2459613.4, -43.005674},
+  {2459688.2, 60.679984},
+  {2459777.9, -66.482372},
+  {2459860.5, -39.029630},
+  {2459955.1, 5.928681},
+  {2460048.7, 17.911560},
+  {2460133.3, 61.461577},
+  {2460229.6, 74.053515},
+  {2460322.4, -36.863375},
+  {2460451.8, -25.552503},
+  {2460577.2, 9.681605},
+  {2460699.5, 71.533711},
+  {2469807.5, -78.103159},
+  {2488069.5, 39.057641},
+};
+static const double HORIZONS_TOPO_HIGH60[24][2] = {
+  {2415020.5, -52.543271},
+  {2433282.5, 43.445448},
+  {2458853.5, 16.027865},
+  {2458931.7, -13.087502},
+  {2459044.2, -20.782715},
+  {2459122.9, -36.450266},
+  {2459201.3, -8.059234},
+  {2459318.6, -15.475172},
+  {2459407.1, 50.679424},
+  {2459502.8, -49.535635},
+  {2459613.4, -26.103422},
+  {2459688.2, -38.104758},
+  {2459777.9, -10.077554},
+  {2459860.5, 19.121654},
+  {2459955.1, -14.539826},
+  {2460048.7, 0.176695},
+  {2460133.3, -29.811329},
+  {2460229.6, -6.688829},
+  {2460322.4, -34.585092},
+  {2460451.8, -35.086032},
+  {2460577.2, -3.110602},
+  {2460699.5, -31.798232},
+  {2469807.5, 10.759672},
+  {2488069.5, 22.723118},
+};
 /* Meeus, "Astronomical Algorithms" 2nd ed., worked Example 47.a:
  * 1992 April 12 at 0h TD, i.e. JDE 2448724.5. The book prints
  *   lambda = 133.162655 deg, beta = -3.229126 deg, Delta = 368409.7 km.
@@ -705,6 +1090,457 @@ static void check_ut_to_tt_path(void) {
   check_within("ut_to_tt_shifts_moon", jd_ut, moved, 13.176 * dt_days,
                0.1 * 13.176 * dt_days);
   check_true_nonzero("ut_to_tt_conversion_is_applied", moved);
+}
+
+/* Rigorous geocentric-to-topocentric reference, Meeus 11.1 and 40.6/40.7.
+ *
+ * This is the library's own algorithm done exactly. hijri_moon_topocentric()
+ * substitutes bare sin(phi) and cos(phi) where Meeus has rho*sin(phi') and
+ * rho*cos(phi'), dropping Earth flattening. Feeding both this function and the
+ * library the same geocentric position isolates that approximation, with lunar
+ * series truncation removed from the input rather than left in the answer.
+ *
+ * WGS84: a = 6378137.0 m, 1/f = 298.257223563, so b/a = 1 - f. */
+static void ref_rho_phi(double lat_deg, double *rho_sin_phi,
+                        double *rho_cos_phi) {
+  const double f = 1.0 / 298.257223563;
+  double phi = lat_deg * M_PI / 180.0;
+  double b_over_a = 1.0 - f;
+  double u = atan(b_over_a * tan(phi));
+  *rho_sin_phi = b_over_a * sin(u);
+  *rho_cos_phi = cos(u);
+}
+
+/* Topocentric right ascension and declination from a geocentric position,
+ * using the ellipsoidal rho terms. Mirrors hijri_moon_topocentric() exactly
+ * except for those two substitutions. */
+static void ref_topocentric(double ra_deg, double dec_deg,
+                            double parallax_deg, double jd_ut,
+                            double lat_deg, double lon_deg,
+                            double *ra_topo_deg, double *dec_topo_deg) {
+  double rho_sin_phi, rho_cos_phi;
+  double H, dec, pi_r, delta_ra, ra_topo, dec_topo;
+
+  ref_rho_phi(lat_deg, &rho_sin_phi, &rho_cos_phi);
+
+  H = hijri__hour_angle_deg(jd_ut, lon_deg, ra_deg) * M_PI / 180.0;
+  dec = dec_deg * M_PI / 180.0;
+  pi_r = parallax_deg * M_PI / 180.0;
+
+  delta_ra = atan2(-rho_cos_phi * sin(pi_r) * sin(H),
+                   cos(dec) - rho_cos_phi * sin(pi_r) * cos(H));
+  ra_topo = ra_deg * M_PI / 180.0 + delta_ra;
+  dec_topo = atan2((sin(dec) - rho_sin_phi * sin(pi_r)) * cos(delta_ra),
+                   cos(dec) - rho_cos_phi * sin(pi_r) * cos(H));
+
+  *ra_topo_deg = hijri__norm_deg(ra_topo * 180.0 / M_PI);
+  *dec_topo_deg = dec_topo * 180.0 / M_PI;
+}
+
+/* Group 10a -- the reference's own Earth geometry, checked before it is
+ * trusted to grade anything.
+ *
+ * At the equator and at the pole the ellipsoid and the sphere agree exactly.
+ * In between, rho*cos(phi') must EXCEED cos(phi), and the direction is worth
+ * stating because it is easy to get backwards. rho*cos(phi') is the point's
+ * distance from the rotation axis in equatorial radii. Flattening shortens
+ * the radius, rho = 0.998331 at latitude 45, but it also drops the geocentric
+ * latitude below the geodetic one, 44.8076 against 45, and that second effect
+ * dominates for axis distance. Measured: rho*cos(phi') = 0.708293171 against
+ * cos(45) = 0.707106781, a surplus of 0.001186390. The companion term
+ * rho*sin(phi') does fall below sin(phi), 0.703552 against 0.707107, which is
+ * the flattening pulling the surface in along the axis. */
+static void check_group10_ref_selftest(void) {
+  double rs, rc;
+
+  ref_rho_phi(0.0, &rs, &rc);
+  check_within("ref_rho_sin_phi_equator", 0.0, rs, 0.0, 1e-12);
+  check_within("ref_rho_cos_phi_equator", 0.0, rc, 1.0, 1e-12);
+
+  ref_rho_phi(45.0, &rs, &rc);
+  check_true_nonzero("ref_rho_cos_phi_45_exceeds_spherical",
+                     rc - cos(45.0 * M_PI / 180.0));
+
+  ref_rho_phi(90.0, &rs, &rc);
+  check_within("ref_rho_cos_phi_pole", 0.0, rc, 0.0, 1e-12);
+}
+
+/* The 24 epochs in this file were chosen to exercise GEOCENTRIC position, so
+ * they sweep the whole sky. Measured altitudes run from -86.61 to +82.68 deg
+ * at Jakarta. MABIMS 2021 thresholds altitude at 3 deg, so the geometry the
+ * criteria actually consume is a narrow band near the horizon, and only 4 of
+ * the 24 Jakarta rows fall in it.
+ *
+ * A maximum over all 24 rows is a valid upper bound and is what the pinned
+ * tolerances use, because a bound should be conservative. But quoting that
+ * number as "the topocentric error bar" when the row driving it sits 86 deg
+ * below the horizon would answer a different question than issue #17 asks.
+ * Every altitude group therefore prints BOTH the overall maximum and the
+ * maximum restricted to this band, with the row count and the driving epoch,
+ * so the research note can quote the relevant one and say which it is.
+ *
+ * 15 deg is deliberately wider than the 3 deg threshold. Parallax and its
+ * error vary smoothly with zenith distance, so a band that hugged 3 deg would
+ * report a near-empty sample. */
+#define HORIZON_BAND_DEG 15.0
+
+/* Earth-rotation-dependent groups run on the FIRST 22 epochs, not all 24.
+ *
+ * The last two fixture epochs are jd 2469807.5 (2050) and 2488069.5 (2100).
+ * Topocentric altitude depends on where the Earth has rotated to, which means
+ * it depends on UT1, and UT1 beyond the IERS prediction horizon is not a
+ * determinate quantity. Measured consequence: Skyfield and Horizons, given
+ * identical TT epochs and identical sites, disagree by 384.04 arcsec at
+ * Jakarta in 2100 and 31.19 arcsec in 2050, while agreeing to better than
+ * 0.7 arcsec at all 22 earlier epochs. The Horizons response header states
+ * its own limit, "EOP coverage: DATA-BASED 1962-JAN-20 TO 2026-AUG-06.
+ * PREDICTS-> 2026-NOV-01". 384 arcsec of altitude is about 25 seconds of
+ * Earth rotation, which is two extrapolations of Earth's spin 74 years out
+ * disagreeing, not a library error and not something any library can fix.
+ *
+ * Those two epochs stay in the tables so that row i here still means row i in
+ * FIXTURE and SKY_MOON_GEOMETRIC, which group 10 relies on. They are simply
+ * not measured against. Nothing that reaches altitude through sidereal time
+ * may use them.
+ *
+ * Geocentric position does not depend on Earth's rotation, which is why the
+ * pre-existing groups legitimately use all 24 and why this went unnoticed
+ * until a topocentric quantity was measured. */
+#define TOPO_EPOCH_COUNT 22
+
+typedef struct {
+  const char *name;
+  double lat_deg;
+  double lon_deg;
+  const double (*table)[4];
+} TopoSite;
+
+static const TopoSite TOPO_SITES[4] = {
+  {"jakarta", -6.2, 106.8, SKY_TOPO_JAKARTA},
+  {"mecca",   21.4,  39.8, SKY_TOPO_MECCA},
+  {"mid45",   45.0,   0.0, SKY_TOPO_MID45},
+  {"high60",  60.0,   0.0, SKY_TOPO_HIGH60},
+};
+
+/* Group 9 -- the shipped topocentric altitude, against Skyfield.
+ *
+ * The chain is composed by hand rather than calling hijri_moon_altitude(),
+ * and the reason is load-bearing. hijri_moon_altitude() takes a UT and derives
+ * TT with hijri_delta_t_seconds(), so calling it here would fold the delta-T
+ * model's error into a measurement of the parallax and hour-angle code. UT1 is
+ * taken from SKY_DELTA_T instead, so the position is evaluated at the intended
+ * TT and the sidereal time at the intended UT1. What hijri_moon_altitude()
+ * itself costs is group 13's subject, not this one's. */
+static void check_group9_topo_altitude(void) {
+  int s, i;
+  for (s = 0; s < 4; s++) {
+    const TopoSite *site = &TOPO_SITES[s];
+    HijriLocation loc;
+    double max_err = 0.0, max_band = 0.0, band_jd = 0.0;
+    int n_band = 0;
+    char label[64];
+
+    loc.latitude_deg = site->lat_deg;
+    loc.longitude_deg = site->lon_deg;
+    loc.elevation_m = 0.0;
+    loc.name = NULL; /* HijriLocation has a fourth member, hijri.h:175 */
+
+    for (i = 0; i < TOPO_EPOCH_COUNT; i++) {
+      double jd_tt = site->table[i][0];
+      double jd_ut = jd_tt - SKY_DELTA_T[i][1] / 86400.0;
+      HijriMoonPosition geo = hijri_moon_position(jd_tt);
+      double ra_topo, dec_topo, alt, err;
+
+      hijri_moon_topocentric(&geo, jd_ut, site->lat_deg, site->lon_deg, 0.0,
+                             &ra_topo, &dec_topo);
+      alt = hijri__altitude_deg(ra_topo, dec_topo, jd_ut, &loc);
+      err = fabs(alt - site->table[i][1]);
+      if (err > max_err) max_err = err;
+
+      /* Near-horizon band, see HORIZON_BAND_DEG. */
+      if (fabs(site->table[i][1]) < HORIZON_BAND_DEG) {
+        n_band++;
+        if (err > max_band) max_band = err;
+        if (err >= max_band) band_jd = jd_tt;
+      }
+
+      sprintf(label, "topo_alt_%s", site->name);
+      check_within(label, jd_tt, alt, site->table[i][1], TOL_TOPO_ALT_DEG);
+    }
+    printf("topo_alt max %-8s = %.7f deg (%.2f arcsec)  "
+           "near-horizon %.7f deg (%.2f arcsec) over %d rows, worst at jd %.1f\n",
+           site->name, max_err, max_err * 3600.0,
+           max_band, max_band * 3600.0, n_band, band_jd);
+  }
+}
+
+/* Group 10 -- the parallax and hour-angle code alone.
+ *
+ * Both sides are fed the SAME geocentric position, taken from
+ * SKY_MOON_GEOMETRIC, which is already mean-of-date geocentric at these exact
+ * epochs. Lunar series truncation is therefore removed from the INPUT rather
+ * than left in the answer, and what remains is the spherical-Earth
+ * approximation in hijri_moon_topocentric() plus any coding defect.
+ *
+ * Subtracting this from group 9 gives the truncation and frame share by
+ * measurement instead of by argument. That subtraction is the whole reason
+ * issue #17 asks for a decomposition rather than a single number. */
+static void check_group10_counterfactual(void) {
+  int s, i;
+  for (s = 0; s < 4; s++) {
+    const TopoSite *site = &TOPO_SITES[s];
+    HijriLocation loc;
+    double max_err = 0.0, max_band = 0.0;
+    int n_band = 0;
+    char label[64];
+
+    loc.latitude_deg = site->lat_deg;
+    loc.longitude_deg = site->lon_deg;
+    loc.elevation_m = 0.0;
+    loc.name = NULL; /* HijriLocation has a fourth member, hijri.h:175 */
+
+    for (i = 0; i < TOPO_EPOCH_COUNT; i++) {
+      double jd_tt = SKY_MOON_GEOMETRIC[i][0];
+      double jd_ut = jd_tt - SKY_DELTA_T[i][1] / 86400.0;
+      HijriMoonPosition geo = hijri_moon_position(jd_tt);
+      double ra_lib, dec_lib, ra_ref, dec_ref;
+      double alt_lib, alt_ref, err;
+
+      /* Same geocentric input to both, the library's own, so the only
+       * difference between the two sides is the Earth-shape substitution. */
+      hijri_moon_topocentric(&geo, jd_ut, site->lat_deg, site->lon_deg, 0.0,
+                             &ra_lib, &dec_lib);
+      ref_topocentric(geo.right_ascension_deg, geo.declination_deg,
+                      geo.horizontal_parallax_deg, jd_ut,
+                      site->lat_deg, site->lon_deg, &ra_ref, &dec_ref);
+
+      alt_lib = hijri__altitude_deg(ra_lib, dec_lib, jd_ut, &loc);
+      alt_ref = hijri__altitude_deg(ra_ref, dec_ref, jd_ut, &loc);
+      err = fabs(alt_lib - alt_ref);
+      if (err > max_err) max_err = err;
+
+      if (fabs(site->table[i][1]) < HORIZON_BAND_DEG) {
+        n_band++;
+        if (err > max_band) max_band = err;
+      }
+
+      sprintf(label, "topo_cf_%s", site->name);
+      check_within(label, jd_tt, alt_lib, alt_ref, TOL_TOPO_CF_DEG);
+    }
+    printf("topo_counterfactual max %-8s = %.7f deg (%.2f arcsec)  "
+           "near-horizon %.7f deg (%.2f arcsec) over %d rows\n",
+           site->name, max_err, max_err * 3600.0,
+           max_band, max_band * 3600.0, n_band);
+  }
+}
+
+/* Group 11 -- topocentric elongation, against two references.
+ *
+ * Column 2 of the site table is the convention-matched reference, a
+ * topocentric Moon against a geocentric Sun, which is what hijri.h:1220
+ * computes. Its residual is implementation error and nothing else.
+ *
+ * Column 3 is fully topocentric, both bodies seen from the site. The library
+ * is NOT wrong to differ from it. Omitting solar parallax is the Pedoman
+ * convention, recorded in docs/research/2026-08-01-wujudul-hilal-convention.md
+ * and reaffirmed in PR #30. The gap between the two columns is the price of
+ * that convention, roughly the 8.8 arcsec solar parallax, and it is measured
+ * here so that issue #23 can report it rather than discover it.
+ *
+ * Reporting only one of these would either hide the convention or charge it as
+ * a defect. Both are printed, separately, on purpose. */
+static void check_group11_elongation(void) {
+  int s, i;
+  for (s = 0; s < 4; s++) {
+    const TopoSite *site = &TOPO_SITES[s];
+    double max_conv = 0.0, max_full = 0.0, max_cost = 0.0;
+    char label[64];
+
+    for (i = 0; i < TOPO_EPOCH_COUNT; i++) {
+      double jd_tt = site->table[i][0];
+      double jd_ut = jd_tt - SKY_DELTA_T[i][1] / 86400.0;
+      HijriMoonPosition geo = hijri_moon_position(jd_tt);
+      HijriSunPosition sun = hijri_sun_position(jd_tt);
+      double ra_topo, dec_topo, elong, dc, df;
+
+      hijri_moon_topocentric(&geo, jd_ut, site->lat_deg, site->lon_deg, 0.0,
+                             &ra_topo, &dec_topo);
+      elong = hijri__angular_separation_deg(ra_topo, dec_topo,
+                                            sun.right_ascension_deg,
+                                            sun.declination_deg);
+
+      dc = fabs(elong - site->table[i][2]);
+      df = fabs(elong - site->table[i][3]);
+      if (dc > max_conv) max_conv = dc;
+      if (df > max_full) max_full = df;
+
+      /* Oracle-internal, no library code involved: the difference between a
+       * fully topocentric elongation and one that omits solar parallax. This
+       * is the price of the Pedoman convention, isolated. The printed
+       * elong_full above is NOT this quantity, because it also carries the
+       * library's own implementation error. */
+      {
+        double cost = fabs(site->table[i][3] - site->table[i][2]);
+        if (cost > max_cost) max_cost = cost;
+      }
+
+      sprintf(label, "elong_conv_%s", site->name);
+      check_within(label, jd_tt, elong, site->table[i][2], TOL_ELONG_CONV_DEG);
+    }
+    printf("elong_conv max %-8s = %.7f deg (%.2f arcsec)\n",
+           site->name, max_conv, max_conv * 3600.0);
+    printf("elong_full max %-8s = %.7f deg (%.2f arcsec)  <- cost of the "
+           "geocentric-Sun convention, not an error\n",
+           site->name, max_full, max_full * 3600.0);
+    printf("elong_convention_cost max %-8s = %.7f deg (%.2f arcsec)  "
+           "<- oracle-internal, the isolated price of omitting solar parallax\n",
+           site->name, max_cost, max_cost * 3600.0);
+  }
+}
+
+/* Group 12 -- two engines, same convention, same epochs, no library code. */
+static void check_group12_oracle_vs_oracle(void) {
+  const double (*sky[2])[4] = {SKY_TOPO_JAKARTA, SKY_TOPO_HIGH60};
+  const double (*hor[2])[2] = {HORIZONS_TOPO_JAKARTA, HORIZONS_TOPO_HIGH60};
+  const char *names[2] = {"jakarta", "high60"};
+  int n_rows = 0, n_distinct = 0;
+  int s, i;
+
+  for (s = 0; s < 2; s++) {
+    double max_err = 0.0;
+    char label[64];
+    for (i = 0; i < TOPO_EPOCH_COUNT; i++) {
+      double d = fabs(sky[s][i][1] - hor[s][i][1]);
+      if (d > max_err) max_err = d;
+      n_rows++;
+      if (d > 0.0) n_distinct++;
+      sprintf(label, "sky_vs_horizons_topo_%s", names[s]);
+      check_within(label, sky[s][i][0], sky[s][i][1], hor[s][i][1],
+                   TOL_ORACLE_TOPO_DEG);
+    }
+    printf("sky_vs_horizons_topo max %-8s = %.7f deg\n", names[s], max_err);
+  }
+
+  /* Guard against one table having been copied from the other, which every
+   * per-epoch tolerance check above would happily pass. This is the failure
+   * mode mutation M7 records and mutation M13 exercises.
+   *
+   * An earlier version of this guard required the MINIMUM difference across
+   * all rows to be non-zero. That is wrong, and the reason is worth keeping.
+   * Horizons prints 6 decimal places and Skyfield 7, so the two engines can
+   * land bit-identical at a row purely by rounding. They do exactly that at
+   * jd 2458853.5 for jakarta, where both read -86.611709. One coincident row
+   * zeroed the minimum and failed the guard on genuinely good data.
+   *
+   * Count instead. A copied table makes EVERY row identical, so requiring
+   * more than three quarters of rows to differ separates a real copy from
+   * incidental rounding collisions. Written as 4*n_distinct - 3*n_rows so it
+   * can be handed to check_true_nonzero, which passes only on a positive
+   * value. */
+  printf("sky_vs_horizons_topo distinct rows = %d of %d\n",
+         n_distinct, n_rows);
+  check_true_nonzero("sky_vs_horizons_topo_nondegenerate_rows",
+                     (double)(4 * n_distinct - 3 * n_rows));
+}
+
+/* Group 13 -- what hijri_delta_t_seconds() costs, reported two ways.
+ *
+ * Reporting only the first number would be alarming and misleading. Reporting
+ * only the second would hide a real model defect. Both are printed.
+ *
+ * TT SPECIFIED: if the instant of interest is known in TT, as it is for every
+ * fixture in this file, a UT must be derived to get sidereal time. Deriving it
+ * with a delta-T model that is wrong by dT seconds puts the sidereal time off
+ * by dT seconds of Earth rotation, which is 15*dT arcsec of hour angle. This
+ * is the artifact groups 9 through 11 avoid by taking UT1 from SKY_DELTA_T,
+ * and it is by far the larger of the two numbers.
+ *
+ * SUNSET ANCHORED: on the shipped path nobody supplies a UT. hijri_find_sunset
+ * bisects hijri_sun_altitude to FIND one. A delta-T error moves the Sun's
+ * evaluated position by dT seconds of solar motion, about 0.09 arcsec in right
+ * ascension for dT = 2.2 s, so the recovered sunset instant in UT is barely
+ * affected. The Moon is then evaluated at that essentially correct UT with a
+ * TT that is dT late, costing dT seconds of lunar motion, while the sidereal
+ * time is computed from the correct UT and is clean.
+ *
+ * The second number is the one that belongs in any user-facing error bar.
+ *
+ * CAVEAT ON THE REFERENCE. SKY_DELTA_T is Skyfield's delta-T, which is IERS
+ * data only from 1962 onward. Before that it is a reconstruction, and it is
+ * not tight: it reads -1.9754351 s at 1900 against the widely accepted
+ * -2.72 s, and 28.9320000 s at 1950 against 29.15 s. That 0.745 s gap at 1900
+ * is a third of the 2.2 s model error this group exists to attribute, so the
+ * two pre-1962 epochs cannot grade hijri_delta_t_seconds() and are reported
+ * separately rather than folded into the bound. The two post-2050 epochs are
+ * forecasts on both sides and are excluded from the bound for the same reason
+ * in the opposite direction.
+ *
+ * This does NOT affect groups 9 through 11. Those derive UT1 from this same
+ * table, and Skyfield placed its own observer with the same value, so the two
+ * sides are self-consistent whatever the absolute truth is. */
+static void check_group13_delta_t(void) {
+  double max_dt_err = 0.0, max_dt_err_graded = 0.0;
+  double max_ha_arcsec = 0.0, max_anchored_arcsec = 0.0;
+  int i;
+
+  for (i = 0; i < 24; i++) {
+    double jd_tt = SKY_DELTA_T[i][0];
+    double true_dt = SKY_DELTA_T[i][1];
+    double jd_ut = jd_tt - true_dt / 86400.0;
+    double lib_dt = hijri_delta_t_seconds(jd_ut);
+    double dt_err = fabs(lib_dt - true_dt);
+    double ha_arcsec, anchored_arcsec;
+    HijriMoonPosition a, b;
+
+    if (dt_err > max_dt_err) max_dt_err = dt_err;
+
+    /* TT specified: the derived UT is wrong by dt_err, so the sidereal time
+     * is wrong by dt_err of Earth rotation. 1.00273790935 converts a solar
+     * interval to a sidereal one, 15 converts seconds of time to arcsec. */
+    ha_arcsec = dt_err * 1.00273790935 * 15.0;
+
+    /* Sunset anchored: lunar motion over dt_err seconds, measured rather
+     * than assumed, by evaluating the Moon at both times. */
+    a = hijri_moon_position(jd_tt);
+    b = hijri_moon_position(jd_tt + dt_err / 86400.0);
+    anchored_arcsec =
+        hijri__angular_separation_deg(a.right_ascension_deg,
+                                      a.declination_deg,
+                                      b.right_ascension_deg,
+                                      b.declination_deg) * 3600.0;
+
+    /* Bound only the epochs where the reference is IERS data. Rows 0 and 1
+     * are 1900 and 1950, before IERS coverage. Rows 22 and 23 are 2050 and
+     * 2100, past it. Both regimes are printed below but not asserted. */
+    if (i >= 2 && i < TOPO_EPOCH_COUNT) {
+      check_within("delta_t_model", jd_tt, lib_dt, true_dt, TOL_DELTA_T_SEC);
+      if (dt_err > max_dt_err_graded) max_dt_err_graded = dt_err;
+      /* A14: the two arcsec figures below are only meaningful where the
+       * reference is IERS data. Accumulating them over the forecast rows
+       * reported 2028.71 arcsec, which measures the disagreement between two
+       * guesses about Earth's rotation in 2100 and nothing about this
+       * library. */
+      if (ha_arcsec > max_ha_arcsec) max_ha_arcsec = ha_arcsec;
+      if (anchored_arcsec > max_anchored_arcsec)
+        max_anchored_arcsec = anchored_arcsec;
+    } else {
+      printf("delta_t ungraded epoch jd %.1f: library %.4f s, reference "
+             "%.4f s, difference %.4f s (reference is reconstruction or "
+             "forecast, not IERS data)\n", jd_tt, lib_dt, true_dt, dt_err);
+    }
+  }
+
+  printf("delta_t max error all epochs     = %.4f s\n", max_dt_err);
+  printf("delta_t max error IERS-graded     = %.4f s\n", max_dt_err_graded);
+  printf("delta_t TT-specified hour angle  = %.2f arcsec\n", max_ha_arcsec);
+  printf("delta_t sunset-anchored residual = %.2f arcsec\n",
+         max_anchored_arcsec);
+
+  /* The whole argument for not treating delta-T as the dominant error rests
+   * on the anchored residual being far smaller than the TT-specified one.
+   * Assert it rather than leaving it as prose. */
+  check_true_nonzero("delta_t_anchored_below_fixed",
+                     max_ha_arcsec - max_anchored_arcsec);
 }
 
 /* Group 1 -- harness verification. Two oracles, same convention, same epochs. */
@@ -1039,6 +1875,12 @@ int main(void) {
   check_group6_sun_harness();
   check_group7_shipped_elongation();
   check_group8_eqeq();
+  check_group10_ref_selftest();
+  check_group9_topo_altitude();
+  check_group10_counterfactual();
+  check_group11_elongation();
+  check_group12_oracle_vs_oracle();
+  check_group13_delta_t();
   check_meeus_example_47a();
   check_delta_t();
   check_ut_to_tt_path();
