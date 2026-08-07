@@ -159,6 +159,14 @@
  * latitudes, now measured rather than asserted. */
 #define TOL_TOPO_CF_DEG 0.0075
 
+/* Group 11, topocentric elongation against a convention-matched reference.
+ * Measured maximum, printed as "elong_conv max": jakarta 0.0069925, mecca
+ * 0.0060859, mid45 0.0064134, high60 0.0064678 deg. Bound is the largest
+ * rounded up to roughly 2x margin. For scale, the MABIMS 2021 topocentric
+ * elongation threshold is 6.4 deg. The separately printed "elong_full max" is
+ * deliberately unbounded, see the group comment. */
+#define TOL_ELONG_CONV_DEG 0.014
+
 /* MEASURED MUTATION SENSITIVITY of the four tables above.
  *
  * The Meeus 47.a block further down records an exhaustive 120-mutation sweep of
@@ -1137,6 +1145,57 @@ static void check_group10_counterfactual(void) {
   }
 }
 
+/* Group 11 -- topocentric elongation, against two references.
+ *
+ * Column 2 of the site table is the convention-matched reference, a
+ * topocentric Moon against a geocentric Sun, which is what hijri.h:1220
+ * computes. Its residual is implementation error and nothing else.
+ *
+ * Column 3 is fully topocentric, both bodies seen from the site. The library
+ * is NOT wrong to differ from it. Omitting solar parallax is the Pedoman
+ * convention, recorded in docs/research/2026-08-01-wujudul-hilal-convention.md
+ * and reaffirmed in PR #30. The gap between the two columns is the price of
+ * that convention, roughly the 8.8 arcsec solar parallax, and it is measured
+ * here so that issue #23 can report it rather than discover it.
+ *
+ * Reporting only one of these would either hide the convention or charge it as
+ * a defect. Both are printed, separately, on purpose. */
+static void check_group11_elongation(void) {
+  int s, i;
+  for (s = 0; s < 4; s++) {
+    const TopoSite *site = &TOPO_SITES[s];
+    double max_conv = 0.0, max_full = 0.0;
+    char label[64];
+
+    for (i = 0; i < TOPO_EPOCH_COUNT; i++) {
+      double jd_tt = site->table[i][0];
+      double jd_ut = jd_tt - SKY_DELTA_T[i][1] / 86400.0;
+      HijriMoonPosition geo = hijri_moon_position(jd_tt);
+      HijriSunPosition sun = hijri_sun_position(jd_tt);
+      double ra_topo, dec_topo, elong, dc, df;
+
+      hijri_moon_topocentric(&geo, jd_ut, site->lat_deg, site->lon_deg, 0.0,
+                             &ra_topo, &dec_topo);
+      elong = hijri__angular_separation_deg(ra_topo, dec_topo,
+                                            sun.right_ascension_deg,
+                                            sun.declination_deg);
+
+      dc = fabs(elong - site->table[i][2]);
+      df = fabs(elong - site->table[i][3]);
+      if (dc > max_conv) max_conv = dc;
+      if (df > max_full) max_full = df;
+
+      sprintf(label, "elong_conv_%s", site->name);
+      check_within(label, jd_tt, elong, site->table[i][2], TOL_ELONG_CONV_DEG);
+    }
+    printf("elong_conv max %-8s = %.7f deg (%.2f arcsec)\n",
+           site->name, max_conv, max_conv * 3600.0);
+    printf("elong_full max %-8s = %.7f deg (%.2f arcsec)  <- cost of the "
+           "geocentric-Sun convention, not an error\n",
+           site->name, max_full, max_full * 3600.0);
+  }
+}
+
 /* Group 1 -- harness verification. Two oracles, same convention, same epochs. */
 static void check_group1_harness(void) {
   double max_lon = 0.0, max_lat = 0.0, max_dist = 0.0;
@@ -1472,6 +1531,7 @@ int main(void) {
   check_group10_ref_selftest();
   check_group9_topo_altitude();
   check_group10_counterfactual();
+  check_group11_elongation();
   check_meeus_example_47a();
   check_delta_t();
   check_ut_to_tt_path();
