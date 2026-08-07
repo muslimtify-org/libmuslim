@@ -181,7 +181,7 @@
  *
  * The bound exists to catch a regression in the model, not to certify its
  * accuracy. The accuracy statement that matters is the sunset-anchored
- * residual printed by this group, 79.02 arcsec. */
+ * residual printed by this group, 2.93 arcsec. */
 #define TOL_DELTA_T_SEC 11.0
 
 /* MEASURED MUTATION SENSITIVITY of the four tables above.
@@ -1391,7 +1391,6 @@ static void check_group13_delta_t(void) {
      * is wrong by dt_err of Earth rotation. 1.00273790935 converts a solar
      * interval to a sidereal one, 15 converts seconds of time to arcsec. */
     ha_arcsec = dt_err * 1.00273790935 * 15.0;
-    if (ha_arcsec > max_ha_arcsec) max_ha_arcsec = ha_arcsec;
 
     /* Sunset anchored: lunar motion over dt_err seconds, measured rather
      * than assumed, by evaluating the Moon at both times. */
@@ -1402,8 +1401,6 @@ static void check_group13_delta_t(void) {
                                       a.declination_deg,
                                       b.right_ascension_deg,
                                       b.declination_deg) * 3600.0;
-    if (anchored_arcsec > max_anchored_arcsec)
-      max_anchored_arcsec = anchored_arcsec;
 
     /* Bound only the epochs where the reference is IERS data. Rows 0 and 1
      * are 1900 and 1950, before IERS coverage. Rows 22 and 23 are 2050 and
@@ -1411,6 +1408,14 @@ static void check_group13_delta_t(void) {
     if (i >= 2 && i < TOPO_EPOCH_COUNT) {
       check_within("delta_t_model", jd_tt, lib_dt, true_dt, TOL_DELTA_T_SEC);
       if (dt_err > max_dt_err_graded) max_dt_err_graded = dt_err;
+      /* A14: the two arcsec figures below are only meaningful where the
+       * reference is IERS data. Accumulating them over the forecast rows
+       * reported 2028.71 arcsec, which measures the disagreement between two
+       * guesses about Earth's rotation in 2100 and nothing about this
+       * library. */
+      if (ha_arcsec > max_ha_arcsec) max_ha_arcsec = ha_arcsec;
+      if (anchored_arcsec > max_anchored_arcsec)
+        max_anchored_arcsec = anchored_arcsec;
     } else {
       printf("delta_t ungraded epoch jd %.1f: library %.4f s, reference "
              "%.4f s, difference %.4f s (reference is reconstruction or "
