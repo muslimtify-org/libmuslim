@@ -1193,6 +1193,70 @@ static const KemenagPublished KEMENAG_PUBLISHED_2023[] = {
   {2023, 12, 13,  1,  3, 16.27,  1,  4, 50.36,  6,  0.24,  7, 14.31, "Jumadal Akhirah 1445"},
 };
 
+/* MEASURED MUTATION SENSITIVITY of the fixture above and of the assertions in
+ * test_kemenag_published_quantities().
+ *
+ * Each mutation below was applied to the source, the suite was rebuilt with
+ * `make test` and run, and the FAIL line quoted is what the binary actually
+ * printed. Every mutation was reverted afterwards; nothing in this file carries
+ * one. The unmutated suite reports "Hijri tests: 539 checks, 0 failures".
+ *
+ * Coverage: K1 and K3 attack the fixture data, one per quantity, so a corrupted
+ * transcription is caught. K2 attacks the altitude CONVENTION, which is the
+ * mutation that shows the altitude assertion discriminates rather than merely
+ * passing because the ranges are wide. K4 inverts the geocentric counterfactual,
+ * proving that asserting a failure is itself an assertion. K5 mis-dates the one
+ * footnoted row, proving the ijtimak-date warning above is load-bearing.
+ *
+ * K1  Rajab 1444 altitude minimum, 6 34.11 -> 8 34.11 (+2 deg).
+ *     CAUGHT
+ *       FAIL synthetic/kemenag_published_altitude_contained_Rajab 1444 expected=true
+ *     Suite went to "Hijri tests: 539 checks, 1 failures", exit 1.
+ *
+ * K2  The altitude read by the test, p.moon_center_geometric_altitude_deg ->
+ *     p.moon_upper_limb_apparent_altitude_deg, i.e. the convention swapped from
+ *     centre-geometric to upper-limb apparent.
+ *     CAUGHT, and caught in 10 of the 12 rows:
+ *       FAIL synthetic/kemenag_published_altitude_contained_Rajab 1444 expected=true
+ *       FAIL synthetic/kemenag_published_altitude_contained_Sya'ban 1444 expected=true
+ *       FAIL synthetic/kemenag_published_altitude_contained_Ramadan 1444 expected=true
+ *       FAIL synthetic/kemenag_published_altitude_contained_Syawal 1444 expected=true
+ *       FAIL synthetic/kemenag_published_altitude_contained_Zulqa'dah 1444 expected=true
+ *       FAIL synthetic/kemenag_published_altitude_contained_Zulhijjah 1444 expected=true
+ *       FAIL synthetic/kemenag_published_altitude_contained_Muharram 1445 expected=true
+ *       FAIL synthetic/kemenag_published_altitude_contained_Safar 1445 expected=true
+ *       FAIL synthetic/kemenag_published_altitude_contained_Rabi'ul Awal 1445 expected=true
+ *       FAIL synthetic/kemenag_published_altitude_contained_Rabi'ul Akhir 1445 expected=true
+ *     Suite went to "Hijri tests: 539 checks, 10 failures", exit 1. Only Jumadal
+ *     Ula and Jumadal Akhirah 1445 survive the swap, so the published ranges
+ *     admit the upper-limb apparent altitude in 2 rows of 12 against 12 of 12
+ *     for the shipped centre-geometric quantity. That 10-row margin is the
+ *     evidence that the altitude assertion selects a convention.
+ *
+ * K3  Safar 1445 elongation minimum, 4 6.38 -> 5 6.38 (+1 deg).
+ *     CAUGHT
+ *       FAIL synthetic/kemenag_published_elongation_contained_Safar 1445 expected=true
+ *     Suite went to "Hijri tests: 539 checks, 1 failures", exit 1.
+ *
+ * K4  The geocentric counterfactual condition, (g < elo || g > ehi) ->
+ *     (g >= elo && g <= ehi), i.e. counting the rows that fall INSIDE the
+ *     published range instead of outside it.
+ *     CAUGHT
+ *       FAIL synthetic/kemenag_published_elongation_is_topocentric expected=true
+ *     Suite went to "Hijri tests: 539 checks, 1 failures", exit 1. The majority
+ *     that holds for the geocentric form falling outside does not hold when
+ *     inverted, so the check is measuring the frame and not a tautology.
+ *
+ * K5  Zulqa'dah 1444 `d` field, 20 -> 19, the ijtimak date rather than the
+ *     evening the published figures describe.
+ *     CAUGHT twice, once per quantity:
+ *       FAIL synthetic/kemenag_published_altitude_contained_Zulqa'dah 1444 expected=true
+ *       FAIL synthetic/kemenag_published_elongation_contained_Zulqa'dah 1444 expected=true
+ *     Suite went to "Hijri tests: 539 checks, 2 failures", exit 1. The row's
+ *     ijtimak falls at 22:53 WIB, after sunset, so 19 May reads an evening
+ *     before conjunction. The date exception documented above is therefore
+ *     verified rather than asserted. */
+
 /* Degrees and decimal arcminutes to decimal degrees, sign applied to the whole
  * quantity rather than to the degree field, so "-00 21.78" is negative. */
 static double kemenag_dm(int sign, double deg, double min) {
