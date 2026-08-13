@@ -1121,6 +1121,219 @@ static void test_pedoman_worked_example(void) {
             1);
 }
 
+/* Containment bound for the topocentric elongation against Kemenag's published
+ * ranges. Measured worst excursion over these rows, printed by the temporary
+ * harness in the preceding commit: 0.0106 deg. Bound below is that rounded up to
+ * leave roughly 2x margin.
+ *
+ * The single excursion is explained rather than absorbed. Sabang sits at the
+ * elongation MINIMUM in Safar 1445, where in every other row it sits near the
+ * maximum, so the residual is the library's own elongation error against DE440
+ * rather than a convention difference. The altitude assertion below needs no
+ * tolerance at all. */
+#define TOL_KEMENAG_PUBLISHED_ELONG_DEG 0.022
+
+/* Kemenag's own published hilal figures, Ephemeris Hisab Rukyat 2023, page
+ * 604, table "DAFTAR WAKTU IJTIMAK TINGGI HILAL ELONGASI PENENTU AWAL BULAN
+ * HIJRIAH TAHUN 2023 M". Published by Direktorat Urusan Agama Islam dan
+ * Pembinaan Syariah, Kementerian Agama RI, 2022.
+ *
+ * The book's own footnote states the data conforms to the new MABIMS criteria
+ * and comes from the Sinkronisasi Data Hisab Taqwim Standar Indonesia held
+ * 20-22 October 2021. That footnote is what makes these rows an authority
+ * statement rather than one team's calculation.
+ *
+ * WHY THIS FIXTURE EXISTS ALONGSIDE test_kemenag_official_calendar. That test
+ * validates against announced month starts, which are the OUTPUT of Kemenag's
+ * method, so it can only check whether the library's predicate agrees with a
+ * yes or no. These rows are the INPUTS the decision is made from, so they
+ * check the quantities themselves. Both are kept.
+ *
+ * UNITS ARE AS PRINTED: degrees and decimal arcminutes, with the sign carried
+ * in its own field. Converting to decimal degrees here would hide a
+ * transcription error that a reader comparing against the page would catch.
+ * Row 8's altitude minimum is printed "-00 21,78" with a comma decimal
+ * separator, rendered as a period below.
+ *
+ * DATE IS THE IJTIMAK DATE, WITH ONE EXCEPTION. The published altitude and
+ * elongation describe the sunset of the ijtimak day. Sya'ban 1444 shows why
+ * that matters: ijtimak Monday 20 February, published altitude below the 3 deg
+ * threshold, so Kemenag applied istikmal and the month began Wednesday 22
+ * February rather than Tuesday. Sampling the announced start date instead
+ * would read the wrong evening and still produce plausible numbers.
+ *
+ * The exception is Zulqa'dah 1444, row 5, whose printed footnote reads
+ * "Posisi hilal pada tanggal 20 Mei 2023 M / 29 Syawal 1444 H". Its ijtimak
+ * falls at 22:53 WIB, after sunset, so its figures describe the FOLLOWING
+ * evening. The `d` field below carries the evening actually sampled, which is
+ * 20 May for that row and the ijtimak date for every other. */
+typedef struct {
+  int y, m, d;              /* the evening sampled, see note above */
+  int alt_lo_sign;
+  double alt_lo_deg, alt_lo_min;
+  int alt_hi_sign;
+  double alt_hi_deg, alt_hi_min;
+  double el_lo_deg, el_lo_min;
+  double el_hi_deg, el_hi_min;
+  const char *name;
+} KemenagPublished;
+
+static const KemenagPublished KEMENAG_PUBLISHED_2023[] = {
+  {2023,  1, 22,  1,  6, 34.11,  1,  8,  5.57,  7, 48.85,  9, 16.20, "Rajab 1444"},
+  {2023,  2, 20,  1,  1, 19.73,  1,  2, 38.94,  4,  4.89,  4, 33.93, "Sya'ban 1444"},
+  {2023,  3, 22,  1,  7,  0.32,  1,  8, 43.21,  7, 56.32,  9, 32.41, "Ramadan 1444"},
+  {2023,  4, 20,  1,  0, 51.24,  1,  2, 21.39,  1, 28.72,  3,  5.41, "Syawal 1444"},
+  {2023,  5, 20,  1,  5, 18.88,  1,  7, 51.44,  8,  3.17,  9, 31.09, "Zulqa'dah 1444"},
+  {2023,  6, 18,  1,  0, 11.78,  1,  2, 21.57,  4, 23.93,  4, 56.21, "Zulhijjah 1444"},
+  {2023,  7, 18,  1,  5, 21.77,  1,  7, 29.15,  7, 26.68,  8, 34.15, "Muharram 1445"},
+  {2023,  8, 16, -1,  0, 21.78,  1,  1, 26.80,  4,  6.38,  4, 28.11, "Safar 1445"},
+  {2023,  9, 15,  1,  2, 25.07,  1,  3, 39.75,  3, 14.72,  4, 17.36, "Rabi'ul Awal 1445"},
+  {2023, 10, 15,  1,  5,  1.40,  1,  6,  0.40,  6,  5.48,  7, 34.41, "Rabi'ul Akhir 1445"},
+  {2023, 11, 13, -1,  2, 21.07, -1,  0, 47.32,  2, 29.16,  2, 49.66, "Jumadal Ula 1445"},
+  {2023, 12, 13,  1,  3, 16.27,  1,  4, 50.36,  6,  0.24,  7, 14.31, "Jumadal Akhirah 1445"},
+};
+
+/* MEASURED MUTATION SENSITIVITY of the fixture above and of the assertions in
+ * test_kemenag_published_quantities().
+ *
+ * Each mutation below was applied to the source, the suite was rebuilt with
+ * `make test` and run, and the FAIL line quoted is what the binary actually
+ * printed. Every mutation was reverted afterwards; nothing in this file carries
+ * one. The unmutated suite reports "Hijri tests: 539 checks, 0 failures".
+ *
+ * Coverage: K1 and K3 attack the fixture data, one per quantity, so a corrupted
+ * transcription is caught. K2 attacks the altitude CONVENTION, which is the
+ * mutation that shows the altitude assertion discriminates rather than merely
+ * passing because the ranges are wide. K4 inverts the geocentric counterfactual,
+ * proving that asserting a failure is itself an assertion. K5 mis-dates the one
+ * footnoted row, proving the ijtimak-date warning above is load-bearing.
+ *
+ * K1  Rajab 1444 altitude minimum, 6 34.11 -> 8 34.11 (+2 deg).
+ *     CAUGHT
+ *       FAIL synthetic/kemenag_published_altitude_contained_Rajab 1444 expected=true
+ *     Suite went to "Hijri tests: 539 checks, 1 failures", exit 1.
+ *
+ * K2  The altitude read by the test, p.moon_center_geometric_altitude_deg ->
+ *     p.moon_upper_limb_apparent_altitude_deg, i.e. the convention swapped from
+ *     centre-geometric to upper-limb apparent.
+ *     CAUGHT, and caught in 10 of the 12 rows:
+ *       FAIL synthetic/kemenag_published_altitude_contained_Rajab 1444 expected=true
+ *       FAIL synthetic/kemenag_published_altitude_contained_Sya'ban 1444 expected=true
+ *       FAIL synthetic/kemenag_published_altitude_contained_Ramadan 1444 expected=true
+ *       FAIL synthetic/kemenag_published_altitude_contained_Syawal 1444 expected=true
+ *       FAIL synthetic/kemenag_published_altitude_contained_Zulqa'dah 1444 expected=true
+ *       FAIL synthetic/kemenag_published_altitude_contained_Zulhijjah 1444 expected=true
+ *       FAIL synthetic/kemenag_published_altitude_contained_Muharram 1445 expected=true
+ *       FAIL synthetic/kemenag_published_altitude_contained_Safar 1445 expected=true
+ *       FAIL synthetic/kemenag_published_altitude_contained_Rabi'ul Awal 1445 expected=true
+ *       FAIL synthetic/kemenag_published_altitude_contained_Rabi'ul Akhir 1445 expected=true
+ *     Suite went to "Hijri tests: 539 checks, 10 failures", exit 1. Only Jumadal
+ *     Ula and Jumadal Akhirah 1445 survive the swap, so the published ranges
+ *     admit the upper-limb apparent altitude in 2 rows of 12 against 12 of 12
+ *     for the shipped centre-geometric quantity. That 10-row margin is the
+ *     evidence that the altitude assertion selects a convention.
+ *
+ * K3  Safar 1445 elongation minimum, 4 6.38 -> 5 6.38 (+1 deg).
+ *     CAUGHT
+ *       FAIL synthetic/kemenag_published_elongation_contained_Safar 1445 expected=true
+ *     Suite went to "Hijri tests: 539 checks, 1 failures", exit 1.
+ *
+ * K4  The geocentric counterfactual condition, (g < elo || g > ehi) ->
+ *     (g >= elo && g <= ehi), i.e. counting the rows that fall INSIDE the
+ *     published range instead of outside it.
+ *     CAUGHT
+ *       FAIL synthetic/kemenag_published_elongation_is_topocentric expected=true
+ *     Suite went to "Hijri tests: 539 checks, 1 failures", exit 1. The majority
+ *     that holds for the geocentric form falling outside does not hold when
+ *     inverted, so the check is measuring the frame and not a tautology.
+ *
+ * K5  Zulqa'dah 1444 `d` field, 20 -> 19, the ijtimak date rather than the
+ *     evening the published figures describe.
+ *     CAUGHT twice, once per quantity:
+ *       FAIL synthetic/kemenag_published_altitude_contained_Zulqa'dah 1444 expected=true
+ *       FAIL synthetic/kemenag_published_elongation_contained_Zulqa'dah 1444 expected=true
+ *     Suite went to "Hijri tests: 539 checks, 2 failures", exit 1. The row's
+ *     ijtimak falls at 22:53 WIB, after sunset, so 19 May reads an evening
+ *     before conjunction. The date exception documented above is therefore
+ *     verified rather than asserted. */
+
+/* Degrees and decimal arcminutes to decimal degrees, sign applied to the whole
+ * quantity rather than to the degree field, so "-00 21.78" is negative. */
+static double kemenag_dm(int sign, double deg, double min) {
+  return sign * (deg + min / 60.0);
+}
+
+/* Group: the library against Kemenag's own published quantities.
+ *
+ * The assertion is CONTAINMENT, not agreement with an endpoint, and the reason
+ * is the whole design. The published ranges span Indonesia, and the location
+ * producing the extreme moves from month to month, so no fixed reference point
+ * reproduces the endpoints. Sabang is inside Indonesia, so if the library
+ * computes the same quantity Kemenag publishes, the library's value at Sabang
+ * must lie between the published minimum and maximum. That argument needs no
+ * assumption about where the endpoints are evaluated.
+ *
+ * An earlier analysis fitted one reference location to the published maxima and
+ * concluded from the RMS that the library's centre-geometric altitude fits
+ * worst and that Kemenag's altitude is mar'i. Containment reverses that
+ * conclusion, and containment is the sounder test because the fit assumed a
+ * fixed extreme location that does not exist. The record is kept here so the
+ * fit is not attempted again.
+ *
+ * The geocentric check asserts a FAILURE on purpose. Kemenag's published
+ * elongation is topocentric, and asserting that the geocentric form falls
+ * outside the published ranges pins that as a measured fact rather than a
+ * citation. It is the check that would catch a future simplification of
+ * HIJRI_PREDICATE_MABIMS_2021 to the geocentric elongation. */
+static void test_kemenag_published_quantities(void) {
+  HijriLocation sabang = {5.8926, 95.3238, 10.0, "Sabang"};
+  size_t n = sizeof(KEMENAG_PUBLISHED_2023) / sizeof(KEMENAG_PUBLISHED_2023[0]);
+  size_t i;
+  int geo_outside = 0;
+
+  for (i = 0; i < n; i++) {
+    const KemenagPublished *r = &KEMENAG_PUBLISHED_2023[i];
+    HijriEveningParameters p =
+        hijri_compute_evening_parameters(r->y, r->m, r->d, &sabang);
+    double alo = kemenag_dm(r->alt_lo_sign, r->alt_lo_deg, r->alt_lo_min);
+    double ahi = kemenag_dm(r->alt_hi_sign, r->alt_hi_deg, r->alt_hi_min);
+    double elo = kemenag_dm(1, r->el_lo_deg, r->el_lo_min);
+    double ehi = kemenag_dm(1, r->el_hi_deg, r->el_hi_min);
+    char label[96];
+    double a, e, g;
+
+    check_int("kemenag_published_sunset_available", p.sunset_status,
+              HIJRI_EVENT_OK);
+    if (p.sunset_status != HIJRI_EVENT_OK) {
+      continue;
+    }
+    a = p.moon_center_geometric_altitude_deg;
+    e = p.topocentric_elongation_deg;
+    g = p.geocentric_elongation_deg;
+
+    /* Altitude, exact containment. No tolerance: this separates the candidate
+     * conventions, since adding the Moon's semidiameter or refraction pushes
+     * rows outside these same ranges. */
+    sprintf(label, "kemenag_published_altitude_contained_%s", r->name);
+    check_true(label, a >= alo && a <= ahi);
+
+    /* Topocentric elongation, containment within the measured bound. */
+    sprintf(label, "kemenag_published_elongation_contained_%s", r->name);
+    check_true(label, e >= elo - TOL_KEMENAG_PUBLISHED_ELONG_DEG &&
+                          e <= ehi + TOL_KEMENAG_PUBLISHED_ELONG_DEG);
+
+    if (g < elo || g > ehi) {
+      geo_outside++;
+    }
+  }
+
+  /* The geocentric form must fall outside the published range in the MAJORITY
+   * of rows. Stated as a majority rather than a count so this does not become a
+   * transcription of one run's output. */
+  check_true("kemenag_published_elongation_is_topocentric",
+             (size_t)geo_outside * 2 > n);
+}
+
 /* Official Kemenag month starts, Kalender Hijriah Indonesia 2024-2026
  * (Rajab 1445 through Rajab 1448), Ditjen Bimas Islam.
  *
@@ -1372,6 +1585,7 @@ int main(void) {
   test_solar_position_pin();
   test_pedoman_worked_example();
   test_kemenag_official_calendar();
+  test_kemenag_published_quantities();
   test_muhammadiyah_official_calendar();
   test_conjunction_status_returns();
   check_true("all_predicate_enums_represented",
