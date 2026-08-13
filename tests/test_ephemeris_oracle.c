@@ -184,6 +184,32 @@
  * residual printed by this group, 2.93 arcsec. */
 #define TOL_DELTA_T_SEC 11.0
 
+/* Group 14, the set solvers against oracle-solved instants with the convention
+ * held equal on both sides. Measured maxima, printed by the temporary harness
+ * in the preceding commit as "setsolve max": sunset 2.7380 s, moonset 7.2926 s.
+ * Each bound below is that rounded up to leave roughly 2x margin.
+ *
+ * These are NOT the library's error against physical truth. They are its error
+ * against an oracle using the library's own convention, which is the quantity
+ * issue #18 asks for. The convention gap itself belongs to issue #33. */
+#define TOL_SETSOLVE_SUNSET_S 5.5
+
+/* Moonset is bounded per site, not once. Measured maxima: jakarta 0.3862 s,
+ * mecca 0.6073 s, mid45 1.7952 s, high60 7.2926 s, an 18.88x spread against
+ * sunset's 1.75x. A single bound sized for high60 would leave the Jakarta
+ * assertion roughly 39x slack, which is not an assertion. The high60 figure is
+ * not anomalous: three of its twelve rows are ones where the Moon set before
+ * sunset and the solver walked to the following night, a different regime with
+ * a different error scale, kept because they exercise the 24 hour scan.
+ * Each site's bound sits in tol_moonset_s in SETSOLVE_SITES. */
+
+/* Bisection convergence, measured as 1.296e-07 deg by the same harness. The bound is
+ * deliberately far above that, because this assertion exists to catch a solver
+ * regression such as a reduced iteration count, not to certify the last bit.
+ * 40 halvings of a one hour bracket reach about 3e-9 seconds, so any plausible
+ * regression is orders of magnitude away from this bound. */
+#define TOL_SETSOLVE_CONVERGE_DEG 1e-6
+
 /* MEASURED MUTATION SENSITIVITY of the four tables above.
  *
  * The Meeus 47.a block further down records an exhaustive 120-mutation sweep of
@@ -824,13 +850,14 @@ typedef struct {
   double lat_deg;
   double lon_deg;
   const double (*table)[2];
+  double tol_moonset_s;   /* per-site, see the comment on the bounds below */
 } SetSolveSite;
 
 static const SetSolveSite SETSOLVE_SITES[4] = {
-  {"jakarta", -6.2, 106.8, SKY_SETSOLVE_JAKARTA},
-  {"mecca",   21.4,  39.8, SKY_SETSOLVE_MECCA},
-  {"mid45",   45.0,   0.0, SKY_SETSOLVE_MID45},
-  {"high60",  60.0,   0.0, SKY_SETSOLVE_HIGH60},
+  {"jakarta", -6.2, 106.8, SKY_SETSOLVE_JAKARTA, 0.8},
+  {"mecca",   21.4,  39.8, SKY_SETSOLVE_MECCA,   1.3},
+  {"mid45",   45.0,   0.0, SKY_SETSOLVE_MID45,   3.6},
+  {"high60",  60.0,   0.0, SKY_SETSOLVE_HIGH60,  15.0},
 };
 
 /* Topocentric fixtures for issue #17.
@@ -1914,14 +1941,33 @@ static void check_group7_shipped_elongation(void) {
   printf("elongation_shipped_path max: %.7f deg\n", max_err);
 }
 
-/* TEMPORARY, removed in the next commit. Prints the set-instant residuals so
- * the tolerances in group 14 can be measured rather than guessed. */
-static void setsolve_measure(void) {
+/* Group 14 -- the sunset and moonset solvers against oracle-solved instants.
+ *
+ * Sunset is the sampling instant for every official calendar this library is
+ * validated against, and near the horizon the Moon falls at about 0.004 deg per
+ * second, so a second of sunset error is roughly 14 arcsec of Moon altitude.
+ * For scale, the entire topocentric chain measured in issue #32 contributes
+ * 2.18 arcsec at Jakarta. This is the largest single term in the chain that
+ * decides a date, and until this group existed it was unmeasured.
+ *
+ * Moonset is bounded but not decomposed, deliberately. It decides nothing in
+ * any validated path: it feeds lag_time_minutes and moonset_after_sunset, read
+ * only by two research predicates and by the Umm al-Qura fallback at
+ * hijri.h:1760, which fires only outside 1882-11-12 to 2174-11-25 and so never
+ * runs in the 198 of 198 table fixture.
+ *
+ * The convergence check uses no oracle at all. It evaluates the library's own
+ * altitude function at the instant the library reports and bounds the distance
+ * from the target it solved for. That pins the solver independently of the
+ * ephemeris, so a regression in one cannot hide inside the other's tolerance,
+ * and it is the only assertion here that would survive deleting every table. */
+static void check_group14_setsolve(void) {
   int s, i;
   for (s = 0; s < 4; s++) {
     const SetSolveSite *site = &SETSOLVE_SITES[s];
     HijriLocation loc;
-    double max_ss = 0.0, max_ms = 0.0, max_conv = 0.0;
+    double max_ss = 0.0, max_ms = 0.0;
+    char label[64];
 
     loc.latitude_deg = site->lat_deg;
     loc.longitude_deg = site->lon_deg;
@@ -1939,30 +1985,43 @@ static void setsolve_measure(void) {
       double jd_midnight = hijri_jd_from_gregorian(
           SETSOLVE_DATES[i][0], SETSOLVE_DATES[i][1],
           (double)SETSOLVE_DATES[i][2]) - site->lon_deg / 360.0;
-      double lib_ss, lib_ms, d;
+      double lib_ss, lib_ms, err;
+
+      sprintf(label, "setsolve_sunset_available_%s", site->name);
       if (hijri_find_sunset(jd_midnight, &loc, &lib_ss) != HIJRI_EVENT_OK) {
-        printf("  setsolve %s row %d: NO SUNSET\n", site->name, i);
-        continue;
+        check_true_nonzero(label, 0.0);
+        continue;   /* lib_ss is not written on failure, so do not read it */
       }
-      d = fabs(lib_ss - site->table[i][0]) * 86400.0;
-      if (d > max_ss) max_ss = d;
+      check_true_nonzero(label, 1.0);
 
-      /* Bisection convergence, no oracle involved: the library's own altitude
-       * at the instant it reports, against the target it solved for. */
-      d = fabs(hijri_sun_altitude(lib_ss, &loc) -
-               (-(HIJRI__REFRACTION_AT_HORIZON_DEG +
-                  HIJRI__SOLAR_SEMIDIAMETER_DEG)));
-      if (d > max_conv) max_conv = d;
+      err = fabs(lib_ss - site->table[i][0]) * 86400.0;
+      if (err > max_ss) max_ss = err;
+      sprintf(label, "setsolve_sunset_%s", site->name);
+      check_within(label, site->table[i][0], err, 0.0,
+                   TOL_SETSOLVE_SUNSET_S);
 
+      sprintf(label, "setsolve_converge_%s", site->name);
+      check_within(label, site->table[i][0],
+                   hijri_sun_altitude(lib_ss, &loc),
+                   -(HIJRI__REFRACTION_AT_HORIZON_DEG +
+                     HIJRI__SOLAR_SEMIDIAMETER_DEG),
+                   TOL_SETSOLVE_CONVERGE_DEG);
+
+      sprintf(label, "setsolve_moonset_available_%s", site->name);
       if (hijri_find_moonset(lib_ss, &loc, &lib_ms) != HIJRI_EVENT_OK) {
-        printf("  setsolve %s row %d: NO MOONSET\n", site->name, i);
-        continue;
+        check_true_nonzero(label, 0.0);
+        continue;   /* lib_ms is not written on failure, so do not read it */
       }
-      d = fabs(lib_ms - site->table[i][1]) * 86400.0;
-      if (d > max_ms) max_ms = d;
+      check_true_nonzero(label, 1.0);
+
+      err = fabs(lib_ms - site->table[i][1]) * 86400.0;
+      if (err > max_ms) max_ms = err;
+      sprintf(label, "setsolve_moonset_%s", site->name);
+      check_within(label, site->table[i][1], err, 0.0,
+                   site->tol_moonset_s);
     }
-    printf("setsolve max %-8s sunset %.4f s  moonset %.4f s  converge %.3e deg\n",
-           site->name, max_ss, max_ms, max_conv);
+    printf("setsolve max %-8s sunset %.4f s  moonset %.4f s\n",
+           site->name, max_ss, max_ms);
   }
 }
 
@@ -2032,7 +2091,7 @@ int main(void) {
   check_group5_frame_counterfactual();
   check_group6_sun_harness();
   check_group7_shipped_elongation();
-  setsolve_measure();
+  check_group14_setsolve();
   check_group8_eqeq();
   check_group10_ref_selftest();
   check_group9_topo_altitude();
