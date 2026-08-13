@@ -726,6 +726,112 @@ static const double SKY_EQEQ[24][2] = {
   { 2488069.5, +0.000838030},
 };
 
+/* Sunset and moonset instants solved on the oracle side, for issue #18.
+ *
+ * PROVENANCE: generated with Skyfield 1.54 on JPL DE440 (de440s.bsp). Columns
+ * are the sunset instant and the moonset instant, both as Julian Day in UT1 to
+ * nine decimals, which is 86 microseconds against a second-scale residual. One
+ * table per observer site, all at elevation 0. Grid dates are one day after
+ * each 2025 conjunction. The generator was run by hand and is not committed,
+ * matching every other oracle table in this file. Its full text is recorded in
+ * docs/research/2026-08-08-set-solver-oracle.md.
+ *
+ * THE CONVENTION IS HELD EQUAL ON BOTH SIDES, ON PURPOSE. The oracle solves for
+ * the same target the library does, using a GEOCENTRIC Sun with apparent
+ * right ascension and apparent sidereal time, and the same
+ * -(REFRACTION + SOLAR_SEMIDIAMETER) target. That is what separates this
+ * fixture from issue #33, which is about whether those two constants are the
+ * right ones. Holding the convention equal means this table keeps its meaning
+ * after #33 changes them, because #33 changes both sides together.
+ *
+ * THE MOON SIDE REPLICATES THE MEAN FRAME AND THIS IS THE EASY THING TO GET
+ * WRONG. hijri__altitude_deg pairs mean-of-date right ascension with MEAN
+ * sidereal time, deliberately, and the header documents that choice. Skyfield's
+ * altaz returns apparent with true sidereal time. Nutation in right ascension
+ * reaches roughly 17 arcsec, and near the horizon the Moon falls at about
+ * 0.0036 deg per second, so comparing against an unmatched frame would report
+ * on the order of 1.3 s of deliberate design as library error. The generator
+ * subtracts nutation to reach the mean equinox and uses GMST. */
+static const double SKY_SETSOLVE_JAKARTA[12][2] = {
+  {2460705.970467385, 2460706.005166394},   /* 2025-01-30 */
+  {2460735.966437230, 2460736.012782676},   /* 2025-03-01 */
+  {2460764.957508930, 2460764.987453242},   /* 2025-03-30 */
+  {2460793.949553166, 2460793.966749458},   /* 2025-04-28 */
+  {2460823.947139859, 2460823.998588262},   /* 2025-05-28 */
+  {2460852.950441329, 2460852.990654236},   /* 2025-06-26 */
+  {2460881.954225177, 2460881.978115114},   /* 2025-07-25 */
+  {2460911.953985053, 2460911.991356533},   /* 2025-08-24 */
+  {2460940.950524119, 2460940.965760513},   /* 2025-09-22 */
+  {2460970.948337770, 2460970.972346232},   /* 2025-10-22 */
+  {2461000.952330614, 2461000.988626409},   /* 2025-11-21 */
+  {2461030.962099322, 2461031.010110631},   /* 2025-12-21 */
+};
+static const double SKY_SETSOLVE_MECCA[12][2] = {
+  {2460706.131631374, 2460706.174817780},   /* 2025-01-30 */
+  {2460736.142414247, 2460736.208249921},   /* 2025-03-01 */
+  {2460765.149332837, 2460765.199414176},   /* 2025-03-30 */
+  {2460794.156236909, 2460794.194021995},   /* 2025-04-28 */
+  {2460824.165061587, 2460824.238505167},   /* 2025-05-28 */
+  {2460853.171294338, 2460853.225059390},   /* 2025-06-26 */
+  {2460882.168821229, 2460882.200234720},   /* 2025-07-25 */
+  {2460912.155539094, 2460912.189597008},   /* 2025-08-24 */
+  {2460941.136838004, 2460941.149751297},   /* 2025-09-22 */
+  {2460971.118712745, 2460971.135562280},   /* 2025-10-22 */
+  {2461001.109516486, 2461001.138223613},   /* 2025-11-21 */
+  {2461031.113796608, 2461031.161757674},   /* 2025-12-21 */
+};
+static const double SKY_SETSOLVE_MID45[12][2] = {
+  {2460706.211959834, 2460706.262619581},   /* 2025-01-30 */
+  {2460736.241376039, 2460736.329060860},   /* 2025-03-01 */
+  {2460765.267621290, 2460765.340735438},   /* 2025-03-30 */
+  {2460794.293062627, 2460794.354716877},   /* 2025-04-28 */
+  {2460824.316790390, 2460824.413162007},   /* 2025-05-28 */
+  {2460853.327019621, 2460853.389818894},   /* 2025-06-26 */
+  {2460882.315769845, 2460882.348273627},   /* 2025-07-25 */
+  {2460912.285542799, 2460912.308896410},   /* 2025-08-24 */
+  {2460941.248116870, 2460941.252271402},   /* 2025-09-22 */
+  {2460971.210514179, 2460971.212179313},   /* 2025-10-22 */
+  {2461001.184467469, 2461001.195873260},   /* 2025-11-21 */
+  {2461031.181372040, 2461031.223635422},   /* 2025-12-21 */
+};
+static const double SKY_SETSOLVE_HIGH60[12][2] = {
+  {2460706.173261592, 2460706.226433615},   /* 2025-01-30 */
+  {2460736.227652046, 2460736.335782412},   /* 2025-03-01 */
+  {2460765.277377197, 2460765.374065649},   /* 2025-03-30 */
+  {2460794.327049147, 2460794.420246489},   /* 2025-04-28 */
+  {2460824.375462957, 2460824.516601558},   /* 2025-05-28 */
+  {2460853.394095609, 2460853.463548038},   /* 2025-06-26 */
+  {2460882.365617409, 2460882.392235455},   /* 2025-07-25 */
+  {2460912.310187954, 2460912.316264119},   /* 2025-08-24 */
+  {2460941.249482482, 2460942.238925292},   /* 2025-09-22 */
+  {2460971.187900848, 2460972.165052444},   /* 2025-10-22 */
+  {2461001.137552446, 2461002.123227193},   /* 2025-11-21 */
+  {2461031.121036874, 2461031.137639221},   /* 2025-12-21 */
+};
+
+/* The grid dates, one day after each 2025 conjunction. Kept beside the tables
+ * because the fixture is meaningless without knowing which evening each row
+ * describes, and because the conjunction-evening grid that an earlier draft
+ * used leaves 20 of 48 rows with no moonset at all. */
+static const int SETSOLVE_DATES[12][3] = {
+  {2025,  1, 30}, {2025,  3,  1}, {2025,  3, 30}, {2025,  4, 28},
+  {2025,  5, 28}, {2025,  6, 26}, {2025,  7, 25}, {2025,  8, 24},
+  {2025,  9, 22}, {2025, 10, 22}, {2025, 11, 21}, {2025, 12, 21},
+};
+
+typedef struct {
+  const char *name;
+  double lat_deg;
+  double lon_deg;
+  const double (*table)[2];
+} SetSolveSite;
+
+static const SetSolveSite SETSOLVE_SITES[4] = {
+  {"jakarta", -6.2, 106.8, SKY_SETSOLVE_JAKARTA},
+  {"mecca",   21.4,  39.8, SKY_SETSOLVE_MECCA},
+  {"mid45",   45.0,   0.0, SKY_SETSOLVE_MID45},
+  {"high60",  60.0,   0.0, SKY_SETSOLVE_HIGH60},
+};
 
 /* Topocentric fixtures for issue #17.
  *
@@ -1808,6 +1914,58 @@ static void check_group7_shipped_elongation(void) {
   printf("elongation_shipped_path max: %.7f deg\n", max_err);
 }
 
+/* TEMPORARY, removed in the next commit. Prints the set-instant residuals so
+ * the tolerances in group 14 can be measured rather than guessed. */
+static void setsolve_measure(void) {
+  int s, i;
+  for (s = 0; s < 4; s++) {
+    const SetSolveSite *site = &SETSOLVE_SITES[s];
+    HijriLocation loc;
+    double max_ss = 0.0, max_ms = 0.0, max_conv = 0.0;
+
+    loc.latitude_deg = site->lat_deg;
+    loc.longitude_deg = site->lon_deg;
+    loc.elevation_m = 0.0;
+    loc.name = NULL;
+
+    for (i = 0; i < 12; i++) {
+      /* LOCAL midnight expressed in UT, matching hijri.h:1182. NOT -0.5.
+       * hijri_jd_from_gregorian already returns 0h UT, and hijri_find_sunset
+       * scans forward 24 hours from whatever it is handed, so subtracting half
+       * a day starts the scan at noon on the PREVIOUS day and returns the
+       * previous evening's sunset at most longitudes. hijri.h:1163-1181
+       * documents this exact off-by-one-day class, which the library was
+       * already bitten by once. */
+      double jd_midnight = hijri_jd_from_gregorian(
+          SETSOLVE_DATES[i][0], SETSOLVE_DATES[i][1],
+          (double)SETSOLVE_DATES[i][2]) - site->lon_deg / 360.0;
+      double lib_ss, lib_ms, d;
+      if (hijri_find_sunset(jd_midnight, &loc, &lib_ss) != HIJRI_EVENT_OK) {
+        printf("  setsolve %s row %d: NO SUNSET\n", site->name, i);
+        continue;
+      }
+      d = fabs(lib_ss - site->table[i][0]) * 86400.0;
+      if (d > max_ss) max_ss = d;
+
+      /* Bisection convergence, no oracle involved: the library's own altitude
+       * at the instant it reports, against the target it solved for. */
+      d = fabs(hijri_sun_altitude(lib_ss, &loc) -
+               (-(HIJRI__REFRACTION_AT_HORIZON_DEG +
+                  HIJRI__SOLAR_SEMIDIAMETER_DEG)));
+      if (d > max_conv) max_conv = d;
+
+      if (hijri_find_moonset(lib_ss, &loc, &lib_ms) != HIJRI_EVENT_OK) {
+        printf("  setsolve %s row %d: NO MOONSET\n", site->name, i);
+        continue;
+      }
+      d = fabs(lib_ms - site->table[i][1]) * 86400.0;
+      if (d > max_ms) max_ms = d;
+    }
+    printf("setsolve max %-8s sunset %.4f s  moonset %.4f s  converge %.3e deg\n",
+           site->name, max_ss, max_ms, max_conv);
+  }
+}
+
 /* MUTATION M8 (2026-08-05): negating the sign of hijri__eqeq_deg() fails this
  * group with, verbatim:
  *   FAIL eqeq at jd=2415020.5: got -0.0043072 want 0.0044419 (err 0.0087491 > tol 0.0010000)
@@ -1874,6 +2032,7 @@ int main(void) {
   check_group5_frame_counterfactual();
   check_group6_sun_harness();
   check_group7_shipped_elongation();
+  setsolve_measure();
   check_group8_eqeq();
   check_group10_ref_selftest();
   check_group9_topo_altitude();
