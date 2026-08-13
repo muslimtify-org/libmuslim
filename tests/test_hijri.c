@@ -1121,6 +1121,72 @@ static void test_pedoman_worked_example(void) {
             1);
 }
 
+/* Kemenag's own published hilal figures, Ephemeris Hisab Rukyat 2023, page
+ * 604, table "DAFTAR WAKTU IJTIMAK TINGGI HILAL ELONGASI PENENTU AWAL BULAN
+ * HIJRIAH TAHUN 2023 M". Published by Direktorat Urusan Agama Islam dan
+ * Pembinaan Syariah, Kementerian Agama RI, 2022.
+ *
+ * The book's own footnote states the data conforms to the new MABIMS criteria
+ * and comes from the Sinkronisasi Data Hisab Taqwim Standar Indonesia held
+ * 20-22 October 2021. That footnote is what makes these rows an authority
+ * statement rather than one team's calculation.
+ *
+ * WHY THIS FIXTURE EXISTS ALONGSIDE test_kemenag_official_calendar. That test
+ * validates against announced month starts, which are the OUTPUT of Kemenag's
+ * method, so it can only check whether the library's predicate agrees with a
+ * yes or no. These rows are the INPUTS the decision is made from, so they
+ * check the quantities themselves. Both are kept.
+ *
+ * UNITS ARE AS PRINTED: degrees and decimal arcminutes, with the sign carried
+ * in its own field. Converting to decimal degrees here would hide a
+ * transcription error that a reader comparing against the page would catch.
+ * Row 8's altitude minimum is printed "-00 21,78" with a comma decimal
+ * separator, rendered as a period below.
+ *
+ * DATE IS THE IJTIMAK DATE, WITH ONE EXCEPTION. The published altitude and
+ * elongation describe the sunset of the ijtimak day. Sya'ban 1444 shows why
+ * that matters: ijtimak Monday 20 February, published altitude below the 3 deg
+ * threshold, so Kemenag applied istikmal and the month began Wednesday 22
+ * February rather than Tuesday. Sampling the announced start date instead
+ * would read the wrong evening and still produce plausible numbers.
+ *
+ * The exception is Zulqa'dah 1444, row 5, whose printed footnote reads
+ * "Posisi hilal pada tanggal 20 Mei 2023 M / 29 Syawal 1444 H". Its ijtimak
+ * falls at 22:53 WIB, after sunset, so its figures describe the FOLLOWING
+ * evening. The `d` field below carries the evening actually sampled, which is
+ * 20 May for that row and the ijtimak date for every other. */
+typedef struct {
+  int y, m, d;              /* the evening sampled, see note above */
+  int alt_lo_sign;
+  double alt_lo_deg, alt_lo_min;
+  int alt_hi_sign;
+  double alt_hi_deg, alt_hi_min;
+  double el_lo_deg, el_lo_min;
+  double el_hi_deg, el_hi_min;
+  const char *name;
+} KemenagPublished;
+
+static const KemenagPublished KEMENAG_PUBLISHED_2023[] = {
+  {2023,  1, 22,  1,  6, 34.11,  1,  8,  5.57,  7, 48.85,  9, 16.20, "Rajab 1444"},
+  {2023,  2, 20,  1,  1, 19.73,  1,  2, 38.94,  4,  4.89,  4, 33.93, "Sya'ban 1444"},
+  {2023,  3, 22,  1,  7,  0.32,  1,  8, 43.21,  7, 56.32,  9, 32.41, "Ramadan 1444"},
+  {2023,  4, 20,  1,  0, 51.24,  1,  2, 21.39,  1, 28.72,  3,  5.41, "Syawal 1444"},
+  {2023,  5, 20,  1,  5, 18.88,  1,  7, 51.44,  8,  3.17,  9, 31.09, "Zulqa'dah 1444"},
+  {2023,  6, 18,  1,  0, 11.78,  1,  2, 21.57,  4, 23.93,  4, 56.21, "Zulhijjah 1444"},
+  {2023,  7, 18,  1,  5, 21.77,  1,  7, 29.15,  7, 26.68,  8, 34.15, "Muharram 1445"},
+  {2023,  8, 16, -1,  0, 21.78,  1,  1, 26.80,  4,  6.38,  4, 28.11, "Safar 1445"},
+  {2023,  9, 15,  1,  2, 25.07,  1,  3, 39.75,  3, 14.72,  4, 17.36, "Rabi'ul Awal 1445"},
+  {2023, 10, 15,  1,  5,  1.40,  1,  6,  0.40,  6,  5.48,  7, 34.41, "Rabi'ul Akhir 1445"},
+  {2023, 11, 13, -1,  2, 21.07, -1,  0, 47.32,  2, 29.16,  2, 49.66, "Jumadal Ula 1445"},
+  {2023, 12, 13,  1,  3, 16.27,  1,  4, 50.36,  6,  0.24,  7, 14.31, "Jumadal Akhirah 1445"},
+};
+
+/* Degrees and decimal arcminutes to decimal degrees, sign applied to the whole
+ * quantity rather than to the degree field, so "-00 21.78" is negative. */
+static double kemenag_dm(int sign, double deg, double min) {
+  return sign * (deg + min / 60.0);
+}
+
 /* Official Kemenag month starts, Kalender Hijriah Indonesia 2024-2026
  * (Rajab 1445 through Rajab 1448), Ditjen Bimas Islam.
  *
