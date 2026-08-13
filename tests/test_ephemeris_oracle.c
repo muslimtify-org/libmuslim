@@ -221,6 +221,27 @@
  * the query convention, not the library, had drifted. */
 #define TOL_SETSOLVE_HORIZONS_DEG 0.007
 
+/* The FLOOR every one of the same six cells must clear, which is a different
+ * assertion from the ceiling above and exists for a different reason. The
+ * ceiling bounds accuracy. This bounds INDEPENDENCE: it fails if the stored
+ * table stops being an outside source.
+ *
+ * Measured over all three rows and both columns, printed by this binary as
+ * "setsolve_horizons residual min ... max ...": the maximum is 0.0034349 deg
+ * and the MINIMUM is 0.0000433 deg, the row 1 declination difference. The
+ * floor binds against the minimum, so 1e-5 deg is 4.33x below the measured
+ * minimum and 343x below the measured maximum.
+ *
+ * The other side of the choice is what the floor must separate from. A table
+ * regenerated from the library and transcribed at the seven decimals Horizons
+ * prints would differ from the library's own doubles by at most 5e-8 deg,
+ * which is 200x below this floor. The floor therefore sits between the two
+ * populations with two orders of magnitude of clearance on each side, and it
+ * asserts that the sources disagree at all rather than asserting how much.
+ * Sizing it near the measured residual would make it a second accuracy bound
+ * that fails whenever the library improves. */
+#define TOL_SETSOLVE_HORIZONS_FLOOR_DEG 1e-5
+
 /* MEASURED MUTATION SENSITIVITY of the four tables above.
  *
  * The Meeus 47.a block further down records an exhaustive 120-mutation sweep of
@@ -997,6 +1018,44 @@ static const double HORIZONS_SETSOLVE_SUN[3][3] = {
  *     and M13 record, not a hand-transcribed one. The M3 scope note documents
  *     this same weakness in the max-only form, and groups 1 and 6 answered it
  *     with a per-row minimum, which is the shape this guard would need.
+ *
+ * S5b re-runs S5 against the replacement guard. The S5 record above is kept
+ * unchanged as the evidence for why the guard was replaced, not as a live
+ * result. The distinctness counter it describes no longer exists. In its place
+ * check_group14_setsolve asserts a FLOOR, TOL_SETSOLVE_HORIZONS_FLOOR_DEG =
+ * 1e-5 deg, on the MINIMUM of the six differences. Both runs below are against
+ * the suite at 1029 checks, whose unmutated result is "1029 checks, 0
+ * failures" with "setsolve_horizons residual min 0.0000433 max 0.0034349 deg".
+ *
+ * S5b-a  HORIZONS_SETSOLVE_SUN declination column replaced with the library's
+ *     own values, -17.5184891, 23.3402933, -23.4382536, which is exactly the
+ *     mutation S5 above ran and survived.
+ *     CAUGHT
+ *       setsolve_horizons residual min 0.0000000 max 0.0034349 deg
+ *       FAIL setsolve_horizons_independent: expected a non-zero value, got -0.000009986
+ *     Suite went to "1029 checks, 1 failures", exit 1.
+ *
+ * S5b-b  BOTH columns replaced with the library's own values, right ascensions
+ *     313.2737700, 95.5535599, 269.8188563 and the three declinations above,
+ *     which is the S5 second run.
+ *     CAUGHT
+ *       setsolve_horizons residual min 0.0000000 max 0.0000000 deg
+ *       FAIL setsolve_horizons_independent: expected a non-zero value, got -0.000009987
+ *     Suite went to "1029 checks, 1 failures", exit 1.
+ *
+ *     Both mutations were reverted. The two failure values, -0.000009986 and
+ *     -0.000009987, are the floor minus a residual of order 1e-8, which is the
+ *     rounding of a seven-decimal transcription against the library's doubles.
+ *     That is the population the floor separates from, and the measured gap to
+ *     it is roughly 200x, against 4.33x of headroom above the real minimum.
+ *
+ *     One intermediate result is recorded because it changed the guard's
+ *     shape. The floor was first written over the MAXIMUM of the six
+ *     differences and executed against S5b-a: the untouched right ascension
+ *     column kept the maximum at 0.0034349 deg, the suite printed "1029
+ *     checks, 0 failures" and exited 0. A maximum only guards the whole table
+ *     going degenerate at once, so the guard was rewritten over the minimum
+ *     before the mutations above were run.
  */
 
 /* Topocentric fixtures for issue #17.
@@ -2164,26 +2223,52 @@ static void check_group14_setsolve(void) {
   }
 
   {
-    int k, n_rows = 0, n_distinct = 0;
+    int k;
+    double max_resid = 0.0, min_resid = 1e9;
     for (k = 0; k < 3; k++) {
       double jd = HORIZONS_SETSOLVE_SUN[k][0];
       HijriSunPosition p = hijri_sun_position(hijri_jd_tt_from_ut(jd));
       double dra = fabs(p.right_ascension_deg - HORIZONS_SETSOLVE_SUN[k][1]);
-      n_rows++;
-      if (dra > 0.0) n_distinct++;
+      double ddec = fabs(p.declination_deg - HORIZONS_SETSOLVE_SUN[k][2]);
+      if (dra > max_resid) max_resid = dra;
+      if (ddec > max_resid) max_resid = ddec;
+      if (dra < min_resid) min_resid = dra;
+      if (ddec < min_resid) min_resid = ddec;
       check_angle_within("setsolve_horizons_sun_ra", jd,
                          p.right_ascension_deg, HORIZONS_SETSOLVE_SUN[k][1],
                          TOL_SETSOLVE_HORIZONS_DEG);
       check_within("setsolve_horizons_sun_dec", jd, p.declination_deg,
                    HORIZONS_SETSOLVE_SUN[k][2], TOL_SETSOLVE_HORIZONS_DEG);
     }
-    /* A copied table would make every difference exactly zero. Count rather
-     * than take a minimum: two independently retrieved sources can collide at
-     * a row purely by rounding, which is the defect amendment A13 in the
-     * topocentric run had to fix. */
-    printf("setsolve_horizons distinct rows = %d of %d\n", n_distinct, n_rows);
-    check_true_nonzero("setsolve_horizons_nondegenerate_rows",
-                       (double)(4 * n_distinct - 3 * n_rows));
+    /* A FLOOR, not a distinctness count, and the difference matters.
+     *
+     * Mutation S5 showed the distinctness count does not guard this table. It
+     * counted only the right ascension column, leaving declination unguarded,
+     * and counting distinctness is the wrong test here regardless: the M7
+     * precedent guards one stored table being copied byte-exact from another,
+     * and this table has no sibling to copy from. Its realistic failure is
+     * being regenerated from the LIBRARY instead of from Horizons, which
+     * yields seven-decimal values that never equal the library's doubles bit
+     * for bit, so a distinctness count passes.
+     *
+     * Two genuinely independent sources must disagree by a non-trivial amount.
+     * The library's ch. 25 solar theory reaches 0.0084042 deg against DE440 by
+     * this file's own header, and the measured residual here runs to
+     * 0.0034349 deg. A table regenerated from the library would sit at
+     * roughly zero and fail this floor.
+     *
+     * The floor is taken over the MINIMUM of the six differences, not the
+     * maximum, and that was measured rather than assumed. A floor on the
+     * maximum was written first and executed: replacing the declination column
+     * alone left the right ascension column's 0.0034349 deg standing, the
+     * maximum was unchanged, and the suite stayed at "1029 checks, 0
+     * failures". A maximum guards only the whole table going degenerate at
+     * once. The minimum guards every cell, which is the shape groups 1 and 6
+     * already use and the shape the S5 record says this guard needed. */
+    printf("setsolve_horizons residual min %.7f max %.7f deg\n",
+           min_resid, max_resid);
+    check_true_nonzero("setsolve_horizons_independent",
+                       min_resid - TOL_SETSOLVE_HORIZONS_FLOOR_DEG);
   }
 }
 
