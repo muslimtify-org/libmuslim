@@ -1121,6 +1121,18 @@ static void test_pedoman_worked_example(void) {
             1);
 }
 
+/* Containment bound for the topocentric elongation against Kemenag's published
+ * ranges. Measured worst excursion over these rows, printed by the temporary
+ * harness in the preceding commit: 0.0106 deg. Bound below is that rounded up to
+ * leave roughly 2x margin.
+ *
+ * The single excursion is explained rather than absorbed. Sabang sits at the
+ * elongation MINIMUM in Safar 1445, where in every other row it sits near the
+ * maximum, so the residual is the library's own elongation error against DE440
+ * rather than a convention difference. The altitude assertion below needs no
+ * tolerance at all. */
+#define TOL_KEMENAG_PUBLISHED_ELONG_DEG 0.022
+
 /* Kemenag's own published hilal figures, Ephemeris Hisab Rukyat 2023, page
  * 604, table "DAFTAR WAKTU IJTIMAK TINGGI HILAL ELONGASI PENENTU AWAL BULAN
  * HIJRIAH TAHUN 2023 M". Published by Direktorat Urusan Agama Islam dan
@@ -1185,6 +1197,77 @@ static const KemenagPublished KEMENAG_PUBLISHED_2023[] = {
  * quantity rather than to the degree field, so "-00 21.78" is negative. */
 static double kemenag_dm(int sign, double deg, double min) {
   return sign * (deg + min / 60.0);
+}
+
+/* Group: the library against Kemenag's own published quantities.
+ *
+ * The assertion is CONTAINMENT, not agreement with an endpoint, and the reason
+ * is the whole design. The published ranges span Indonesia, and the location
+ * producing the extreme moves from month to month, so no fixed reference point
+ * reproduces the endpoints. Sabang is inside Indonesia, so if the library
+ * computes the same quantity Kemenag publishes, the library's value at Sabang
+ * must lie between the published minimum and maximum. That argument needs no
+ * assumption about where the endpoints are evaluated.
+ *
+ * An earlier analysis fitted one reference location to the published maxima and
+ * concluded from the RMS that the library's centre-geometric altitude fits
+ * worst and that Kemenag's altitude is mar'i. Containment reverses that
+ * conclusion, and containment is the sounder test because the fit assumed a
+ * fixed extreme location that does not exist. The record is kept here so the
+ * fit is not attempted again.
+ *
+ * The geocentric check asserts a FAILURE on purpose. Kemenag's published
+ * elongation is topocentric, and asserting that the geocentric form falls
+ * outside the published ranges pins that as a measured fact rather than a
+ * citation. It is the check that would catch a future simplification of
+ * HIJRI_PREDICATE_MABIMS_2021 to the geocentric elongation. */
+static void test_kemenag_published_quantities(void) {
+  HijriLocation sabang = {5.8926, 95.3238, 10.0, "Sabang"};
+  size_t n = sizeof(KEMENAG_PUBLISHED_2023) / sizeof(KEMENAG_PUBLISHED_2023[0]);
+  size_t i;
+  int geo_outside = 0;
+
+  for (i = 0; i < n; i++) {
+    const KemenagPublished *r = &KEMENAG_PUBLISHED_2023[i];
+    HijriEveningParameters p =
+        hijri_compute_evening_parameters(r->y, r->m, r->d, &sabang);
+    double alo = kemenag_dm(r->alt_lo_sign, r->alt_lo_deg, r->alt_lo_min);
+    double ahi = kemenag_dm(r->alt_hi_sign, r->alt_hi_deg, r->alt_hi_min);
+    double elo = kemenag_dm(1, r->el_lo_deg, r->el_lo_min);
+    double ehi = kemenag_dm(1, r->el_hi_deg, r->el_hi_min);
+    char label[96];
+    double a, e, g;
+
+    check_int("kemenag_published_sunset_available", p.sunset_status,
+              HIJRI_EVENT_OK);
+    if (p.sunset_status != HIJRI_EVENT_OK) {
+      continue;
+    }
+    a = p.moon_center_geometric_altitude_deg;
+    e = p.topocentric_elongation_deg;
+    g = p.geocentric_elongation_deg;
+
+    /* Altitude, exact containment. No tolerance: this separates the candidate
+     * conventions, since adding the Moon's semidiameter or refraction pushes
+     * rows outside these same ranges. */
+    sprintf(label, "kemenag_published_altitude_contained_%s", r->name);
+    check_true(label, a >= alo && a <= ahi);
+
+    /* Topocentric elongation, containment within the measured bound. */
+    sprintf(label, "kemenag_published_elongation_contained_%s", r->name);
+    check_true(label, e >= elo - TOL_KEMENAG_PUBLISHED_ELONG_DEG &&
+                          e <= ehi + TOL_KEMENAG_PUBLISHED_ELONG_DEG);
+
+    if (g < elo || g > ehi) {
+      geo_outside++;
+    }
+  }
+
+  /* The geocentric form must fall outside the published range in the MAJORITY
+   * of rows. Stated as a majority rather than a count so this does not become a
+   * transcription of one run's output. */
+  check_true("kemenag_published_elongation_is_topocentric",
+             (size_t)geo_outside * 2 > n);
 }
 
 /* Official Kemenag month starts, Kalender Hijriah Indonesia 2024-2026
@@ -1438,6 +1521,7 @@ int main(void) {
   test_solar_position_pin();
   test_pedoman_worked_example();
   test_kemenag_official_calendar();
+  test_kemenag_published_quantities();
   test_muhammadiyah_official_calendar();
   test_conjunction_status_returns();
   check_true("all_predicate_enums_represented",
