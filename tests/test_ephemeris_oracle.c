@@ -210,6 +210,17 @@
  * regression is orders of magnitude away from this bound. */
 #define TOL_SETSOLVE_CONVERGE_DEG 1e-6
 
+/* Horizons cross-check on the solar position the sunset crossing is solved
+ * from. Measured maxima over the three rows, printed by this binary when the
+ * bound was set to zero to read them off: right ascension 0.0034349 deg,
+ * declination 0.0009276 deg. 0.007 is the larger of the two rounded up to leave
+ * 2.04x margin, consistent with the roughly 2x margin used elsewhere in this
+ * file. The figure sits below the 0.0084042 deg maximum solar position error
+ * this file's header records against DE440, which is what a matching query
+ * convention should produce. A residual an order of magnitude larger would mean
+ * the query convention, not the library, had drifted. */
+#define TOL_SETSOLVE_HORIZONS_DEG 0.007
+
 /* MEASURED MUTATION SENSITIVITY of the four tables above.
  *
  * The Meeus 47.a block further down records an exhaustive 120-mutation sweep of
@@ -858,6 +869,25 @@ static const SetSolveSite SETSOLVE_SITES[4] = {
   {"mecca",   21.4,  39.8, SKY_SETSOLVE_MECCA,   1.3},
   {"mid45",   45.0,   0.0, SKY_SETSOLVE_MID45,   3.6},
   {"high60",  60.0,   0.0, SKY_SETSOLVE_HIGH60,  15.0},
+};
+
+/* Horizons cross-check on the POSITION the sunset crossing is solved from,
+ * retrieved with the query recorded in
+ * docs/research/2026-08-08-set-solver-oracle.md. Columns are jd_ut1, apparent
+ * geocentric solar right ascension and declination in degrees, at three of the
+ * solved jakarta sunset instants.
+ *
+ * WHAT THIS DOES NOT COVER, stated plainly rather than implied away. It
+ * validates the position, not the generator's frame replication, because a
+ * geocentric Sun projected into a site horizon frame is not a standard Horizons
+ * output. Two other things cover the frame instead: the library's apparent
+ * sidereal time is pinned independently by SKY_EQEQ at 0.0004829 deg, and a
+ * frame error in the generator would land in seconds to minutes rather than
+ * hiding, which the group 14 maxima would show immediately. */
+static const double HORIZONS_SETSOLVE_SUN[3][3] = {
+  {2460705.970467385, 313.2706250, -17.5194167},
+  {2460852.950441329, 95.5501250, 23.3402500},
+  {2461030.962099322, 269.8167500, -23.4381389},
 };
 
 /* Topocentric fixtures for issue #17.
@@ -2022,6 +2052,29 @@ static void check_group14_setsolve(void) {
     }
     printf("setsolve max %-8s sunset %.4f s  moonset %.4f s\n",
            site->name, max_ss, max_ms);
+  }
+
+  {
+    int k, n_rows = 0, n_distinct = 0;
+    for (k = 0; k < 3; k++) {
+      double jd = HORIZONS_SETSOLVE_SUN[k][0];
+      HijriSunPosition p = hijri_sun_position(hijri_jd_tt_from_ut(jd));
+      double dra = fabs(p.right_ascension_deg - HORIZONS_SETSOLVE_SUN[k][1]);
+      n_rows++;
+      if (dra > 0.0) n_distinct++;
+      check_angle_within("setsolve_horizons_sun_ra", jd,
+                         p.right_ascension_deg, HORIZONS_SETSOLVE_SUN[k][1],
+                         TOL_SETSOLVE_HORIZONS_DEG);
+      check_within("setsolve_horizons_sun_dec", jd, p.declination_deg,
+                   HORIZONS_SETSOLVE_SUN[k][2], TOL_SETSOLVE_HORIZONS_DEG);
+    }
+    /* A copied table would make every difference exactly zero. Count rather
+     * than take a minimum: two independently retrieved sources can collide at
+     * a row purely by rounding, which is the defect amendment A13 in the
+     * topocentric run had to fix. */
+    printf("setsolve_horizons distinct rows = %d of %d\n", n_distinct, n_rows);
+    check_true_nonzero("setsolve_horizons_nondegenerate_rows",
+                       (double)(4 * n_distinct - 3 * n_rows));
   }
 }
 
