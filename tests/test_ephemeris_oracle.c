@@ -184,6 +184,64 @@
  * residual printed by this group, 2.93 arcsec. */
 #define TOL_DELTA_T_SEC 11.0
 
+/* Group 14, the set solvers against oracle-solved instants with the convention
+ * held equal on both sides. Measured maxima, printed by the temporary harness
+ * in the preceding commit as "setsolve max": sunset 2.7380 s, moonset 7.2926 s.
+ * Each bound below is that rounded up to leave roughly 2x margin.
+ *
+ * These are NOT the library's error against physical truth. They are its error
+ * against an oracle using the library's own convention, which is the quantity
+ * issue #18 asks for. The convention gap itself belongs to issue #33. */
+#define TOL_SETSOLVE_SUNSET_S 5.5
+
+/* Moonset is bounded per site, not once. Measured maxima: jakarta 0.3862 s,
+ * mecca 0.6073 s, mid45 1.7952 s, high60 7.2926 s, an 18.88x spread against
+ * sunset's 1.75x. A single bound sized for high60 would leave the Jakarta
+ * assertion roughly 39x slack, which is not an assertion. The high60 figure is
+ * not anomalous: three of its twelve rows are ones where the Moon set before
+ * sunset and the solver walked to the following night, a different regime with
+ * a different error scale, kept because they exercise the 24 hour scan.
+ * Each site's bound sits in tol_moonset_s in SETSOLVE_SITES. */
+
+/* Bisection convergence, measured as 1.296e-07 deg by the same harness. The bound is
+ * deliberately far above that, because this assertion exists to catch a solver
+ * regression such as a reduced iteration count, not to certify the last bit.
+ * 40 halvings of a one hour bracket reach about 3e-9 seconds, so any plausible
+ * regression is orders of magnitude away from this bound. */
+#define TOL_SETSOLVE_CONVERGE_DEG 1e-6
+
+/* Horizons cross-check on the solar position the sunset crossing is solved
+ * from. Measured maxima over the three rows, printed by this binary when the
+ * bound was set to zero to read them off: right ascension 0.0034349 deg,
+ * declination 0.0009276 deg. 0.007 is the larger of the two rounded up to leave
+ * 2.04x margin, consistent with the roughly 2x margin used elsewhere in this
+ * file. The figure sits below the 0.0084042 deg maximum solar position error
+ * this file's header records against DE440, which is what a matching query
+ * convention should produce. A residual an order of magnitude larger would mean
+ * the query convention, not the library, had drifted. */
+#define TOL_SETSOLVE_HORIZONS_DEG 0.007
+
+/* The FLOOR every one of the same six cells must clear, which is a different
+ * assertion from the ceiling above and exists for a different reason. The
+ * ceiling bounds accuracy. This bounds INDEPENDENCE: it fails if the stored
+ * table stops being an outside source.
+ *
+ * Measured over all three rows and both columns, printed by this binary as
+ * "setsolve_horizons residual min ... max ...": the maximum is 0.0034349 deg
+ * and the MINIMUM is 0.0000433 deg, the row 1 declination difference. The
+ * floor binds against the minimum, so 1e-5 deg is 4.33x below the measured
+ * minimum and 343x below the measured maximum.
+ *
+ * The other side of the choice is what the floor must separate from. A table
+ * regenerated from the library and transcribed at the seven decimals Horizons
+ * prints would differ from the library's own doubles by at most 5e-8 deg,
+ * which is 200x below this floor. The floor therefore sits between the two
+ * populations with two orders of magnitude of clearance on each side, and it
+ * asserts that the sources disagree at all rather than asserting how much.
+ * Sizing it near the measured residual would make it a second accuracy bound
+ * that fails whenever the library improves. */
+#define TOL_SETSOLVE_HORIZONS_FLOOR_DEG 1e-5
+
 /* MEASURED MUTATION SENSITIVITY of the four tables above.
  *
  * The Meeus 47.a block further down records an exhaustive 120-mutation sweep of
@@ -726,6 +784,279 @@ static const double SKY_EQEQ[24][2] = {
   { 2488069.5, +0.000838030},
 };
 
+/* Sunset and moonset instants solved on the oracle side, for issue #18.
+ *
+ * PROVENANCE: generated with Skyfield 1.54 on JPL DE440 (de440s.bsp). Columns
+ * are the sunset instant and the moonset instant, both as Julian Day in UT1 to
+ * nine decimals, which is 86 microseconds against a second-scale residual. One
+ * table per observer site, all at elevation 0. Grid dates are one day after
+ * each 2025 conjunction. The generator was run by hand and is not committed,
+ * matching every other oracle table in this file. Its full text is recorded in
+ * docs/research/2026-08-08-set-solver-oracle.md.
+ *
+ * THE CONVENTION IS HELD EQUAL ON BOTH SIDES, ON PURPOSE. The oracle solves for
+ * the same target the library does, using a GEOCENTRIC Sun with apparent
+ * right ascension and apparent sidereal time, and the same
+ * -(REFRACTION + SOLAR_SEMIDIAMETER) target. That is what separates this
+ * fixture from issue #33, which is about whether those two constants are the
+ * right ones. Holding the convention equal means this table keeps its meaning
+ * after #33 changes them, because #33 changes both sides together.
+ *
+ * THE MOON SIDE REPLICATES THE MEAN FRAME AND THIS IS THE EASY THING TO GET
+ * WRONG. hijri__altitude_deg pairs mean-of-date right ascension with MEAN
+ * sidereal time, deliberately, and the header documents that choice. Skyfield's
+ * altaz returns apparent with true sidereal time. Nutation in right ascension
+ * reaches roughly 17 arcsec, and near the horizon the Moon falls at about
+ * 0.0036 deg per second, so comparing against an unmatched frame would report
+ * on the order of 1.3 s of deliberate design as library error. The generator
+ * subtracts nutation to reach the mean equinox and uses GMST. */
+static const double SKY_SETSOLVE_JAKARTA[12][2] = {
+  {2460705.970467385, 2460706.005166394},   /* 2025-01-30 */
+  {2460735.966437230, 2460736.012782676},   /* 2025-03-01 */
+  {2460764.957508930, 2460764.987453242},   /* 2025-03-30 */
+  {2460793.949553166, 2460793.966749458},   /* 2025-04-28 */
+  {2460823.947139859, 2460823.998588262},   /* 2025-05-28 */
+  {2460852.950441329, 2460852.990654236},   /* 2025-06-26 */
+  {2460881.954225177, 2460881.978115114},   /* 2025-07-25 */
+  {2460911.953985053, 2460911.991356533},   /* 2025-08-24 */
+  {2460940.950524119, 2460940.965760513},   /* 2025-09-22 */
+  {2460970.948337770, 2460970.972346232},   /* 2025-10-22 */
+  {2461000.952330614, 2461000.988626409},   /* 2025-11-21 */
+  {2461030.962099322, 2461031.010110631},   /* 2025-12-21 */
+};
+static const double SKY_SETSOLVE_MECCA[12][2] = {
+  {2460706.131631374, 2460706.174817780},   /* 2025-01-30 */
+  {2460736.142414247, 2460736.208249921},   /* 2025-03-01 */
+  {2460765.149332837, 2460765.199414176},   /* 2025-03-30 */
+  {2460794.156236909, 2460794.194021995},   /* 2025-04-28 */
+  {2460824.165061587, 2460824.238505167},   /* 2025-05-28 */
+  {2460853.171294338, 2460853.225059390},   /* 2025-06-26 */
+  {2460882.168821229, 2460882.200234720},   /* 2025-07-25 */
+  {2460912.155539094, 2460912.189597008},   /* 2025-08-24 */
+  {2460941.136838004, 2460941.149751297},   /* 2025-09-22 */
+  {2460971.118712745, 2460971.135562280},   /* 2025-10-22 */
+  {2461001.109516486, 2461001.138223613},   /* 2025-11-21 */
+  {2461031.113796608, 2461031.161757674},   /* 2025-12-21 */
+};
+static const double SKY_SETSOLVE_MID45[12][2] = {
+  {2460706.211959834, 2460706.262619581},   /* 2025-01-30 */
+  {2460736.241376039, 2460736.329060860},   /* 2025-03-01 */
+  {2460765.267621290, 2460765.340735438},   /* 2025-03-30 */
+  {2460794.293062627, 2460794.354716877},   /* 2025-04-28 */
+  {2460824.316790390, 2460824.413162007},   /* 2025-05-28 */
+  {2460853.327019621, 2460853.389818894},   /* 2025-06-26 */
+  {2460882.315769845, 2460882.348273627},   /* 2025-07-25 */
+  {2460912.285542799, 2460912.308896410},   /* 2025-08-24 */
+  {2460941.248116870, 2460941.252271402},   /* 2025-09-22 */
+  {2460971.210514179, 2460971.212179313},   /* 2025-10-22 */
+  {2461001.184467469, 2461001.195873260},   /* 2025-11-21 */
+  {2461031.181372040, 2461031.223635422},   /* 2025-12-21 */
+};
+static const double SKY_SETSOLVE_HIGH60[12][2] = {
+  {2460706.173261592, 2460706.226433615},   /* 2025-01-30 */
+  {2460736.227652046, 2460736.335782412},   /* 2025-03-01 */
+  {2460765.277377197, 2460765.374065649},   /* 2025-03-30 */
+  {2460794.327049147, 2460794.420246489},   /* 2025-04-28 */
+  {2460824.375462957, 2460824.516601558},   /* 2025-05-28 */
+  {2460853.394095609, 2460853.463548038},   /* 2025-06-26 */
+  {2460882.365617409, 2460882.392235455},   /* 2025-07-25 */
+  {2460912.310187954, 2460912.316264119},   /* 2025-08-24 */
+  {2460941.249482482, 2460942.238925292},   /* 2025-09-22 */
+  {2460971.187900848, 2460972.165052444},   /* 2025-10-22 */
+  {2461001.137552446, 2461002.123227193},   /* 2025-11-21 */
+  {2461031.121036874, 2461031.137639221},   /* 2025-12-21 */
+};
+
+/* The grid dates, one day after each 2025 conjunction. Kept beside the tables
+ * because the fixture is meaningless without knowing which evening each row
+ * describes, and because the conjunction-evening grid that an earlier draft
+ * used leaves 20 of 48 rows with no moonset at all. */
+static const int SETSOLVE_DATES[12][3] = {
+  {2025,  1, 30}, {2025,  3,  1}, {2025,  3, 30}, {2025,  4, 28},
+  {2025,  5, 28}, {2025,  6, 26}, {2025,  7, 25}, {2025,  8, 24},
+  {2025,  9, 22}, {2025, 10, 22}, {2025, 11, 21}, {2025, 12, 21},
+};
+
+typedef struct {
+  const char *name;
+  double lat_deg;
+  double lon_deg;
+  const double (*table)[2];
+  double tol_moonset_s;   /* per-site, see the comment on the bounds below */
+} SetSolveSite;
+
+static const SetSolveSite SETSOLVE_SITES[4] = {
+  {"jakarta", -6.2, 106.8, SKY_SETSOLVE_JAKARTA, 0.8},
+  {"mecca",   21.4,  39.8, SKY_SETSOLVE_MECCA,   1.3},
+  {"mid45",   45.0,   0.0, SKY_SETSOLVE_MID45,   3.6},
+  {"high60",  60.0,   0.0, SKY_SETSOLVE_HIGH60,  15.0},
+};
+
+/* Horizons cross-check on the POSITION the sunset crossing is solved from,
+ * retrieved with the query recorded in
+ * docs/research/2026-08-08-set-solver-oracle.md. Columns are jd_ut1, apparent
+ * geocentric solar right ascension and declination in degrees, at three of the
+ * solved jakarta sunset instants.
+ *
+ * WHAT THIS DOES NOT COVER, stated plainly rather than implied away. It
+ * validates the position, not the generator's frame replication, because a
+ * geocentric Sun projected into a site horizon frame is not a standard Horizons
+ * output. Two other things cover the frame instead: the library's apparent
+ * sidereal time is pinned independently by SKY_EQEQ at 0.0004829 deg, and a
+ * frame error in the generator would land in seconds to minutes rather than
+ * hiding, which the group 14 maxima would show immediately. */
+static const double HORIZONS_SETSOLVE_SUN[3][3] = {
+  {2460705.970467385, 313.2706250, -17.5194167},
+  {2460852.950441329, 95.5501250, 23.3402500},
+  {2461030.962099322, 269.8167500, -23.4381389},
+};
+
+/* MEASURED MUTATION SENSITIVITY of the set-solver fixtures above.
+ *
+ * S1 through S5 cover SKY_SETSOLVE_JAKARTA, SKY_SETSOLVE_HIGH60, the bisection
+ * solver itself and HORIZONS_SETSOLVE_SUN, following the same rule the M-series
+ * follows: every mutation below was applied, built and run, and only lines the
+ * binary actually printed are quoted. Two of the five were NOT caught and are
+ * recorded as gaps rather than replaced with mutations that work, following M4
+ * and M12. Every mutation was reverted, including the one to hijri.h, and
+ * neither this file nor hijri.h carries a mutation. All runs are against the
+ * suite at 1029 checks, whose unmutated result is "1029 checks, 0 failures".
+ *
+ * S1  SKY_SETSOLVE_JAKARTA row 0 sunset, 2460705.970467385 -> 2460705.970567385
+ *     (+0.0001 d, 8.64 s) against TOL_SETSOLVE_SUNSET_S = 5.5 s.
+ *     CAUGHT
+ *       FAIL setsolve_sunset_jakarta at jd=2460706.0: got 7.8265920 want 0.0000000 (err 7.8265920 > tol 5.5000000)
+ *     Suite went to "1029 checks, 1 failures", exit 1. The reported 7.83 s
+ *     rather than 8.64 s is the row's own 0.81 s residual signing against the
+ *     perturbation, which is the same directional effect M12 documents.
+ *
+ * S2  SKY_SETSOLVE_HIGH60 row 0 moonset, 2460706.226433615 ->
+ *     2460706.226533615 (+0.0001 d, 8.64 s).
+ *     NOT CAUGHT -- recorded as executed, not as a pass. The suite printed
+ *     "1029 checks, 0 failures" and exited 0. The only visible movement was the
+ *     printed maximum:
+ *       setsolve max high60   sunset 2.7380 s  moonset 9.0879 s
+ *     against the unmutated 7.2926 s. This is not a defect in the mutation, it
+ *     is what the bound says: high60's tol_moonset_s is 15.0 s because three of
+ *     its twelve rows are ones where the Moon set before sunset and the solver
+ *     walked to the following night, and 8.64 s is inside that. A bound tight
+ *     enough to catch this at high60 would sit below the site's own 7.2926 s
+ *     residual and fail on correct data, which is the same hard limit M4 and
+ *     M12 record.
+ *
+ *     The same perturbation IS pinned where the bound is an assertion rather
+ *     than an envelope. SKY_SETSOLVE_JAKARTA row 0 moonset, 2460706.005166394
+ *     -> 2460706.005266394, same +0.0001 d, against tol_moonset_s = 0.8 s:
+ *       FAIL setsolve_moonset_jakarta at jd=2460706.0: got 8.6589351 want 0.0000000 (err 8.6589351 > tol 0.8000000)
+ *     That went to "1029 checks, 1 failures", exit 1. Both runs are recorded
+ *     because the per-site bound of amendment A2 is exactly what makes the
+ *     difference between them, and a single shared bound would have left all
+ *     four sites in high60's position.
+ *
+ * S3  hijri__bisect_crossing at hijri.h:948, the iteration bound 40 -> 4. This
+ *     is the mutation check_group14_setsolve's convergence check exists for.
+ *     CAUGHT, by the convergence check at all 48 rows and by the oracle
+ *     comparisons as well:
+ *       FAIL setsolve_sunset_jakarta at jd=2460706.0: got 17.8820997 want 0.0000000 (err 17.8820997 > tol 5.5000000)
+ *       FAIL setsolve_converge_jakarta at jd=2460706.0: got -0.7596316 want -0.8334000 (err 0.0737684 > tol 0.0000010)
+ *       FAIL setsolve_moonset_jakarta at jd=2460706.0: got 21.6234997 want 0.0000000 (err 21.6234997 > tol 0.8000000)
+ *     Suite went to "1029 checks, 138 failures", exit 1. setsolve_converge_*
+ *     failed 48 of 48 times, one per row across all four sites.
+ *
+ *     What this says about coverage, stated plainly. For THIS mutation the
+ *     convergence check adds no coverage the oracle comparison did not already
+ *     provide: the sunset comparison fails at the same rows, and it fails
+ *     first. Four halvings of a one hour bracket leave 3.75 minutes of bracket,
+ *     so the instant moves by tens of seconds, far outside a 5.5 s bound. What
+ *     the convergence check does add is independence, not sensitivity: it reads
+ *     the library's own altitude at the instant the library reports and needs
+ *     no table at all, so it is the one assertion in group 14 that survives
+ *     deleting every fixture, and it cannot be satisfied by a solver regression
+ *     that happens to cancel against an ephemeris change. It is a different
+ *     kind of coverage, not a strictly larger one, and S3 is the evidence for
+ *     that rather than for the stronger claim.
+ *
+ * S4  HORIZONS_SETSOLVE_SUN row 0 right ascension, 313.2706250 -> 313.2806250
+ *     (+0.01 deg) against TOL_SETSOLVE_HORIZONS_DEG = 0.007 deg.
+ *     NOT CAUGHT -- recorded as executed, not as a pass. The suite printed
+ *     "1029 checks, 0 failures" and exited 0.
+ *
+ *     The reason is directional, exactly as at M12, and it was measured rather
+ *     than assumed. Temporarily setting the tolerance to 1e-9 prints the
+ *     unmutated residuals:
+ *       FAIL setsolve_horizons_sun_ra at jd=2460706.0: got 313.2737700 want 313.2706250 (err 0.0031450 > tol 0.0000000)
+ *     The library sits 0.0031450 deg ABOVE this Horizons row, so adding 0.01 to
+ *     the row moves it toward the library and leaves err 0.0068550, which is
+ *     inside 0.007 by 45 microdegrees. The cell IS pinned in the other
+ *     direction, and that run was executed too, 313.2706250 -> 313.2606250:
+ *       FAIL setsolve_horizons_sun_ra at jd=2460706.0: got 313.2737700 want 313.2606250 (err 0.0131450 > tol 0.0070000)
+ *     which went to "1029 checks, 1 failures", exit 1. The bound cannot be
+ *     tightened past the library's own 0.0034349 deg maximum residual against
+ *     Horizons without failing on correct data, so this is a bounded gap of
+ *     roughly one part in a thousand of a degree in one direction at one row.
+ *
+ * S5  HORIZONS_SETSOLVE_SUN declination column replaced with the library's own
+ *     values, -17.5184891, 23.3402933, -23.4382536, so every declination
+ *     difference collapses to rounding.
+ *     NOT CAUGHT -- recorded as executed, not as a pass. The suite printed
+ *       setsolve_horizons distinct rows = 3 of 3
+ *       Moon ephemeris tests: 1029 checks, 0 failures
+ *     and exited 0. The per-row tolerance checks passing is expected and is the
+ *     point of the mutation. The guard failing to fire is not: it counts
+ *     distinctness on the RIGHT ASCENSION column only, `if (dra > 0.0)`, so the
+ *     declination column has no degeneracy guard at all. That is the finding,
+ *     and it is left recorded rather than quietly fixed here because Task 5
+ *     changes no assertion.
+ *
+ *     A second run bounds how much the guard covers even on the column it does
+ *     read. Replacing BOTH columns with the library's printed values,
+ *     313.2737700, 95.5535599, 269.8188563 and the three declinations above,
+ *     still printed "setsolve_horizons distinct rows = 3 of 3" and
+ *     "1029 checks, 0 failures". Values transcribed at seven decimals never
+ *     equal the library's doubles bit for bit, so `dra > 0.0` holds and the
+ *     guard sees nothing. What it catches is the byte-exact array copy that M3
+ *     and M13 record, not a hand-transcribed one. The M3 scope note documents
+ *     this same weakness in the max-only form, and groups 1 and 6 answered it
+ *     with a per-row minimum, which is the shape this guard would need.
+ *
+ * S5b re-runs S5 against the replacement guard. The S5 record above is kept
+ * unchanged as the evidence for why the guard was replaced, not as a live
+ * result. The distinctness counter it describes no longer exists. In its place
+ * check_group14_setsolve asserts a FLOOR, TOL_SETSOLVE_HORIZONS_FLOOR_DEG =
+ * 1e-5 deg, on the MINIMUM of the six differences. Both runs below are against
+ * the suite at 1029 checks, whose unmutated result is "1029 checks, 0
+ * failures" with "setsolve_horizons residual min 0.0000433 max 0.0034349 deg".
+ *
+ * S5b-a  HORIZONS_SETSOLVE_SUN declination column replaced with the library's
+ *     own values, -17.5184891, 23.3402933, -23.4382536, which is exactly the
+ *     mutation S5 above ran and survived.
+ *     CAUGHT
+ *       setsolve_horizons residual min 0.0000000 max 0.0034349 deg
+ *       FAIL setsolve_horizons_independent: expected a non-zero value, got -0.000009986
+ *     Suite went to "1029 checks, 1 failures", exit 1.
+ *
+ * S5b-b  BOTH columns replaced with the library's own values, right ascensions
+ *     313.2737700, 95.5535599, 269.8188563 and the three declinations above,
+ *     which is the S5 second run.
+ *     CAUGHT
+ *       setsolve_horizons residual min 0.0000000 max 0.0000000 deg
+ *       FAIL setsolve_horizons_independent: expected a non-zero value, got -0.000009987
+ *     Suite went to "1029 checks, 1 failures", exit 1.
+ *
+ *     Both mutations were reverted. The two failure values, -0.000009986 and
+ *     -0.000009987, are the floor minus a residual of order 1e-8, which is the
+ *     rounding of a seven-decimal transcription against the library's doubles.
+ *     That is the population the floor separates from, and the measured gap to
+ *     it is roughly 200x, against 4.33x of headroom above the real minimum.
+ *
+ *     One intermediate result is recorded because it changed the guard's
+ *     shape. The floor was first written over the MAXIMUM of the six
+ *     differences and executed against S5b-a: the untouched right ascension
+ *     column kept the maximum at 0.0034349 deg, the suite printed "1029
+ *     checks, 0 failures" and exited 0. A maximum only guards the whole table
+ *     going degenerate at once, so the guard was rewritten over the minimum
+ *     before the mutations above were run.
+ */
 
 /* Topocentric fixtures for issue #17.
  *
@@ -1808,6 +2139,139 @@ static void check_group7_shipped_elongation(void) {
   printf("elongation_shipped_path max: %.7f deg\n", max_err);
 }
 
+/* Group 14 -- the sunset and moonset solvers against oracle-solved instants.
+ *
+ * Sunset is the sampling instant for every official calendar this library is
+ * validated against, and near the horizon the Moon falls at about 0.004 deg per
+ * second, so a second of sunset error is roughly 14 arcsec of Moon altitude.
+ * For scale, the entire topocentric chain measured in issue #32 contributes
+ * 2.18 arcsec at Jakarta. This is the largest single term in the chain that
+ * decides a date, and until this group existed it was unmeasured.
+ *
+ * Moonset is bounded but not decomposed, deliberately. It decides nothing in
+ * any validated path: it feeds lag_time_minutes and moonset_after_sunset, read
+ * only by two research predicates and by the Umm al-Qura fallback at
+ * hijri.h:1760, which fires only outside 1882-11-12 to 2174-11-25 and so never
+ * runs in the 198 of 198 table fixture.
+ *
+ * The convergence check uses no oracle at all. It evaluates the library's own
+ * altitude function at the instant the library reports and bounds the distance
+ * from the target it solved for. That pins the solver independently of the
+ * ephemeris, so a regression in one cannot hide inside the other's tolerance,
+ * and it is the only assertion here that would survive deleting every table. */
+static void check_group14_setsolve(void) {
+  int s, i;
+  for (s = 0; s < 4; s++) {
+    const SetSolveSite *site = &SETSOLVE_SITES[s];
+    HijriLocation loc;
+    double max_ss = 0.0, max_ms = 0.0;
+    char label[64];
+
+    loc.latitude_deg = site->lat_deg;
+    loc.longitude_deg = site->lon_deg;
+    loc.elevation_m = 0.0;
+    loc.name = NULL;
+
+    for (i = 0; i < 12; i++) {
+      /* LOCAL midnight expressed in UT, matching hijri.h:1182. NOT -0.5.
+       * hijri_jd_from_gregorian already returns 0h UT, and hijri_find_sunset
+       * scans forward 24 hours from whatever it is handed, so subtracting half
+       * a day starts the scan at noon on the PREVIOUS day and returns the
+       * previous evening's sunset at most longitudes. hijri.h:1163-1181
+       * documents this exact off-by-one-day class, which the library was
+       * already bitten by once. */
+      double jd_midnight = hijri_jd_from_gregorian(
+          SETSOLVE_DATES[i][0], SETSOLVE_DATES[i][1],
+          (double)SETSOLVE_DATES[i][2]) - site->lon_deg / 360.0;
+      double lib_ss, lib_ms, err;
+
+      sprintf(label, "setsolve_sunset_available_%s", site->name);
+      if (hijri_find_sunset(jd_midnight, &loc, &lib_ss) != HIJRI_EVENT_OK) {
+        check_true_nonzero(label, 0.0);
+        continue;   /* lib_ss is not written on failure, so do not read it */
+      }
+      check_true_nonzero(label, 1.0);
+
+      err = fabs(lib_ss - site->table[i][0]) * 86400.0;
+      if (err > max_ss) max_ss = err;
+      sprintf(label, "setsolve_sunset_%s", site->name);
+      check_within(label, site->table[i][0], err, 0.0,
+                   TOL_SETSOLVE_SUNSET_S);
+
+      sprintf(label, "setsolve_converge_%s", site->name);
+      check_within(label, site->table[i][0],
+                   hijri_sun_altitude(lib_ss, &loc),
+                   -(HIJRI__REFRACTION_AT_HORIZON_DEG +
+                     HIJRI__SOLAR_SEMIDIAMETER_DEG),
+                   TOL_SETSOLVE_CONVERGE_DEG);
+
+      sprintf(label, "setsolve_moonset_available_%s", site->name);
+      if (hijri_find_moonset(lib_ss, &loc, &lib_ms) != HIJRI_EVENT_OK) {
+        check_true_nonzero(label, 0.0);
+        continue;   /* lib_ms is not written on failure, so do not read it */
+      }
+      check_true_nonzero(label, 1.0);
+
+      err = fabs(lib_ms - site->table[i][1]) * 86400.0;
+      if (err > max_ms) max_ms = err;
+      sprintf(label, "setsolve_moonset_%s", site->name);
+      check_within(label, site->table[i][1], err, 0.0,
+                   site->tol_moonset_s);
+    }
+    printf("setsolve max %-8s sunset %.4f s  moonset %.4f s\n",
+           site->name, max_ss, max_ms);
+  }
+
+  {
+    int k;
+    double max_resid = 0.0, min_resid = 1e9;
+    for (k = 0; k < 3; k++) {
+      double jd = HORIZONS_SETSOLVE_SUN[k][0];
+      HijriSunPosition p = hijri_sun_position(hijri_jd_tt_from_ut(jd));
+      double dra = fabs(p.right_ascension_deg - HORIZONS_SETSOLVE_SUN[k][1]);
+      double ddec = fabs(p.declination_deg - HORIZONS_SETSOLVE_SUN[k][2]);
+      if (dra > max_resid) max_resid = dra;
+      if (ddec > max_resid) max_resid = ddec;
+      if (dra < min_resid) min_resid = dra;
+      if (ddec < min_resid) min_resid = ddec;
+      check_angle_within("setsolve_horizons_sun_ra", jd,
+                         p.right_ascension_deg, HORIZONS_SETSOLVE_SUN[k][1],
+                         TOL_SETSOLVE_HORIZONS_DEG);
+      check_within("setsolve_horizons_sun_dec", jd, p.declination_deg,
+                   HORIZONS_SETSOLVE_SUN[k][2], TOL_SETSOLVE_HORIZONS_DEG);
+    }
+    /* A FLOOR, not a distinctness count, and the difference matters.
+     *
+     * Mutation S5 showed the distinctness count does not guard this table. It
+     * counted only the right ascension column, leaving declination unguarded,
+     * and counting distinctness is the wrong test here regardless: the M7
+     * precedent guards one stored table being copied byte-exact from another,
+     * and this table has no sibling to copy from. Its realistic failure is
+     * being regenerated from the LIBRARY instead of from Horizons, which
+     * yields seven-decimal values that never equal the library's doubles bit
+     * for bit, so a distinctness count passes.
+     *
+     * Two genuinely independent sources must disagree by a non-trivial amount.
+     * The library's ch. 25 solar theory reaches 0.0084042 deg against DE440 by
+     * this file's own header, and the measured residual here runs to
+     * 0.0034349 deg. A table regenerated from the library would sit at
+     * roughly zero and fail this floor.
+     *
+     * The floor is taken over the MINIMUM of the six differences, not the
+     * maximum, and that was measured rather than assumed. A floor on the
+     * maximum was written first and executed: replacing the declination column
+     * alone left the right ascension column's 0.0034349 deg standing, the
+     * maximum was unchanged, and the suite stayed at "1029 checks, 0
+     * failures". A maximum guards only the whole table going degenerate at
+     * once. The minimum guards every cell, which is the shape groups 1 and 6
+     * already use and the shape the S5 record says this guard needed. */
+    printf("setsolve_horizons residual min %.7f max %.7f deg\n",
+           min_resid, max_resid);
+    check_true_nonzero("setsolve_horizons_independent",
+                       min_resid - TOL_SETSOLVE_HORIZONS_FLOOR_DEG);
+  }
+}
+
 /* MUTATION M8 (2026-08-05): negating the sign of hijri__eqeq_deg() fails this
  * group with, verbatim:
  *   FAIL eqeq at jd=2415020.5: got -0.0043072 want 0.0044419 (err 0.0087491 > tol 0.0010000)
@@ -1874,6 +2338,7 @@ int main(void) {
   check_group5_frame_counterfactual();
   check_group6_sun_harness();
   check_group7_shipped_elongation();
+  check_group14_setsolve();
   check_group8_eqeq();
   check_group10_ref_selftest();
   check_group9_topo_altitude();
