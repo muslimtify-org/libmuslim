@@ -890,6 +890,115 @@ static const double HORIZONS_SETSOLVE_SUN[3][3] = {
   {2461030.962099322, 269.8167500, -23.4381389},
 };
 
+/* MEASURED MUTATION SENSITIVITY of the set-solver fixtures above.
+ *
+ * S1 through S5 cover SKY_SETSOLVE_JAKARTA, SKY_SETSOLVE_HIGH60, the bisection
+ * solver itself and HORIZONS_SETSOLVE_SUN, following the same rule the M-series
+ * follows: every mutation below was applied, built and run, and only lines the
+ * binary actually printed are quoted. Two of the five were NOT caught and are
+ * recorded as gaps rather than replaced with mutations that work, following M4
+ * and M12. Every mutation was reverted, including the one to hijri.h, and
+ * neither this file nor hijri.h carries a mutation. All runs are against the
+ * suite at 1029 checks, whose unmutated result is "1029 checks, 0 failures".
+ *
+ * S1  SKY_SETSOLVE_JAKARTA row 0 sunset, 2460705.970467385 -> 2460705.970567385
+ *     (+0.0001 d, 8.64 s) against TOL_SETSOLVE_SUNSET_S = 5.5 s.
+ *     CAUGHT
+ *       FAIL setsolve_sunset_jakarta at jd=2460706.0: got 7.8265920 want 0.0000000 (err 7.8265920 > tol 5.5000000)
+ *     Suite went to "1029 checks, 1 failures", exit 1. The reported 7.83 s
+ *     rather than 8.64 s is the row's own 0.81 s residual signing against the
+ *     perturbation, which is the same directional effect M12 documents.
+ *
+ * S2  SKY_SETSOLVE_HIGH60 row 0 moonset, 2460706.226433615 ->
+ *     2460706.226533615 (+0.0001 d, 8.64 s).
+ *     NOT CAUGHT -- recorded as executed, not as a pass. The suite printed
+ *     "1029 checks, 0 failures" and exited 0. The only visible movement was the
+ *     printed maximum:
+ *       setsolve max high60   sunset 2.7380 s  moonset 9.0879 s
+ *     against the unmutated 7.2926 s. This is not a defect in the mutation, it
+ *     is what the bound says: high60's tol_moonset_s is 15.0 s because three of
+ *     its twelve rows are ones where the Moon set before sunset and the solver
+ *     walked to the following night, and 8.64 s is inside that. A bound tight
+ *     enough to catch this at high60 would sit below the site's own 7.2926 s
+ *     residual and fail on correct data, which is the same hard limit M4 and
+ *     M12 record.
+ *
+ *     The same perturbation IS pinned where the bound is an assertion rather
+ *     than an envelope. SKY_SETSOLVE_JAKARTA row 0 moonset, 2460706.005166394
+ *     -> 2460706.005266394, same +0.0001 d, against tol_moonset_s = 0.8 s:
+ *       FAIL setsolve_moonset_jakarta at jd=2460706.0: got 8.6589351 want 0.0000000 (err 8.6589351 > tol 0.8000000)
+ *     That went to "1029 checks, 1 failures", exit 1. Both runs are recorded
+ *     because the per-site bound of amendment A2 is exactly what makes the
+ *     difference between them, and a single shared bound would have left all
+ *     four sites in high60's position.
+ *
+ * S3  hijri__bisect_crossing at hijri.h:948, the iteration bound 40 -> 4. This
+ *     is the mutation check_group14_setsolve's convergence check exists for.
+ *     CAUGHT, by the convergence check at all 48 rows and by the oracle
+ *     comparisons as well:
+ *       FAIL setsolve_sunset_jakarta at jd=2460706.0: got 17.8820997 want 0.0000000 (err 17.8820997 > tol 5.5000000)
+ *       FAIL setsolve_converge_jakarta at jd=2460706.0: got -0.7596316 want -0.8334000 (err 0.0737684 > tol 0.0000010)
+ *       FAIL setsolve_moonset_jakarta at jd=2460706.0: got 21.6234997 want 0.0000000 (err 21.6234997 > tol 0.8000000)
+ *     Suite went to "1029 checks, 138 failures", exit 1. setsolve_converge_*
+ *     failed 48 of 48 times, one per row across all four sites.
+ *
+ *     What this says about coverage, stated plainly. For THIS mutation the
+ *     convergence check adds no coverage the oracle comparison did not already
+ *     provide: the sunset comparison fails at the same rows, and it fails
+ *     first. Four halvings of a one hour bracket leave 3.75 minutes of bracket,
+ *     so the instant moves by tens of seconds, far outside a 5.5 s bound. What
+ *     the convergence check does add is independence, not sensitivity: it reads
+ *     the library's own altitude at the instant the library reports and needs
+ *     no table at all, so it is the one assertion in group 14 that survives
+ *     deleting every fixture, and it cannot be satisfied by a solver regression
+ *     that happens to cancel against an ephemeris change. It is a different
+ *     kind of coverage, not a strictly larger one, and S3 is the evidence for
+ *     that rather than for the stronger claim.
+ *
+ * S4  HORIZONS_SETSOLVE_SUN row 0 right ascension, 313.2706250 -> 313.2806250
+ *     (+0.01 deg) against TOL_SETSOLVE_HORIZONS_DEG = 0.007 deg.
+ *     NOT CAUGHT -- recorded as executed, not as a pass. The suite printed
+ *     "1029 checks, 0 failures" and exited 0.
+ *
+ *     The reason is directional, exactly as at M12, and it was measured rather
+ *     than assumed. Temporarily setting the tolerance to 1e-9 prints the
+ *     unmutated residuals:
+ *       FAIL setsolve_horizons_sun_ra at jd=2460706.0: got 313.2737700 want 313.2706250 (err 0.0031450 > tol 0.0000000)
+ *     The library sits 0.0031450 deg ABOVE this Horizons row, so adding 0.01 to
+ *     the row moves it toward the library and leaves err 0.0068550, which is
+ *     inside 0.007 by 45 microdegrees. The cell IS pinned in the other
+ *     direction, and that run was executed too, 313.2706250 -> 313.2606250:
+ *       FAIL setsolve_horizons_sun_ra at jd=2460706.0: got 313.2737700 want 313.2606250 (err 0.0131450 > tol 0.0070000)
+ *     which went to "1029 checks, 1 failures", exit 1. The bound cannot be
+ *     tightened past the library's own 0.0034349 deg maximum residual against
+ *     Horizons without failing on correct data, so this is a bounded gap of
+ *     roughly one part in a thousand of a degree in one direction at one row.
+ *
+ * S5  HORIZONS_SETSOLVE_SUN declination column replaced with the library's own
+ *     values, -17.5184891, 23.3402933, -23.4382536, so every declination
+ *     difference collapses to rounding.
+ *     NOT CAUGHT -- recorded as executed, not as a pass. The suite printed
+ *       setsolve_horizons distinct rows = 3 of 3
+ *       Moon ephemeris tests: 1029 checks, 0 failures
+ *     and exited 0. The per-row tolerance checks passing is expected and is the
+ *     point of the mutation. The guard failing to fire is not: it counts
+ *     distinctness on the RIGHT ASCENSION column only, `if (dra > 0.0)`, so the
+ *     declination column has no degeneracy guard at all. That is the finding,
+ *     and it is left recorded rather than quietly fixed here because Task 5
+ *     changes no assertion.
+ *
+ *     A second run bounds how much the guard covers even on the column it does
+ *     read. Replacing BOTH columns with the library's printed values,
+ *     313.2737700, 95.5535599, 269.8188563 and the three declinations above,
+ *     still printed "setsolve_horizons distinct rows = 3 of 3" and
+ *     "1029 checks, 0 failures". Values transcribed at seven decimals never
+ *     equal the library's doubles bit for bit, so `dra > 0.0` holds and the
+ *     guard sees nothing. What it catches is the byte-exact array copy that M3
+ *     and M13 record, not a hand-transcribed one. The M3 scope note documents
+ *     this same weakness in the max-only form, and groups 1 and 6 answered it
+ *     with a per-row minimum, which is the shape this guard would need.
+ */
+
 /* Topocentric fixtures for issue #17.
  *
  * PROVENANCE: generated 2026-08-07 with Skyfield 1.54 on JPL DE440
