@@ -401,6 +401,12 @@ HIJRIDEF int hijri_from_gregorian_with_local_predicate(
 HIJRIDEF int hijri_umm_al_qura_from_gregorian(int gy, int gm, int gd,
                                                HijriDate *out);
 
+/* True if the given Gregorian date falls inside the Umm al-Qura table's
+ * coverage. hijri_umm_al_qura_from_gregorian returns 1 both for a table
+ * answer and for its astronomical fallback, so this is the second question
+ * a caller needs to tell the two apart. */
+HIJRIDEF int hijri_umm_al_qura_covers(int gy, int gm, int gd);
+
 typedef enum {
   HIJRI_YALLOP_A_EASILY_VISIBLE,
   HIJRI_YALLOP_B_VISIBLE_PERFECT_CONDITIONS,
@@ -454,6 +460,11 @@ hijri_odeh_evaluate_evening(int gy, int gm, int gd,
 
 HIJRIDEF double hijri_tabular_to_jd(HijriDate date);
 HIJRIDEF HijriDate hijri_tabular_from_jd(double jd);
+
+/* True if date is representable by hijri_tabular_to_jd/hijri_tabular_from_jd,
+ * i.e. year in [-999999, 999999], month in [1, 12], and day a valid day of
+ * that month. This is the representable range, not the tested one. */
+HIJRIDEF int hijri_tabular_date_valid(HijriDate date);
 
 #ifdef __cplusplus
 }
@@ -1611,6 +1622,16 @@ static long hijri__floor_div(long a, long b) {
 #define HIJRI__TABULAR_MIN_JD (-352418227.5)
 #define HIJRI__TABULAR_MAX_JD 356314750.5
 
+HIJRIDEF int hijri_tabular_date_valid(HijriDate date) {
+  if (date.year < -999999 || date.year > 999999)
+    return 0;
+  if (date.month < 1 || date.month > 12)
+    return 0;
+  if (date.day < 1 || date.day > hijri__month_length(date.year, date.month))
+    return 0;
+  return 1;
+}
+
 HIJRIDEF double hijri_tabular_to_jd(HijriDate date) {
   long days = 0;
 
@@ -1874,6 +1895,12 @@ HIJRIDEF int hijri_umm_al_qura_from_gregorian(int gy, int gm, int gd,
   return hijri_from_gregorian_with_local_predicate(
       gy, gm, gd, &HIJRI_LOCATION_MECCA,
       HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET, out);
+}
+
+HIJRIDEF int hijri_umm_al_qura_covers(int gy, int gm, int gd) {
+  double target_jd = floor(hijri_jd_from_gregorian(gy, gm, (double)gd));
+  return target_jd >= HIJRI__UQ_ANCHOR_JD &&
+         target_jd < HIJRI__UQ_ANCHOR_JD + (double)HIJRI__UQ_TOTAL_DAYS;
 }
 
 #endif /* HIJRI_IMPLEMENTATION */

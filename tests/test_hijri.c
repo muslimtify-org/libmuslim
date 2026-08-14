@@ -239,6 +239,41 @@ static void test_tabular_calendar(void) {
     check_date("tabular_totality_neg_1e18", hijri_tabular_from_jd(-1e18), 0,
                0, 0);
   }
+
+  /* hijri_tabular_date_valid checks the representable range, not the
+   * tested one, so it must accept and reject on the shape of the date
+   * itself, not on hard-coded years. */
+  {
+    int leap_year;
+    HijriDate d;
+
+    check_true("tabular_date_valid_month_zero",
+               !hijri_tabular_date_valid((HijriDate){1, 0, 1}));
+    check_true("tabular_date_valid_month_13",
+               !hijri_tabular_date_valid((HijriDate){1, 13, 1}));
+    check_true("tabular_date_valid_day_zero",
+               !hijri_tabular_date_valid((HijriDate){1, 1, 0}));
+    check_true("tabular_date_valid_day_30_of_29_day_month",
+               !hijri_tabular_date_valid((HijriDate){1, 2, 30}));
+
+    /* Year 1 is not a leap year (hijri__month_length(1, 12) == 29), so
+     * find a nearby leap year by asking the helper rather than hard-coding
+     * one, that way this case cannot silently stop being a leap year. */
+    for (leap_year = 1; hijri__month_length(leap_year, 12) != 30;
+         leap_year++)
+      ;
+    d.year = leap_year;
+    d.month = 12;
+    d.day = hijri__month_length(leap_year, 12);
+    check_true("tabular_date_valid_leap_year_last_day",
+               hijri_tabular_date_valid(d));
+  }
+
+  /* Mutation record: widened the month test in hijri_tabular_date_valid
+   * from `date.month > 12` to `date.month > 13`, so month 13 is accepted,
+   * then `make test`. Observed FAIL line, verbatim:
+   * FAIL synthetic/tabular_date_valid_month_13 expected=true
+   * Reverted after recording. */
 }
 
 static void check_predicate(const char *name, HijriLocalPredicate predicate,
@@ -1036,6 +1071,48 @@ static void test_umm_al_qura_table_boundaries(void) {
     check_true("umm_boundary_post_table_sane",
                !ok || (h.day >= 1 && h.day <= 30));
   }
+
+  /* hijri_umm_al_qura_covers is the second question a caller needs: it must
+   * flip across both table boundaries while hijri_umm_al_qura_from_gregorian
+   * keeps returning 1 on all four dates (a table answer on two, the
+   * astronomical fallback on the other two). Asserting only the covers
+   * flip would not show that the two functions answer different
+   * questions, asserting both in the same loop does. */
+  {
+    static const struct {
+      int y, m, d;
+      int expect_covers;
+      const char *name;
+    } cases[] = {
+        {1882, 11, 12, 1, "umm_covers_first_day"},
+        {1882, 11, 11, 0, "umm_covers_before_first_day"},
+        {2174, 11, 25, 1, "umm_covers_last_day"},
+        {2174, 11, 26, 0, "umm_covers_after_last_day"},
+    };
+    size_t index;
+    char name[64];
+
+    for (index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {
+      snprintf(name, sizeof(name), "%s", cases[index].name);
+      check_int(name, hijri_umm_al_qura_covers(cases[index].y, cases[index].m,
+                                                cases[index].d),
+                cases[index].expect_covers);
+
+      snprintf(name, sizeof(name), "%s_from_gregorian_status",
+               cases[index].name);
+      check_int(name,
+                hijri_umm_al_qura_from_gregorian(cases[index].y,
+                                                  cases[index].m,
+                                                  cases[index].d, &h),
+                1);
+    }
+  }
+
+  /* Mutation record: hijri_umm_al_qura_covers mutated to `return 1;`
+   * unconditionally, then `make test`. Observed FAIL lines, verbatim:
+   * FAIL exact/umm_covers_before_first_day actual=1 expected=0
+   * FAIL exact/umm_covers_after_last_day actual=1 expected=0
+   * Reverted after recording. */
 }
 
 /* One Moon-horizon convention: at the instant hijri_find_moonset reports,
