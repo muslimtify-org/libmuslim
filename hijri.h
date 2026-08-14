@@ -1638,16 +1638,24 @@ static long hijri__floor_div(long a, long b) {
   return q;
 }
 
+#define HIJRI__TABULAR_MIN_YEAR (-999999)
+#define HIJRI__TABULAR_MAX_YEAR 999999
+
 /* Representable and safe range: the Julian Days whose implied Hijri year fits
  * in an int with room to spare. Outside this, hijri_tabular_from_jd returns
  * the {0, 0, 0} sentinel rather than overflowing. This is wider than the
  * SUPPORTED and TESTED range, which is Hijri years 1 through 9999. The two are
- * different claims and are stated separately on purpose. */
+ * different claims and are stated separately on purpose.
+ *
+ * HIJRI__TABULAR_MIN_JD is the Julian Day of the first day, month 1 day 1, of
+ * HIJRI__TABULAR_MIN_YEAR, and HIJRI__TABULAR_MAX_JD is the Julian Day of the
+ * last day of month 12 of HIJRI__TABULAR_MAX_YEAR. A test asserts this, so
+ * the four constants must be changed together. */
 #define HIJRI__TABULAR_MIN_JD (-352418227.5)
 #define HIJRI__TABULAR_MAX_JD 356314750.5
 
 HIJRIDEF int hijri_tabular_date_valid(HijriDate date) {
-  if (date.year < -999999 || date.year > 999999)
+  if (date.year < HIJRI__TABULAR_MIN_YEAR || date.year > HIJRI__TABULAR_MAX_YEAR)
     return 0;
   if (date.month < 1 || date.month > 12)
     return 0;

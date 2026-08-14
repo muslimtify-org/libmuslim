@@ -274,6 +274,42 @@ static void test_tabular_calendar(void) {
    * then `make test`. Observed FAIL line, verbatim:
    * FAIL synthetic/tabular_date_valid_month_13 expected=true
    * Reverted after recording. */
+
+  /* HIJRI__TABULAR_MIN_JD and HIJRI__TABULAR_MAX_JD are the Julian Days of
+   * the first day of HIJRI__TABULAR_MIN_YEAR and the last day of
+   * HIJRI__TABULAR_MAX_YEAR. The four constants are derived from each
+   * other, so this checks they still agree. */
+  {
+    HijriDate min_year_first = {HIJRI__TABULAR_MIN_YEAR, 1, 1};
+    HijriDate max_year_last = {
+        HIJRI__TABULAR_MAX_YEAR, 12,
+        hijri__month_length(HIJRI__TABULAR_MAX_YEAR, 12)};
+
+    check_close("tabular_min_year_matches_min_jd",
+                hijri_tabular_to_jd(min_year_first), HIJRI__TABULAR_MIN_JD,
+                0.0);
+    check_close("tabular_max_year_matches_max_jd",
+                hijri_tabular_to_jd(max_year_last), HIJRI__TABULAR_MAX_JD,
+                0.0);
+
+    check_true("tabular_date_valid_min_year_accepted",
+               hijri_tabular_date_valid(
+                   (HijriDate){HIJRI__TABULAR_MIN_YEAR, 1, 1}));
+    check_true("tabular_date_valid_below_min_year_rejected",
+               !hijri_tabular_date_valid(
+                   (HijriDate){HIJRI__TABULAR_MIN_YEAR - 1, 1, 1}));
+    check_true("tabular_date_valid_max_year_accepted",
+               hijri_tabular_date_valid(max_year_last));
+    check_true("tabular_date_valid_above_max_year_rejected",
+               !hijri_tabular_date_valid(
+                   (HijriDate){HIJRI__TABULAR_MAX_YEAR + 1, 1, 1}));
+  }
+
+  /* Mutation record: changed HIJRI__TABULAR_MAX_YEAR to 999998 without
+   * changing HIJRI__TABULAR_MAX_JD, then `make test`. Observed FAIL line,
+   * verbatim:
+   * FAIL exact/tabular_max_year_matches_max_jd actual=356314396.500000000000 expected=356314750.500000000000 diff=354.000000000000 tol=0.000000000000
+   * Reverted after recording. */
 }
 
 static void check_predicate(const char *name, HijriLocalPredicate predicate,
