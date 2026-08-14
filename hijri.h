@@ -128,6 +128,24 @@
  * this library carries can remove it. Correcting the frame removes a
  * deterministic bias, it does not buy sub-second sunset precision.
  *
+ * THE SUNSET HORIZON IS A PER-CRITERION VALUE, NOT A PAIR OF MACROS. Two
+ * constants define it, the refraction at the horizon and the Sun's
+ * semidiameter, and both official methods this library reproduces disagree
+ * with the textbook astronomical figures on both. They now travel together in
+ * a HijriSunsetConvention, which hijri_find_sunset(), hijri_find_moonset() and
+ * hijri_compute_evening_parameters() all take by pointer and which
+ * hijri_evaluate_evening() selects once from the predicate. Both pedoman use
+ * 34' 30" of refraction, the research predicates and the Umm al-Qura fallback
+ * use 34' 00.12" because they claim no authority. The semidiameter is no
+ * longer fixed: it is stored at unit distance and divided by the Sun's
+ * distance at the sampled instant, so the crossing target varies over the year
+ * the way the books' tables do. The 959.63 arcsec figure is not stated by
+ * either book, and it is confirmed here as consistent with every semidiameter
+ * both books publish, to within 0.05 arcsec. See
+ * docs/research/2026-08-14-sunset-constants.md for that derivation, the
+ * unchanged calendar fixtures, and why a 0.5 arcmin refraction change delivers
+ * under 0.25 arcmin to the Moon's limb.
+ *
  * SOLAR PARALLAX IS OMITTED FROM SUNSET, ON PURPOSE. hijri_find_sunset() uses
  * a geocentric Sun. The roughly 8.8 arcsec of solar horizontal parallax would
  * move sunset by up to about 1 s. It is left out because the official
