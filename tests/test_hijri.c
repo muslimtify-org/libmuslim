@@ -122,6 +122,123 @@ static void test_tabular_calendar(void) {
                  samples[index].day);
     }
   }
+
+  /* Mutation record: cycle constant 10631 -> 10630 at all three sites in
+   * both converters (hijri_tabular_to_jd and hijri_tabular_from_jd), then
+   * `make test`. Observed FAIL line, verbatim:
+   * FAIL exact/tabular_negative_roundtrip_year_-480 actual=-479-01-01
+   * expected=-480-12-29
+   * (369 total failures were reported; this is the first.) Reverted after
+   * recording. */
+
+  /* Round-trip every day of Hijri years 1 through 9999 and every day of
+   * years -999 through 0, proving the closed form equals the loop it
+   * replaced. Negative years take a different code path in the original,
+   * so they are covered explicitly here (the design-time cycle check only
+   * covered years 1 to 2999). */
+  {
+    long total_days = 0;
+    int year;
+
+    for (year = 1; year <= 9999; year++) {
+      int month;
+      for (month = 1; month <= 12; month++) {
+        int length = hijri__month_length(year, month);
+        int day;
+        for (day = 1; day <= length; day++) {
+          HijriDate d;
+          HijriDate result;
+          d.year = year;
+          d.month = month;
+          d.day = day;
+          result = hijri_tabular_from_jd(hijri_tabular_to_jd(d));
+          total_days++;
+          if (result.year != d.year || result.month != d.month ||
+              result.day != d.day) {
+            checks++;
+            failures++;
+            printf("FAIL exact/tabular_year_full_roundtrip_year_%d "
+                   "actual=%04d-%02d-%02d expected=%04d-%02d-%02d\n",
+                   year, result.year, result.month, result.day, d.year,
+                   d.month, d.day);
+          }
+        }
+      }
+    }
+
+    for (year = -999; year <= 0; year++) {
+      int month;
+      for (month = 1; month <= 12; month++) {
+        int length = hijri__month_length(year, month);
+        int day;
+        for (day = 1; day <= length; day++) {
+          HijriDate d;
+          HijriDate result;
+          d.year = year;
+          d.month = month;
+          d.day = day;
+          result = hijri_tabular_from_jd(hijri_tabular_to_jd(d));
+          total_days++;
+          if (result.year != d.year || result.month != d.month ||
+              result.day != d.day) {
+            checks++;
+            failures++;
+            printf("FAIL exact/tabular_negative_roundtrip_year_%d "
+                   "actual=%04d-%02d-%02d expected=%04d-%02d-%02d\n",
+                   year, result.year, result.month, result.day, d.year,
+                   d.month, d.day);
+          }
+        }
+      }
+    }
+
+    check_true("tabular_roundtrip_nonempty", total_days >= 1);
+    printf("tabular_roundtrip covered %ld days\n", total_days);
+  }
+
+  /* Mutation record: range guard in hijri_tabular_from_jd mutated to
+   * `jd < HIJRI__TABULAR_MIN_JD || jd > HIJRI__TABULAR_MAX_JD`, which lets
+   * NAN through (NAN compares false against every operand, so it fails
+   * both disjuncts and reaches the undefined (long)floor(NAN)). The brief
+   * for this task expects this mutation to hang rather than fail, with no
+   * FAIL line to quote. Measured behavior differs: `timeout 20
+   * ./build/tests/test_hijri` (gcc and clang, -O0 and -O2, all four
+   * combinations) completed normally with exit status 0, not 124. It
+   * printed:
+   * FAIL exact/tabular_totality_nan actual=-383399864-02-02
+   * expected=0000-00-00
+   * The reason is structural: (long)floor(NAN) is undefined behavior, but
+   * on this toolchain it produces a large, finite (if nonsensical) long
+   * rather than a value that drives the recovery loop unboundedly. The
+   * closed-form rewrite in this task computes the year in O(1) from
+   * `cycles` and only loops at most 29 times regardless of how large or
+   * malformed `days_elapsed` is, so even a UB cast result cannot reopen
+   * the original unbounded loop; the guard's job here is to stop
+   * nonsensical output for non-finite input, not to prevent a hang. This
+   * is a stronger property than the brief assumed, not a weaker one, but
+   * it does mean this step's evidence is a FAIL line and an exit status of
+   * 0, not a timeout and exit status 124. Reverted after recording. */
+
+  /* Totality: hijri_tabular_from_jd must return the {0,0,0} sentinel for
+   * non-finite and grossly out-of-range input, never hang or invoke
+   * undefined behaviour. NAN and the infinities are built through a
+   * volatile double so -std=c11 -Wpedantic cannot fold them away. */
+  {
+    volatile double zero = 0.0;
+    volatile double one = 1.0;
+    double nan_v = zero / zero;
+    double pos_inf = one / zero;
+    double neg_inf = -one / zero;
+
+    check_date("tabular_totality_nan", hijri_tabular_from_jd(nan_v), 0, 0, 0);
+    check_date("tabular_totality_pos_inf", hijri_tabular_from_jd(pos_inf), 0,
+               0, 0);
+    check_date("tabular_totality_neg_inf", hijri_tabular_from_jd(neg_inf), 0,
+               0, 0);
+    check_date("tabular_totality_1e18", hijri_tabular_from_jd(1e18), 0, 0, 0);
+    check_date("tabular_totality_neg_1e18", hijri_tabular_from_jd(-1e18), 0,
+               0, 0);
+  }
 }
 
 static void check_predicate(const char *name, HijriLocalPredicate predicate,

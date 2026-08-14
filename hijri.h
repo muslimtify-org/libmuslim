@@ -1593,16 +1593,33 @@ static int hijri__month_length(int year, int month) {
   return (month % 2 == 1) ? 30 : 29;
 }
 
+/* Floor division. C's / truncates toward zero, so -6 / 30 is 0 rather than
+ * the -1 the cycle index needs. Negative Hijri years are inside this
+ * function's domain, so the distinction is load bearing. */
+static long hijri__floor_div(long a, long b) {
+  long q = a / b;
+  if ((a % b != 0) && ((a < 0) != (b < 0)))
+    q--;
+  return q;
+}
+
+/* Representable and safe range: the Julian Days whose implied Hijri year fits
+ * in an int with room to spare. Outside this, hijri_tabular_from_jd returns
+ * the {0, 0, 0} sentinel rather than overflowing. This is wider than the
+ * SUPPORTED and TESTED range, which is Hijri years 1 through 9999. The two are
+ * different claims and are stated separately on purpose. */
+#define HIJRI__TABULAR_MIN_JD (-352418227.5)
+#define HIJRI__TABULAR_MAX_JD 356314750.5
+
 HIJRIDEF double hijri_tabular_to_jd(HijriDate date) {
   long days = 0;
 
-  if (date.year >= 1) {
-    for (int y = 1; y < date.year; y++)
-      days += hijri__year_length(y);
-  } else {
-    for (int y = date.year; y < 1; y++)
-      days -= hijri__year_length(y);
-  }
+  /* The 30-year cycle is exactly 10631 days, so the walk only has to cover
+   * the partial cycle. At most 29 iterations instead of one per year. */
+  long cycles = hijri__floor_div((long)date.year - 1, 30);
+  days = cycles * 10631;
+  for (int y = (int)(cycles * 30) + 1; y < date.year; y++)
+    days += hijri__year_length(y);
 
   for (int m = 1; m < date.month; m++)
     days += hijri__month_length(date.year, m);
@@ -1612,32 +1629,39 @@ HIJRIDEF double hijri_tabular_to_jd(HijriDate date) {
 }
 
 HIJRIDEF HijriDate hijri_tabular_from_jd(double jd) {
-  long days_elapsed = (long)floor(jd - HIJRI__TABULAR_EPOCH_JD + 0.5);
+  HijriDate invalid = {0, 0, 0};
+  long days_elapsed, cycles, rem;
+  int year, month;
 
-  int year = 1;
-  if (days_elapsed >= 0) {
-    while (days_elapsed >= hijri__year_length(year)) {
-      days_elapsed -= hijri__year_length(year);
-      year++;
-    }
-  } else {
-    while (days_elapsed < 0) {
-      year--;
-      days_elapsed += hijri__year_length(year);
-    }
+  /* (long)floor(NAN) is undefined behaviour, and it is reachable: the
+   * evening parameters set jd_sunset_ut and jd_moonset_ut to NAN whenever
+   * their solver fails, so a caller who skips the status field lands here. */
+  if (!(jd >= HIJRI__TABULAR_MIN_JD && jd <= HIJRI__TABULAR_MAX_JD))
+    return invalid;
+
+  days_elapsed = (long)floor(jd - HIJRI__TABULAR_EPOCH_JD + 0.5);
+  cycles = hijri__floor_div(days_elapsed, 10631);
+  year = (int)(cycles * 30) + 1;
+  rem = days_elapsed - cycles * 10631; /* 0 <= rem < 10631 */
+
+  while (rem >= hijri__year_length(year)) { /* at most 29 iterations */
+    rem -= hijri__year_length(year);
+    year++;
   }
 
-  int month = 1;
-  while (days_elapsed >= hijri__month_length(year, month)) {
-    days_elapsed -= hijri__month_length(year, month);
+  month = 1;
+  while (rem >= hijri__month_length(year, month)) {
+    rem -= hijri__month_length(year, month);
     month++;
   }
 
-  HijriDate result;
-  result.year = year;
-  result.month = month;
-  result.day = (int)days_elapsed + 1;
-  return result;
+  {
+    HijriDate result;
+    result.year = year;
+    result.month = month;
+    result.day = (int)rem + 1;
+    return result;
+  }
 }
 
 /* ---- Top-level orchestration ----------------------------------------- */
