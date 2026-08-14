@@ -2202,8 +2202,8 @@ static void check_group14_setsolve(void) {
       sprintf(label, "setsolve_converge_%s", site->name);
       check_within(label, site->table[i][0],
                    hijri_sun_altitude(lib_ss, &loc),
-                   -(HIJRI__REFRACTION_AT_HORIZON_DEG +
-                     HIJRI__SOLAR_SEMIDIAMETER_DEG),
+                   -(HIJRI_SUNSET_CONVENTION_KEMENAG.refraction_at_horizon_deg +
+                     HIJRI_SUNSET_CONVENTION_KEMENAG.solar_semidiameter_deg),
                    TOL_SETSOLVE_CONVERGE_DEG);
 
       sprintf(label, "setsolve_moonset_available_%s", site->name);
