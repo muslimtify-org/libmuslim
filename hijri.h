@@ -194,26 +194,42 @@ typedef struct {
 static const HijriLocation HIJRI_LOCATION_MECCA = {21.4225, 39.8262, 240.0,
                                                    "Mecca"};
 
-/* The two quantities that define the sunset horizon. Both pedoman specify the
- * same two, and currently the same values. They are separate constants because
- * they are separate published methods, not because they differ today. */
+/* The two quantities that define the sunset horizon. They are separate
+ * constants per criterion because they are separate published methods, not
+ * because they all differ today.
+ *
+ * The semidiameter is stored at unit distance, in arcseconds, because both
+ * pedoman supply it as per-date input data rather than as a constant. It is
+ * divided by the Sun's distance in au at the sampled instant, so the crossing
+ * target varies over the year the way the books' tables do. 959.63 arcsec is
+ * the IAU value of the solar semidiameter at 1 au.
+ *
+ * conv is documented non-NULL everywhere it is taken, with no runtime check,
+ * matching how loc is already treated throughout this file. */
 typedef struct {
   double refraction_at_horizon_deg;
-  double solar_semidiameter_deg;
+  double solar_semidiameter_arcsec_at_1au;
 } HijriSunsetConvention;
 
-/* Pedoman Hisab Muhammadiyah 2009, p. 57: h = -(s.d. + R' + Dip). */
+/* Pedoman Hisab Muhammadiyah (Majelis Tarjih dan Tajdid, 2009), p. 57:
+ * h = -(s.d. + R' + Dip), with R' = 34' 30" = 0.575 deg and s.d. supplied as
+ * per-date input data. */
 static const HijriSunsetConvention HIJRI_SUNSET_CONVENTION_MUHAMMADIYAH =
-    {0.5667, 0.2667};
+    {0.575, 959.63};
 
-/* Ephemeris Hisab Rukyat 2023, step 14: h = -(SD + 00 34' 30" + Dip). */
+/* Ephemeris Hisab Rukyat 2023 (Kementerian Agama RI), step 14 of the worked
+ * hilal calculation: h = -(SD + 00 34' 30" + Dip), with SD read from Kemenag's
+ * own hourly solar table, which runs 15' 43.90" at aphelion to 16' 15.89" at
+ * perihelion. */
 static const HijriSunsetConvention HIJRI_SUNSET_CONVENTION_KEMENAG =
-    {0.5667, 0.2667};
+    {0.575, 959.63};
 
-/* Standard astronomical horizon. Claims no authority, and is what the research
- * predicates and the Umm al-Qura fallback take, because they disclaim one. */
+/* Standard astronomical horizon, 34' 00.12" of refraction. Claims no
+ * authority, and is what the research predicates and the Umm al-Qura fallback
+ * take, because they disclaim one. The semidiameter is the same physical
+ * quantity either way, so it does not vary with the criterion. */
 static const HijriSunsetConvention HIJRI_SUNSET_CONVENTION_ASTRONOMICAL =
-    {0.5667, 0.2667};
+    {0.5667, 959.63};
 
 /* ---- Julian Day ---------------------------------------------------------
  * Algorithms: Meeus, "Astronomical Algorithms" 2nd ed., ch. 7. */
@@ -941,9 +957,6 @@ HIJRIDEF void hijri_moon_topocentric(const HijriMoonPosition *geo, double jd_ut,
 /* ---- Rise/set solver --------------------------------------------------------
  */
 
-#define HIJRI__REFRACTION_AT_HORIZON_DEG 0.5667
-#define HIJRI__SOLAR_SEMIDIAMETER_DEG 0.2667
-
 HIJRIDEF double hijri_sun_altitude(double jd_ut, const HijriLocation *loc) {
   double jd_tt = hijri_jd_tt_from_ut(jd_ut);
   HijriSunPosition sun = hijri_sun_position(jd_tt);
@@ -958,6 +971,25 @@ HIJRIDEF double hijri_moon_altitude(double jd_ut, const HijriLocation *loc) {
   hijri_moon_topocentric(&geo, jd_ut, loc->latitude_deg, loc->longitude_deg,
                          loc->elevation_m, &ra_topo, &dec_topo);
   return hijri__altitude_deg(ra_topo, dec_topo, jd_ut, loc);
+}
+
+/* Apparent altitude of the Sun's UPPER LIMB: geocentric centre altitude plus
+ * semidiameter plus horizon refraction. The semidiameter varies with distance,
+ * so it cannot be a constant crossing target the way it was before issue #33.
+ * Folding it in here and solving for zero is the same shape
+ * hijri__moon_upper_limb_altitude() below already uses for the Moon, and it
+ * spends the distance_au that hijri_sun_position() computes and this file
+ * previously discarded. */
+static double hijri__sun_upper_limb_altitude(double jd_ut,
+                                             const HijriLocation *loc,
+                                             const HijriSunsetConvention *conv) {
+  double jd_tt = hijri_jd_tt_from_ut(jd_ut);
+  HijriSunPosition sun = hijri_sun_position(jd_tt);
+  double sd = (conv->solar_semidiameter_arcsec_at_1au / 3600.0) /
+              sun.distance_au;
+  return hijri__altitude_gast_deg(sun.right_ascension_deg,
+                                  sun.declination_deg, jd_ut, loc) +
+         sd + conv->refraction_at_horizon_deg;
 }
 
 static int hijri__bisect_crossing(double (*altitude_fn)(
@@ -986,34 +1018,28 @@ static int hijri__bisect_crossing(double (*altitude_fn)(
   return 1;
 }
 
-static double hijri__sun_altitude_conv(double jd_ut, const HijriLocation *loc,
-                                       const HijriSunsetConvention *conv) {
-  (void)conv;
-  return hijri_sun_altitude(jd_ut, loc);
-}
-
 HIJRIDEF HijriEventStatus hijri_find_sunset(double jd_local_midnight_ut,
                                             const HijriLocation *loc,
                                             const HijriSunsetConvention *conv,
                                             double *result_jd) {
-  double target =
-      -(conv->refraction_at_horizon_deg + conv->solar_semidiameter_deg);
+  double target = 0.0;
   double step = 1.0 / 24.0;
   double prev_jd = jd_local_midnight_ut;
-  double prev_alt = hijri_sun_altitude(prev_jd, loc) - target;
+  double prev_alt = hijri__sun_upper_limb_altitude(prev_jd, loc, conv) - target;
   for (int h = 1; h <= 24; h++) {
     double jd = jd_local_midnight_ut + h * step;
-    double alt = hijri_sun_altitude(jd, loc) - target;
+    double alt = hijri__sun_upper_limb_altitude(jd, loc, conv) - target;
     if (prev_alt > 0 && alt <= 0) {
-      if (hijri__bisect_crossing(hijri__sun_altitude_conv, loc, conv, prev_jd,
-                                 jd, target, result_jd)) {
+      if (hijri__bisect_crossing(hijri__sun_upper_limb_altitude, loc, conv,
+                                 prev_jd, jd, target, result_jd)) {
         return HIJRI_EVENT_OK;
       }
     }
     prev_jd = jd;
     prev_alt = alt;
   }
-  double mean_alt = hijri_sun_altitude(jd_local_midnight_ut + 0.5, loc);
+  double mean_alt =
+      hijri__sun_upper_limb_altitude(jd_local_midnight_ut + 0.5, loc, conv);
   return (mean_alt > target) ? HIJRI_EVENT_NEVER_SETS : HIJRI_EVENT_NEVER_RISES;
 }
 

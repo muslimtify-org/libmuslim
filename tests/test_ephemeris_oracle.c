@@ -185,40 +185,57 @@
 #define TOL_DELTA_T_SEC 11.0
 
 /* Group 14, the set solvers against oracle-solved instants with the convention
- * held equal on both sides. Measured maxima, printed by the temporary harness
- * in the preceding commit as "setsolve max": sunset 2.7380 s, moonset 7.2926 s.
- * Each bound below is that rounded up to leave roughly 2x margin.
+ * held equal on both sides. Remeasured 2026-08-14 after issue #33 moved the
+ * convention to refraction 34' 30" and a distance-varying solar semidiameter,
+ * with the tables regenerated against the same new convention. Maxima printed
+ * by this binary with every bound below set to zero to read them off:
+ * sunset 2.8107 s, moonset 7.3076 s. Each bound is that rounded up to leave
+ * roughly 2x margin.
+ *
+ * BOTH SIDES MOVED TOGETHER, WHICH IS THE POINT. Issue #37 measured sunset
+ * 2.7380 s and moonset 7.2926 s under the old convention. The new figures sit
+ * 2.7 percent and 0.2 percent above those, so the constants changed the
+ * horizon both sides solve for and did not change the library's agreement with
+ * DE440. A regeneration that had got the convention wrong on one side would
+ * have moved these by seconds.
  *
  * These are NOT the library's error against physical truth. They are its error
  * against an oracle using the library's own convention, which is the quantity
- * issue #18 asks for. The convention gap itself belongs to issue #33. */
-#define TOL_SETSOLVE_SUNSET_S 5.5
+ * issue #18 asks for. */
+#define TOL_SETSOLVE_SUNSET_S 5.7
 
-/* Moonset is bounded per site, not once. Measured maxima: jakarta 0.3862 s,
- * mecca 0.6073 s, mid45 1.7952 s, high60 7.2926 s, an 18.88x spread against
- * sunset's 1.75x. A single bound sized for high60 would leave the Jakarta
+/* Moonset is bounded per site, not once. Measured 2026-08-14: jakarta 0.3864 s,
+ * mecca 0.6075 s, mid45 1.7954 s, high60 7.3076 s, an 18.91x spread against
+ * sunset's 1.76x. A single bound sized for high60 would leave the Jakarta
  * assertion roughly 39x slack, which is not an assertion. The high60 figure is
  * not anomalous: three of its twelve rows are ones where the Moon set before
  * sunset and the solver walked to the following night, a different regime with
  * a different error scale, kept because they exercise the 24 hour scan.
- * Each site's bound sits in tol_moonset_s in SETSOLVE_SITES. */
+ * Each site's bound sits in tol_moonset_s in SETSOLVE_SITES, and all four are
+ * unchanged from issue #37 because all four measurements moved by under a
+ * hundredth of a second. */
 
-/* Bisection convergence, measured as 1.296e-07 deg by the same harness. The bound is
- * deliberately far above that, because this assertion exists to catch a solver
- * regression such as a reduced iteration count, not to certify the last bit.
- * 40 halvings of a one hour bracket reach about 3e-9 seconds, so any plausible
- * regression is orders of magnitude away from this bound. */
+/* Bisection convergence, measured as 1.401072e-07 deg on 2026-08-14, against
+ * 1.296e-07 deg under the old convention. The bound is deliberately far above
+ * that, because this assertion exists to catch a solver regression such as a
+ * reduced iteration count, not to certify the last bit. 40 halvings of a one
+ * hour bracket reach about 3e-9 seconds, so any plausible regression is orders
+ * of magnitude away from this bound. It is the one bound in this group not
+ * sized at 2x, for that reason, and it is left unchanged. */
 #define TOL_SETSOLVE_CONVERGE_DEG 1e-6
 
 /* Horizons cross-check on the solar position the sunset crossing is solved
- * from. Measured maxima over the three rows, printed by this binary when the
- * bound was set to zero to read them off: right ascension 0.0034349 deg,
- * declination 0.0009276 deg. 0.007 is the larger of the two rounded up to leave
- * 2.04x margin, consistent with the roughly 2x margin used elsewhere in this
- * file. The figure sits below the 0.0084042 deg maximum solar position error
- * this file's header records against DE440, which is what a matching query
- * convention should produce. A residual an order of magnitude larger would mean
- * the query convention, not the library, had drifted. */
+ * from. Refetched 2026-08-14 at the newly solved Jakarta instants, because the
+ * new convention moves those instants and keeping the old rows would mislabel
+ * them. Measured maxima over the three rows, printed by this binary when the
+ * bound was set to zero to read them off: right ascension 0.0034053 deg,
+ * declination 0.0009375 deg. 0.007 is the larger of the two rounded up to
+ * leave 2.06x margin, consistent with the roughly 2x margin used elsewhere in
+ * this file, and unchanged from issue #37 because the measurement moved by
+ * 3e-5 deg. The figure sits below the 0.0084042 deg maximum solar position
+ * error this file's header records against DE440, which is what a matching
+ * query convention should produce. A residual an order of magnitude larger
+ * would mean the query convention, not the library, had drifted. */
 #define TOL_SETSOLVE_HORIZONS_DEG 0.007
 
 /* The FLOOR every one of the same six cells must clear, which is a different
@@ -226,11 +243,13 @@
  * ceiling bounds accuracy. This bounds INDEPENDENCE: it fails if the stored
  * table stops being an outside source.
  *
- * Measured over all three rows and both columns, printed by this binary as
- * "setsolve_horizons residual min ... max ...": the maximum is 0.0034349 deg
- * and the MINIMUM is 0.0000433 deg, the row 1 declination difference. The
- * floor binds against the minimum, so 1e-5 deg is 4.33x below the measured
- * minimum and 343x below the measured maximum.
+ * Measured over all three rows and both columns on 2026-08-14, printed by this
+ * binary as "setsolve_horizons residual min ... max ...": the maximum is
+ * 0.0034053 deg and the MINIMUM is 0.0000429 deg, the row 1 declination
+ * difference. The floor binds against the minimum, so 1e-5 deg is 4.29x below
+ * the measured minimum and 341x below the measured maximum. Both figures moved
+ * by well under a percent when the convention changed, so the bound is
+ * unchanged from issue #37.
  *
  * The other side of the choice is what the floor must separate from. A table
  * regenerated from the library and transcribed at the seven decimals Horizons
@@ -786,21 +805,30 @@ static const double SKY_EQEQ[24][2] = {
 
 /* Sunset and moonset instants solved on the oracle side, for issue #18.
  *
- * PROVENANCE: generated with Skyfield 1.54 on JPL DE440 (de440s.bsp). Columns
- * are the sunset instant and the moonset instant, both as Julian Day in UT1 to
- * nine decimals, which is 86 microseconds against a second-scale residual. One
- * table per observer site, all at elevation 0. Grid dates are one day after
- * each 2025 conjunction. The generator was run by hand and is not committed,
- * matching every other oracle table in this file. Its full text is recorded in
+ * PROVENANCE: regenerated 2026-08-14 with Skyfield 1.55 on JPL DE440
+ * (de440s.bsp), against the issue #33 convention. Columns are the sunset
+ * instant and the moonset instant, both as Julian Day in UT1 to nine decimals,
+ * which is 86 microseconds against a second-scale residual. One table per
+ * observer site, all at elevation 0. Grid dates are one day after each 2025
+ * conjunction. The generator was run by hand and is not committed, matching
+ * every other oracle table in this file. Its full text is recorded in
  * docs/research/2026-08-08-set-solver-oracle.md.
+ *
+ * THE SKYFIELD VERSION CHANGED AND THAT WAS MEASURED, NOT ASSUMED. Issue #37
+ * produced these tables under Skyfield 1.54 and this regeneration ran under
+ * 1.55, which is a confound on any comparison between the two. It was removed
+ * by running the OLD convention under 1.55 first: that reproduced all 96
+ * committed values bit for bit at nine decimals. The version difference is
+ * therefore zero at the resolution stored here, and every difference between
+ * the old tables and these is the convention change.
  *
  * THE CONVENTION IS HELD EQUAL ON BOTH SIDES, ON PURPOSE. The oracle solves for
  * the same target the library does, using a GEOCENTRIC Sun with apparent
- * right ascension and apparent sidereal time, and the same
- * -(REFRACTION + SOLAR_SEMIDIAMETER) target. That is what separates this
- * fixture from issue #33, which is about whether those two constants are the
- * right ones. Holding the convention equal means this table keeps its meaning
- * after #33 changes them, because #33 changes both sides together.
+ * right ascension and apparent sidereal time, and the same upper-limb zero
+ * crossing, with refraction 0.575 deg and the semidiameter varying as
+ * 959.63 arcsec / distance_au. That is what makes the group 14 residuals a
+ * statement about the SOLVER rather than about the constants: issue #33 moved
+ * both sides together and the residuals stayed where issue #37 measured them.
  *
  * THE MOON SIDE REPLICATES THE MEAN FRAME AND THIS IS THE EASY THING TO GET
  * WRONG. hijri__altitude_deg pairs mean-of-date right ascension with MEAN
@@ -811,60 +839,60 @@ static const double SKY_EQEQ[24][2] = {
  * on the order of 1.3 s of deliberate design as library error. The generator
  * subtracts nutation to reach the mean equinox and uses GMST. */
 static const double SKY_SETSOLVE_JAKARTA[12][2] = {
-  {2460705.970467385, 2460706.005166394},   /* 2025-01-30 */
-  {2460735.966437230, 2460736.012782676},   /* 2025-03-01 */
-  {2460764.957508930, 2460764.987453242},   /* 2025-03-30 */
-  {2460793.949553166, 2460793.966749458},   /* 2025-04-28 */
-  {2460823.947139859, 2460823.998588262},   /* 2025-05-28 */
-  {2460852.950441329, 2460852.990654236},   /* 2025-06-26 */
-  {2460881.954225177, 2460881.978115114},   /* 2025-07-25 */
-  {2460911.953985053, 2460911.991356533},   /* 2025-08-24 */
-  {2460940.950524119, 2460940.965760513},   /* 2025-09-22 */
-  {2460970.948337770, 2460970.972346232},   /* 2025-10-22 */
-  {2461000.952330614, 2461000.988626409},   /* 2025-11-21 */
-  {2461030.962099322, 2461031.010110631},   /* 2025-12-21 */
+  {2460705.970503101, 2460706.005191407},   /* 2025-01-30 */
+  {2460735.966467096, 2460736.012806625},   /* 2025-03-01 */
+  {2460764.957532692, 2460764.987477771},   /* 2025-03-30 */
+  {2460793.949571465, 2460793.966775307},   /* 2025-04-28 */
+  {2460823.947153792, 2460823.998615888},   /* 2025-05-28 */
+  {2460852.950453009, 2460852.990681309},   /* 2025-06-26 */
+  {2460881.954237161, 2460881.978140822},   /* 2025-07-25 */
+  {2460911.954000040, 2460911.991380572},   /* 2025-08-24 */
+  {2460940.950544171, 2460940.965784471},   /* 2025-09-22 */
+  {2460970.948364694, 2460970.972371502},   /* 2025-10-22 */
+  {2461000.952364647, 2461000.988653474},   /* 2025-11-21 */
+  {2461030.962137627, 2461031.010137521},   /* 2025-12-21 */
 };
 static const double SKY_SETSOLVE_MECCA[12][2] = {
-  {2460706.131631374, 2460706.174817780},   /* 2025-01-30 */
-  {2460736.142414247, 2460736.208249921},   /* 2025-03-01 */
-  {2460765.149332837, 2460765.199414176},   /* 2025-03-30 */
-  {2460794.156236909, 2460794.194021995},   /* 2025-04-28 */
-  {2460824.165061587, 2460824.238505167},   /* 2025-05-28 */
-  {2460853.171294338, 2460853.225059390},   /* 2025-06-26 */
-  {2460882.168821229, 2460882.200234720},   /* 2025-07-25 */
-  {2460912.155539094, 2460912.189597008},   /* 2025-08-24 */
-  {2460941.136838004, 2460941.149751297},   /* 2025-09-22 */
-  {2460971.118712745, 2460971.135562280},   /* 2025-10-22 */
-  {2461001.109516486, 2461001.138223613},   /* 2025-11-21 */
-  {2461031.113796608, 2461031.161757674},   /* 2025-12-21 */
+  {2460706.131669672, 2460706.174844748},   /* 2025-01-30 */
+  {2460736.142446119, 2460736.208275779},   /* 2025-03-01 */
+  {2460765.149358205, 2460765.199440885},   /* 2025-03-30 */
+  {2460794.156256554, 2460794.194050384},   /* 2025-04-28 */
+  {2460824.165076659, 2460824.238535271},   /* 2025-05-28 */
+  {2460853.171307015, 2460853.225088422},   /* 2025-06-26 */
+  {2460882.168834188, 2460882.200261974},   /* 2025-07-25 */
+  {2460912.155555185, 2460912.189622412},   /* 2025-08-24 */
+  {2460941.136859446, 2460941.149776725},   /* 2025-09-22 */
+  {2460971.118741559, 2460971.135589441},   /* 2025-10-22 */
+  {2461001.109553084, 2461001.138253083},   /* 2025-11-21 */
+  {2461031.113837921, 2461031.161786940},   /* 2025-12-21 */
 };
 static const double SKY_SETSOLVE_MID45[12][2] = {
-  {2460706.211959834, 2460706.262619581},   /* 2025-01-30 */
-  {2460736.241376039, 2460736.329060860},   /* 2025-03-01 */
-  {2460765.267621290, 2460765.340735438},   /* 2025-03-30 */
-  {2460794.293062627, 2460794.354716877},   /* 2025-04-28 */
-  {2460824.316790390, 2460824.413162007},   /* 2025-05-28 */
-  {2460853.327019621, 2460853.389818894},   /* 2025-06-26 */
-  {2460882.315769845, 2460882.348273627},   /* 2025-07-25 */
-  {2460912.285542799, 2460912.308896410},   /* 2025-08-24 */
-  {2460941.248116870, 2460941.252271402},   /* 2025-09-22 */
-  {2460971.210514179, 2460971.212179313},   /* 2025-10-22 */
-  {2461001.184467469, 2461001.195873260},   /* 2025-11-21 */
-  {2461031.181372040, 2461031.223635422},   /* 2025-12-21 */
+  {2460706.212012278, 2460706.262656576},   /* 2025-01-30 */
+  {2460736.241418222, 2460736.329095412},   /* 2025-03-01 */
+  {2460765.267654791, 2460765.340772209},   /* 2025-03-30 */
+  {2460794.293089354, 2460794.354758196},   /* 2025-04-28 */
+  {2460824.316811892, 2460824.413207804},   /* 2025-05-28 */
+  {2460853.327038014, 2460853.389860824},   /* 2025-06-26 */
+  {2460882.315788035, 2460882.348310748},   /* 2025-07-25 */
+  {2460912.285564402, 2460912.308929531},   /* 2025-08-24 */
+  {2460941.248145119, 2460941.252304748},   /* 2025-09-22 */
+  {2460971.210552675, 2460971.212216990},   /* 2025-10-22 */
+  {2461001.184518366, 2461001.195917718},   /* 2025-11-21 */
+  {2461031.181431015, 2461031.223679093},   /* 2025-12-21 */
 };
 static const double SKY_SETSOLVE_HIGH60[12][2] = {
-  {2460706.173261592, 2460706.226433615},   /* 2025-01-30 */
-  {2460736.227652046, 2460736.335782412},   /* 2025-03-01 */
-  {2460765.277377197, 2460765.374065649},   /* 2025-03-30 */
-  {2460794.327049147, 2460794.420246489},   /* 2025-04-28 */
-  {2460824.375462957, 2460824.516601558},   /* 2025-05-28 */
-  {2460853.394095609, 2460853.463548038},   /* 2025-06-26 */
-  {2460882.365617409, 2460882.392235455},   /* 2025-07-25 */
-  {2460912.310187954, 2460912.316264119},   /* 2025-08-24 */
-  {2460941.249482482, 2460942.238925292},   /* 2025-09-22 */
-  {2460971.187900848, 2460972.165052444},   /* 2025-10-22 */
-  {2461001.137552446, 2461002.123227193},   /* 2025-11-21 */
-  {2461031.121036874, 2461031.137639221},   /* 2025-12-21 */
+  {2460706.173344362, 2460706.226491853},   /* 2025-01-30 */
+  {2460736.227712542, 2460736.335832193},   /* 2025-03-01 */
+  {2460765.277424972, 2460765.374122733},   /* 2025-03-30 */
+  {2460794.327090440, 2460794.420326772},   /* 2025-04-28 */
+  {2460824.375502613, 2460824.516746451},   /* 2025-05-28 */
+  {2460853.394132530, 2460853.463633967},   /* 2025-06-26 */
+  {2460882.365648513, 2460882.392294610},   /* 2025-07-25 */
+  {2460912.310219942, 2460912.316310553},   /* 2025-08-24 */
+  {2460941.249522409, 2460942.238975554},   /* 2025-09-22 */
+  {2460971.187957254, 2460972.165128381},   /* 2025-10-22 */
+  {2461001.137636960, 2461002.123380153},   /* 2025-11-21 */
+  {2461031.121146258, 2461031.137747006},   /* 2025-12-21 */
 };
 
 /* The grid dates, one day after each 2025 conjunction. Kept beside the tables
@@ -906,9 +934,9 @@ static const SetSolveSite SETSOLVE_SITES[4] = {
  * frame error in the generator would land in seconds to minutes rather than
  * hiding, which the group 14 maxima would show immediately. */
 static const double HORIZONS_SETSOLVE_SUN[3][3] = {
-  {2460705.970467385, 313.2706250, -17.5194167},
-  {2460852.950441329, 95.5501250, 23.3402500},
-  {2461030.962099322, 269.8167500, -23.4381389},
+  {2460705.970503101, 313.2706667, -17.5194167},
+  {2460852.950453009, 95.5501667, 23.3402500},
+  {2461030.962137627, 269.8167917, -23.4381389},
 };
 
 /* MEASURED MUTATION SENSITIVITY of the set-solver fixtures above.
@@ -921,6 +949,15 @@ static const double HORIZONS_SETSOLVE_SUN[3][3] = {
  * and M12. Every mutation was reverted, including the one to hijri.h, and
  * neither this file nor hijri.h carries a mutation. All runs are against the
  * suite at 1029 checks, whose unmutated result is "1029 checks, 0 failures".
+ *
+ * READ AS A DATED RECORD, NOT AS A DESCRIPTION OF THE CURRENT TABLES. Every
+ * S-record below was run on 2026-08-08 against the pre-issue-#33 tables and
+ * bounds, so the stored values it quotes and the bound it names are the ones
+ * in force then. It is kept verbatim rather than rewritten, because a
+ * mutation record is evidence of a run that happened and editing its numbers
+ * to match today's file would make it evidence of nothing. The conclusions
+ * survive the regeneration: the perturbations are 8.64 s and 0.01 deg against
+ * bounds that moved by 0.2 s and not at all.
  *
  * S1  SKY_SETSOLVE_JAKARTA row 0 sunset, 2460705.970467385 -> 2460705.970567385
  *     (+0.0001 d, 8.64 s) against TOL_SETSOLVE_SUNSET_S = 5.5 s.
@@ -2200,11 +2237,15 @@ static void check_group14_setsolve(void) {
                    TOL_SETSOLVE_SUNSET_S);
 
       sprintf(label, "setsolve_converge_%s", site->name);
-      check_within(label, site->table[i][0],
-                   hijri_sun_altitude(lib_ss, &loc),
-                   -(HIJRI_SUNSET_CONVENTION_KEMENAG.refraction_at_horizon_deg +
-                     HIJRI_SUNSET_CONVENTION_KEMENAG.solar_semidiameter_deg),
-                   TOL_SETSOLVE_CONVERGE_DEG);
+      {
+        HijriSunPosition ss = hijri_sun_position(hijri_jd_tt_from_ut(lib_ss));
+        double target =
+            -(HIJRI_SUNSET_CONVENTION_KEMENAG.refraction_at_horizon_deg +
+              (HIJRI_SUNSET_CONVENTION_KEMENAG.solar_semidiameter_arcsec_at_1au /
+               3600.0) / ss.distance_au);
+        check_within(label, site->table[i][0], hijri_sun_altitude(lib_ss, &loc),
+                     target, TOL_SETSOLVE_CONVERGE_DEG);
+      }
 
       sprintf(label, "setsolve_moonset_available_%s", site->name);
       if (hijri_find_moonset(lib_ss, &loc, &HIJRI_SUNSET_CONVENTION_KEMENAG,
