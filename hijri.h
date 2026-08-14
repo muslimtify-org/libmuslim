@@ -398,6 +398,12 @@ HIJRIDEF int hijri_from_gregorian_with_local_predicate(
     int gy, int gm, int gd, const HijriLocation *loc,
     HijriLocalPredicate predicate, HijriDate *out);
 
+/* Table range: 1882-11-12 to 2174-11-25 Gregorian (Hijri 1300-1600). Inside
+ * that range the answer comes from the published table. Outside it, the
+ * answer comes from the astronomical reconstruction instead, the same
+ * calculation hijri_from_gregorian_with_local_predicate does at Mecca with
+ * the conjunction-and-moonset predicate. Either way the return value is 1,
+ * hijri_umm_al_qura_covers below is how a caller tells the two apart. */
 HIJRIDEF int hijri_umm_al_qura_from_gregorian(int gy, int gm, int gd,
                                                HijriDate *out);
 
@@ -458,6 +464,19 @@ hijri_odeh_evaluate_evening(int gy, int gm, int gd,
  * Umm al-Qura to within about +/-1-2 days. Epoch: 1 Muharram 1 AH = JD
  * 1948439.5 (civil/"Friday" epoch convention). */
 
+/* hijri_tabular_to_jd is unchecked arithmetic by design, an out-of-range
+ * month or day is not rejected, it produces a plausible wrong Julian Day
+ * instead of an error. Call hijri_tabular_date_valid first if the input is
+ * not already known good.
+ *
+ * hijri_tabular_from_jd rejects non-finite and out-of-range input and
+ * returns the sentinel HijriDate {0, 0, 0} rather than a garbage date.
+ *
+ * SUPPORTED AND TESTED RANGE: Hijri years 1 through 9999, round tripped in
+ * the test suite along with years -999 through 0. The representable and
+ * safe range that hijri_tabular_date_valid checks is wider, bounded by int
+ * overflow rather than by what the tests cover. The two are separate
+ * claims, one is not a stand-in for the other. */
 HIJRIDEF double hijri_tabular_to_jd(HijriDate date);
 HIJRIDEF HijriDate hijri_tabular_from_jd(double jd);
 
