@@ -2186,7 +2186,8 @@ static void check_group14_setsolve(void) {
       double lib_ss, lib_ms, err;
 
       sprintf(label, "setsolve_sunset_available_%s", site->name);
-      if (hijri_find_sunset(jd_midnight, &loc, &lib_ss) != HIJRI_EVENT_OK) {
+      if (hijri_find_sunset(jd_midnight, &loc, &HIJRI_SUNSET_CONVENTION_KEMENAG,
+                            &lib_ss) != HIJRI_EVENT_OK) {
         check_true_nonzero(label, 0.0);
         continue;   /* lib_ss is not written on failure, so do not read it */
       }
@@ -2206,7 +2207,8 @@ static void check_group14_setsolve(void) {
                    TOL_SETSOLVE_CONVERGE_DEG);
 
       sprintf(label, "setsolve_moonset_available_%s", site->name);
-      if (hijri_find_moonset(lib_ss, &loc, &lib_ms) != HIJRI_EVENT_OK) {
+      if (hijri_find_moonset(lib_ss, &loc, &HIJRI_SUNSET_CONVENTION_KEMENAG,
+                             &lib_ms) != HIJRI_EVENT_OK) {
         check_true_nonzero(label, 0.0);
         continue;   /* lib_ms is not written on failure, so do not read it */
       }

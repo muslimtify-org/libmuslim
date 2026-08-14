@@ -42,7 +42,8 @@ int main(void) {
   print_date("Umm al-Qura", ok, result);
 
   printf("\n=== Explicit evening parameters for Jakarta ===\n");
-  parameters = hijri_compute_evening_parameters(2026, 2, 17, &jakarta);
+  parameters = hijri_compute_evening_parameters(
+      2026, 2, 17, &jakarta, &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL);
   if (parameters.sunset_status == HIJRI_EVENT_OK) {
     printf("Moon center altitude:       %.2f deg\n",
            parameters.moon_center_geometric_altitude_deg);

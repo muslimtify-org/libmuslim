@@ -221,8 +221,8 @@ static void test_yallop(void) {
        HIJRI_YALLOP_F_NOT_VISIBLE_BELOW_LIMIT}};
   const HijriLocation jakarta = {-6.2088, 106.8456, 8.0, "Jakarta"};
   const HijriLocation north_pole = {90.0, 0.0, 0.0, "North Pole"};
-  HijriEveningParameters evening =
-      hijri_compute_evening_parameters(2025, 2, 28, &jakarta);
+  HijriEveningParameters evening = hijri_compute_evening_parameters(
+      2025, 2, 28, &jakarta, &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL);
   HijriYallopResult result =
       hijri_yallop_evaluate_evening(2025, 2, 28, &jakarta);
   HijriYallopResult unavailable =
@@ -281,8 +281,8 @@ static void test_odeh(void) {
       {-2.0, HIJRI_ODEH_NOT_VISIBLE}};
   const HijriLocation jakarta = {-6.2088, 106.8456, 8.0, "Jakarta"};
   const HijriLocation north_pole = {90.0, 0.0, 0.0, "North Pole"};
-  HijriEveningParameters evening =
-      hijri_compute_evening_parameters(2025, 2, 28, &jakarta);
+  HijriEveningParameters evening = hijri_compute_evening_parameters(
+      2025, 2, 28, &jakarta, &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL);
   HijriOdehResult result =
       hijri_odeh_evaluate_evening(2025, 2, 28, &jakarta);
   HijriOdehResult unavailable =
@@ -310,10 +310,10 @@ static void test_odeh(void) {
 
 static void test_relevant_conjunction(void) {
   const HijriLocation jakarta = {-6.2088, 106.8456, 8.0, "Jakarta"};
-  HijriEveningParameters before =
-      hijri_compute_evening_parameters(2026, 2, 17, &jakarta);
-  HijriEveningParameters after =
-      hijri_compute_evening_parameters(2025, 2, 28, &jakarta);
+  HijriEveningParameters before = hijri_compute_evening_parameters(
+      2026, 2, 17, &jakarta, &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL);
+  HijriEveningParameters after = hijri_compute_evening_parameters(
+      2025, 2, 28, &jakarta, &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL);
 
   check_true("before_conjunction_sunset_ok",
              before.sunset_status == HIJRI_EVENT_OK);
@@ -353,7 +353,7 @@ static void test_relevant_conjunction(void) {
         moon_ra_topo, moon_dec_topo, after.jd_sunset_ut, &jakarta);
     expected_upper_limb =
         expected_center + 0.2725076 * moon.horizontal_parallax_deg +
-        HIJRI__REFRACTION_AT_HORIZON_DEG;
+        HIJRI_SUNSET_CONVENTION_ASTRONOMICAL.refraction_at_horizon_deg;
 
     check_close("geocentric_elongation_reproduced",
                 after.geocentric_elongation_deg, expected_geocentric, 1e-12);
@@ -453,7 +453,8 @@ static void test_local_evening_date(void) {
       for (lon = -180; lon <= 180; lon += 15) {
         HijriLocation loc = {lats[li], (double)lon, 0.0, "sweep"};
         HijriEveningParameters p = hijri_compute_evening_parameters(
-            dates[di][0], dates[di][1], dates[di][2], &loc);
+            dates[di][0], dates[di][1], dates[di][2], &loc,
+            &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL);
         char name[80];
         int ly, lm;
         double ld;
@@ -478,8 +479,8 @@ static void test_local_evening_date(void) {
     };
     size_t i;
     for (i = 0; i < sizeof(sites) / sizeof(sites[0]); i++) {
-      HijriEveningParameters p =
-          hijri_compute_evening_parameters(2024, 3, 11, &sites[i]);
+      HijriEveningParameters p = hijri_compute_evening_parameters(
+          2024, 3, 11, &sites[i], &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL);
       char name[80];
       int ly, lm;
       double ld;
@@ -508,8 +509,8 @@ static void test_local_evening_date(void) {
     size_t i;
     for (i = 0; i < sizeof(zones) / sizeof(zones[0]); i++) {
       HijriLocation loc = {zones[i].lat, zones[i].lon, 0.0, zones[i].name};
-      HijriEveningParameters p =
-          hijri_compute_evening_parameters(2024, 6, 21, &loc);
+      HijriEveningParameters p = hijri_compute_evening_parameters(
+          2024, 6, 21, &loc, &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL);
       char name[80];
       int sy, sm, cy, cm;
       double sd, cd;
@@ -527,8 +528,8 @@ static void test_local_evening_date(void) {
    * the June solstice the Sun does not set, and the API must say so. */
   {
     HijriLocation polar = {78.0, 15.0, 0.0, "Svalbard"};
-    HijriEveningParameters p =
-        hijri_compute_evening_parameters(2024, 6, 21, &polar);
+    HijriEveningParameters p = hijri_compute_evening_parameters(
+        2024, 6, 21, &polar, &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL);
     check_true("polar_midsummer_reports_no_sunset",
                p.sunset_status != HIJRI_EVENT_OK);
   }
@@ -950,7 +951,8 @@ static void test_moonset_crossing_convention(void) {
     HijriLocation loc = {cases[index].lat, cases[index].lon,
                          cases[index].elev, cases[index].name};
     HijriEveningParameters p = hijri_compute_evening_parameters(
-        cases[index].y, cases[index].m, cases[index].d, &loc);
+        cases[index].y, cases[index].m, cases[index].d, &loc,
+        &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL);
     if (p.moonset_status != HIJRI_EVENT_OK) {
       continue;
     }
@@ -963,7 +965,8 @@ static void test_moonset_crossing_convention(void) {
                              loc.longitude_deg, loc.elevation_m, &ra_topo,
                              &dec_topo);
       center = hijri__altitude_deg(ra_topo, dec_topo, p.jd_moonset_ut, &loc);
-      limb = center + sd + HIJRI__REFRACTION_AT_HORIZON_DEG;
+      limb = center + sd +
+             HIJRI_SUNSET_CONVENTION_ASTRONOMICAL.refraction_at_horizon_deg;
       snprintf(name, sizeof(name), "moonset_crossing_%s", cases[index].name);
       check_close(name, limb, 0.0, 0.01);
     }
@@ -1023,7 +1026,8 @@ static void test_crescent_equivalence_property(void) {
         }
         hijri_gregorian_from_jd(jd, &gy, &gm, &gd_frac);
         p = hijri_compute_evening_parameters(gy, gm, (int)floor(gd_frac),
-                                             &loc);
+                                             &loc,
+                                             &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL);
         if (p.sunset_status != HIJRI_EVENT_OK ||
             p.moonset_status != HIJRI_EVENT_OK) {
           continue;
@@ -1110,8 +1114,8 @@ static void test_solar_position_pin(void) {
 static void test_pedoman_worked_example(void) {
   HijriLocation yogyakarta = {-(7.0 + 48.0 / 60.0), 110.0 + 21.0 / 60.0,
                               90.0, "Yogyakarta"};
-  HijriEveningParameters p =
-      hijri_compute_evening_parameters(2008, 9, 29, &yogyakarta);
+  HijriEveningParameters p = hijri_compute_evening_parameters(
+      2008, 9, 29, &yogyakarta, &HIJRI_SUNSET_CONVENTION_MUHAMMADIYAH);
   double book_hb = -(52.0 / 60.0 + 3.82 / 3600.0);
 
   check_int("pedoman_sunset_available", p.sunset_status, HIJRI_EVENT_OK);
@@ -1293,8 +1297,8 @@ static void test_kemenag_published_quantities(void) {
 
   for (i = 0; i < n; i++) {
     const KemenagPublished *r = &KEMENAG_PUBLISHED_2023[i];
-    HijriEveningParameters p =
-        hijri_compute_evening_parameters(r->y, r->m, r->d, &sabang);
+    HijriEveningParameters p = hijri_compute_evening_parameters(
+        r->y, r->m, r->d, &sabang, &HIJRI_SUNSET_CONVENTION_KEMENAG);
     double alo = kemenag_dm(r->alt_lo_sign, r->alt_lo_deg, r->alt_lo_min);
     double ahi = kemenag_dm(r->alt_hi_sign, r->alt_hi_deg, r->alt_hi_min);
     double elo = kemenag_dm(1, r->el_lo_deg, r->el_lo_min);
@@ -1393,7 +1397,8 @@ static void test_kemenag_official_calendar(void) {
       hijri_gregorian_from_jd(start_jd - (double)offset + 0.5, &gy, &gm,
                               &gd_frac);
       p = hijri_compute_evening_parameters(gy, gm, (int)floor(gd_frac),
-                                           &sabang);
+                                           &sabang,
+                                           &HIJRI_SUNSET_CONVENTION_KEMENAG);
       if (p.sunset_status != HIJRI_EVENT_OK) {
         continue;
       }
@@ -1423,8 +1428,8 @@ static void test_kemenag_official_calendar(void) {
    * Kemenag's operational elongation is geocentric. Kept as a living check
    * so ephemeris drift or a convention regression surfaces here. */
   {
-    HijriEveningParameters pin =
-        hijri_compute_evening_parameters(2025, 2, 28, &sabang);
+    HijriEveningParameters pin = hijri_compute_evening_parameters(
+        2025, 2, 28, &sabang, &HIJRI_SUNSET_CONVENTION_KEMENAG);
     check_close("kemenag_pin_geocentric_matches_announcement",
                 pin.geocentric_elongation_deg, 6.4023, 0.05);
     check_true("kemenag_pin_topocentric_is_far_below",
