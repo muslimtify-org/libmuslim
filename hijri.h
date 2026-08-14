@@ -402,15 +402,20 @@ HIJRIDEF int hijri_from_gregorian_with_local_predicate(
  * that range the answer comes from the published table. Outside it, the
  * answer comes from the astronomical reconstruction instead, the same
  * calculation hijri_from_gregorian_with_local_predicate does at Mecca with
- * the conjunction-and-moonset predicate. Either way the return value is 1,
- * hijri_umm_al_qura_covers below is how a caller tells the two apart. */
+ * the conjunction-and-moonset predicate. Inside the table range the return
+ * value is 1. Outside it, the reconstruction can fail, in which case the
+ * return value is 0 and out is not filled in, so a return of 1 does not by
+ * itself say which algorithm answered, hijri_umm_al_qura_covers below is how
+ * a caller tells the two apart. */
 HIJRIDEF int hijri_umm_al_qura_from_gregorian(int gy, int gm, int gd,
                                                HijriDate *out);
 
 /* True if the given Gregorian date falls inside the Umm al-Qura table's
- * coverage. hijri_umm_al_qura_from_gregorian returns 1 both for a table
- * answer and for its astronomical fallback, so this is the second question
- * a caller needs to tell the two apart. */
+ * coverage. Inside coverage, hijri_umm_al_qura_from_gregorian answers from
+ * the table and returns 1. Outside it, the answer comes from the
+ * astronomical reconstruction instead, which can fail and return 0, so this
+ * function is what tells a caller which algorithm is in play, a return
+ * value of 1 alone does not say. */
 HIJRIDEF int hijri_umm_al_qura_covers(int gy, int gm, int gd);
 
 typedef enum {
