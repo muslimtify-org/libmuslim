@@ -1040,16 +1040,15 @@ HIJRIDEF HijriEventStatus hijri_find_sunset(double jd_local_midnight_ut,
                                             const HijriLocation *loc,
                                             const HijriSunsetConvention *conv,
                                             double *result_jd) {
-  double target = 0.0;
   double step = 1.0 / 24.0;
   double prev_jd = jd_local_midnight_ut;
-  double prev_alt = hijri__sun_upper_limb_altitude(prev_jd, loc, conv) - target;
+  double prev_alt = hijri__sun_upper_limb_altitude(prev_jd, loc, conv);
   for (int h = 1; h <= 24; h++) {
     double jd = jd_local_midnight_ut + h * step;
-    double alt = hijri__sun_upper_limb_altitude(jd, loc, conv) - target;
+    double alt = hijri__sun_upper_limb_altitude(jd, loc, conv);
     if (prev_alt > 0 && alt <= 0) {
       if (hijri__bisect_crossing(hijri__sun_upper_limb_altitude, loc, conv,
-                                 prev_jd, jd, target, result_jd)) {
+                                 prev_jd, jd, 0.0, result_jd)) {
         return HIJRI_EVENT_OK;
       }
     }
@@ -1058,7 +1057,7 @@ HIJRIDEF HijriEventStatus hijri_find_sunset(double jd_local_midnight_ut,
   }
   double mean_alt =
       hijri__sun_upper_limb_altitude(jd_local_midnight_ut + 0.5, loc, conv);
-  return (mean_alt > target) ? HIJRI_EVENT_NEVER_SETS : HIJRI_EVENT_NEVER_RISES;
+  return (mean_alt > 0.0) ? HIJRI_EVENT_NEVER_SETS : HIJRI_EVENT_NEVER_RISES;
 }
 
 /* Apparent altitude of the Moon's UPPER LIMB: topocentric centre altitude
@@ -1087,16 +1086,15 @@ HIJRIDEF HijriEventStatus hijri_find_moonset(double jd_after,
                                              const HijriLocation *loc,
                                              const HijriSunsetConvention *conv,
                                              double *result_jd) {
-  double target = 0.0;
   double step = 1.0 / 24.0;
   double prev_jd = jd_after;
-  double prev_alt = hijri__moon_upper_limb_altitude(prev_jd, loc, conv) - target;
+  double prev_alt = hijri__moon_upper_limb_altitude(prev_jd, loc, conv);
   for (int h = 1; h <= 24; h++) {
     double jd = jd_after + h * step;
-    double alt = hijri__moon_upper_limb_altitude(jd, loc, conv) - target;
+    double alt = hijri__moon_upper_limb_altitude(jd, loc, conv);
     if (prev_alt > 0 && alt <= 0) {
       if (hijri__bisect_crossing(hijri__moon_upper_limb_altitude, loc, conv,
-                                 prev_jd, jd, target, result_jd)) {
+                                 prev_jd, jd, 0.0, result_jd)) {
         return HIJRI_EVENT_OK;
       }
     }
@@ -1104,7 +1102,7 @@ HIJRIDEF HijriEventStatus hijri_find_moonset(double jd_after,
     prev_alt = alt;
   }
   double mean_alt = hijri__moon_upper_limb_altitude(jd_after + 0.5, loc, conv);
-  return (mean_alt > target) ? HIJRI_EVENT_NEVER_SETS : HIJRI_EVENT_NEVER_RISES;
+  return (mean_alt > 0.0) ? HIJRI_EVENT_NEVER_SETS : HIJRI_EVENT_NEVER_RISES;
 }
 
 /* ---- Conjunction finder
