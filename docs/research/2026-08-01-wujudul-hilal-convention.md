@@ -85,13 +85,15 @@ suaramuhammadiyah.id and muhammadiyahponorogo.or.id explainers.
 ## Comparison with the library (as of merge of PR #9)
 
 `hijri.h` computes `moon_upper_limb_apparent_altitude_deg` as
-topocentric-centre geometric altitude + semidiameter + 34′ refraction:
+topocentric-centre geometric altitude + semidiameter + horizon refraction,
+where that refraction is 34′30″ since issue #33 and was 34′00″ when this note
+was written:
 
 | Term | Pedoman | library | delta |
 |---|---|---|---|
 | parallax/topocentric | yes | yes (`hijri_moon_topocentric`) | equivalent to first order |
 | semidiameter | yes | yes | none |
-| refraction | 34′30″ | 34′00″ | 0.5′, negligible |
+| refraction | 34′30″ | 34′30″ | none, closed 2026-08-14 by issue #33 |
 | **dip** | **yes, 1.76′√elev** | **omitted** | **16.7′ at 90 m, 0 at sea level** |
 
 Two consequences:
