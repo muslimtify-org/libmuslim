@@ -259,6 +259,22 @@
  * asserts that the sources disagree at all rather than asserting how much.
  * Sizing it near the measured residual would make it a second accuracy bound
  * that fails whenever the library improves. */
+/* The FLOOR the astronomical convention's solved sunset instant must clear
+ * against the kemenag instant, at every one of the 48 rows. This guards
+ * against the astronomical convention silently converging on a pedoman's,
+ * which a floor on the MAXIMUM separation would not catch: a single row
+ * still separated by seconds would hold the maximum up while every other row
+ * collapsed to zero. The floor binds against the MINIMUM instead, matching
+ * TOL_SETSOLVE_HORIZONS_FLOOR_DEG above.
+ *
+ * Measured over all 48 rows and 4 sites on 2026-08-14, printed by this
+ * binary as "setsolve_astronomical separation min ... max ...": the minimum
+ * is 2.0035 s and the maximum is 6.9093 s. 1.0 s is roughly 2x below the
+ * measured minimum, consistent with the margin used elsewhere in this file,
+ * and well above the near-zero separation a converged (bug-degenerate)
+ * convention would produce. */
+#define TOL_SETSOLVE_ASTRO_SEP_FLOOR_S 1.0
+
 #define TOL_SETSOLVE_HORIZONS_FLOOR_DEG 1e-5
 
 /* MEASURED MUTATION SENSITIVITY of the four tables above.
@@ -1093,6 +1109,41 @@ static const double HORIZONS_SETSOLVE_SUN[3][3] = {
  *     checks, 0 failures" and exited 0. A maximum only guards the whole table
  *     going degenerate at once, so the guard was rewritten over the minimum
  *     before the mutations above were run.
+ */
+
+/* MEASURED MUTATION SENSITIVITY of the convention split assertions added for
+ * Task 4 (2026-08-14): setsolve_pedoman_conventions_agree_%s and
+ * setsolve_astronomical_separation_floor. All three mutations below were
+ * applied, built with `make test`, run, and reverted. The unmutated suite is
+ * "1126 checks, 0 failures", exit 0.
+ *
+ * T1  HIJRI_SUNSET_CONVENTION_MUHAMMADIYAH.refraction_at_horizon_deg,
+ *     0.575 -> 0.6, which breaks the bit-identity Kemenag and Muhammadiyah
+ *     are supposed to share.
+ *     CAUGHT, at all 48 rows, first FAIL verbatim:
+ *       FAIL setsolve_pedoman_conventions_agree_jakarta at jd=2460706.0: got 2460705.9705860 want 2460705.9705126 (err 0.0000733 > tol 0.0000000)
+ *     Suite went to "1126 checks, 48 failures", exit 1.
+ *
+ * T2  HIJRI_SUNSET_CONVENTION_ASTRONOMICAL.refraction_at_horizon_deg,
+ *     0.5667 -> 0.575, matching the pedoman value exactly, which is the
+ *     convergence the separation floor exists to catch.
+ *     CAUGHT, verbatim:
+ *       setsolve_astronomical separation min 0.0000 max 0.0000 s
+ *       FAIL setsolve_astronomical_separation_floor: expected a non-zero value, got -1.000000000
+ *     Suite went to "1126 checks, 1 failures", exit 1.
+ *
+ * T3  hijri__sun_upper_limb_altitude at hijri.h, dividing the semidiameter
+ *     term by 1.0 instead of by sun.distance_au, restoring a fixed
+ *     semidiameter that does not vary with the Sun's distance.
+ *     CAUGHT, but by the pre-existing setsolve_converge_%s assertion, not
+ *     by either assertion added in this task: the crossing target it
+ *     recomputes independently from conv still divides by distance_au, so
+ *     it diverges from the mutated solver at every row. First FAIL verbatim:
+ *       FAIL setsolve_converge_jakarta at jd=2460706.0: got -0.8415639 want -0.8456196 (err 0.0040557 > tol 0.0000010)
+ *     Suite went to "1126 checks, 48 failures", exit 1. This is recorded as
+ *     a finding, per the brief: T3 does not show the new assertions
+ *     constrain the distance-varying semidiameter, only that group 14's
+ *     existing convergence check already did.
  */
 
 /* Topocentric fixtures for issue #17.
@@ -2198,6 +2249,7 @@ static void check_group7_shipped_elongation(void) {
  * and it is the only assertion here that would survive deleting every table. */
 static void check_group14_setsolve(void) {
   int s, i;
+  double min_astro_sep_s = 1e9, max_astro_sep_s = 0.0;
   for (s = 0; s < 4; s++) {
     const SetSolveSite *site = &SETSOLVE_SITES[s];
     HijriLocation loc;
@@ -2247,6 +2299,39 @@ static void check_group14_setsolve(void) {
                      target, TOL_SETSOLVE_CONVERGE_DEG);
       }
 
+      /* Kemenag and Muhammadiyah specify identical constants, so the two
+       * conventions must solve to bit-identical instants. The moment either
+       * constant set is edited, this states which one moved. */
+      {
+        double muh_ss;
+        sprintf(label, "setsolve_pedoman_conventions_agree_%s", site->name);
+        if (hijri_find_sunset(jd_midnight, &loc,
+                              &HIJRI_SUNSET_CONVENTION_MUHAMMADIYAH,
+                              &muh_ss) == HIJRI_EVENT_OK) {
+          check_within(label, site->table[i][0], muh_ss, lib_ss, 0.0);
+        } else {
+          check_true_nonzero(label, 0.0);
+        }
+      }
+
+      /* The astronomical convention must not silently converge on a pedoman's
+       * solved instant. Measured across all 48 rows before pinning, see
+       * TOL_SETSOLVE_ASTRO_SEP_FLOOR_S. */
+      {
+        double astro_ss, sep;
+        sprintf(label, "setsolve_astronomical_available_%s", site->name);
+        if (hijri_find_sunset(jd_midnight, &loc,
+                              &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL,
+                              &astro_ss) == HIJRI_EVENT_OK) {
+          check_true_nonzero(label, 1.0);
+          sep = fabs(astro_ss - lib_ss) * 86400.0;
+          if (sep < min_astro_sep_s) min_astro_sep_s = sep;
+          if (sep > max_astro_sep_s) max_astro_sep_s = sep;
+        } else {
+          check_true_nonzero(label, 0.0);
+        }
+      }
+
       sprintf(label, "setsolve_moonset_available_%s", site->name);
       if (hijri_find_moonset(lib_ss, &loc, &HIJRI_SUNSET_CONVENTION_KEMENAG,
                              &lib_ms) != HIJRI_EVENT_OK) {
@@ -2264,6 +2349,11 @@ static void check_group14_setsolve(void) {
     printf("setsolve max %-8s sunset %.4f s  moonset %.4f s\n",
            site->name, max_ss, max_ms);
   }
+
+  printf("setsolve_astronomical separation min %.4f max %.4f s\n",
+         min_astro_sep_s, max_astro_sep_s);
+  check_true_nonzero("setsolve_astronomical_separation_floor",
+                     min_astro_sep_s - TOL_SETSOLVE_ASTRO_SEP_FLOOR_S);
 
   {
     int k;
