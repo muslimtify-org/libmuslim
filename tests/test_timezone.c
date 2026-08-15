@@ -26,14 +26,28 @@ static int total = 0;
 
 static void check_offset(const char *zone, time_t when, double expected,
                          const char *label) {
-  double got = parse_timezone_offset(zone, when);
+  double got = 0.0;
+  int rc = parse_timezone_offset(zone, when, &got);
   total++;
-  if (fabs(got - expected) < 0.01) {
+  if (rc == 0 && fabs(got - expected) < 0.01) {
     printf("  PASS  %-34s  offset=%+.2f  expected=%+.2f\n", label, got,
            expected);
   } else {
-    printf("  FAIL  %-34s  offset=%+.2f  expected=%+.2f\n", label, got,
-           expected);
+    printf("  FAIL  %-34s  rc=%d offset=%+.2f  expected=%+.2f\n", label, rc,
+           got, expected);
+    failures++;
+  }
+}
+
+static void check_unresolvable(const char *zone, time_t when,
+                               const char *label) {
+  double got = 12345.0;
+  int rc = parse_timezone_offset(zone, when, &got);
+  total++;
+  if (rc != 0 && got == 12345.0) {
+    printf("  PASS  %-34s  rejected, out untouched\n", label);
+  } else {
+    printf("  FAIL  %-34s  rc=%d offset=%+.2f\n", label, rc, got);
     failures++;
   }
 }
@@ -94,8 +108,8 @@ static void test_dst_offsets(void) {
 // ---------------------------------------------------------------------------
 
 static void test_invalid_zones(void) {
-  printf("Test group: invalid input falls back to 0.0\n");
-  check_offset(NULL, TS_2026_JAN_15_NOON, 0.0, "NULL zone");
+  printf("Test group: invalid input is rejected or falls back\n");
+  check_unresolvable(NULL, TS_2026_JAN_15_NOON, "NULL zone");
   check_offset("Not/AZone", TS_2026_JAN_15_NOON, 0.0, "unknown zone name");
   check_offset("", TS_2026_JAN_15_NOON, 0.0, "empty zone name");
   printf("\n");
@@ -126,12 +140,14 @@ static void test_system_timezone(void) {
 
   // Whatever zone we got, feeding it back must yield a plausible offset
   // (Earth's civil offsets span roughly -12..+14 hours).
-  double off = parse_timezone_offset(zone, TS_2026_JUL_15_NOON);
+  double off = 0.0;
+  int off_rc = parse_timezone_offset(zone, TS_2026_JUL_15_NOON, &off);
   total++;
-  if (off >= -12.0 && off <= 14.0) {
+  if (off_rc == 0 && off >= -12.0 && off <= 14.0) {
     printf("  PASS  round-trip offset in range  offset=%+.2f\n", off);
   } else {
-    printf("  FAIL  round-trip offset out of range  offset=%+.2f\n", off);
+    printf("  FAIL  round-trip offset out of range  rc=%d offset=%+.2f\n",
+           off_rc, off);
     failures++;
   }
   printf("\n");

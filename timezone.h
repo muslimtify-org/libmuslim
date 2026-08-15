@@ -71,15 +71,17 @@ extern "C" {
 #endif
 
 /*
- * Return the UTC offset, in hours, for the IANA zone `tz_name` at instant
+ * Compute the UTC offset, in hours, for the IANA zone `tz_name` at instant
  * `when` (Unix epoch seconds, UTC). DST is already applied: e.g. for
- * "Europe/London" this returns 0.0 in winter and 1.0 during British Summer
+ * "Europe/London" this yields 0.0 in winter and 1.0 during British Summer
  * Time. Pass the result straight into `calculate_prayer_times`.
  *
- * Returns 0.0 if `tz_name` is NULL or cannot be resolved by the host (on
- * Windows, if the zone is outside the bundled IANA<->Windows table).
+ * Returns 0 on success with the offset written to `*out`. Returns -1 when
+ * `tz_name` or `out` is NULL, or when the zone cannot be resolved by the
+ * host (on Windows, if the zone is outside the bundled IANA<->Windows
+ * table); `*out` is left untouched in that case.
  */
-double parse_timezone_offset(const char *tz_name, time_t when);
+int parse_timezone_offset(const char *tz_name, time_t when, double *out);
 
 /*
  * Write the host system's IANA timezone name (e.g. "Asia/Jakarta") into `buf`.
@@ -599,10 +601,12 @@ static const char *muslim_windows_zone_to_iana(const wchar_t *win_zone) {
   return NULL;
 }
 
-double parse_timezone_offset(const char *tz_name, time_t when) {
+int parse_timezone_offset(const char *tz_name, time_t when, double *out) {
+  if (!out)
+    return -1;
   const wchar_t *win_zone = muslim_iana_to_windows_zone(tz_name);
   if (!win_zone)
-    return 0.0;
+    return -1;
 
   // Find the DYNAMIC_TIME_ZONE_INFORMATION whose key matches.
   DYNAMIC_TIME_ZONE_INFORMATION dtzi;
@@ -615,7 +619,7 @@ double parse_timezone_offset(const char *tz_name, time_t when) {
     }
   }
   if (!found)
-    return 0.0;
+    return -1;
 
   // time_t (Unix epoch seconds, UTC) -> FILETIME (100ns ticks since
   // 1601-01-01). 11644473600 seconds separate 1601-01-01 from 1970-01-01.
@@ -626,17 +630,17 @@ double parse_timezone_offset(const char *tz_name, time_t when) {
 
   SYSTEMTIME utc_st;
   if (!FileTimeToSystemTime(&utc_ft, &utc_st))
-    return 0.0;
+    return -1;
 
   SYSTEMTIME local_st;
   if (!SystemTimeToTzSpecificLocalTimeEx(&dtzi, &utc_st, &local_st))
-    return 0.0;
+    return -1;
 
   // Treat local_st as if it were UTC to recover a tick count; the delta
   // against utc_ft is exactly the offset (DST already baked in by the API).
   FILETIME local_ft;
   if (!SystemTimeToFileTime(&local_st, &local_ft))
-    return 0.0;
+    return -1;
 
   ULONGLONG utc_ticks =
       ((ULONGLONG)utc_ft.dwHighDateTime << 32) | utc_ft.dwLowDateTime;
@@ -645,7 +649,8 @@ double parse_timezone_offset(const char *tz_name, time_t when) {
   LONGLONG diff = (LONGLONG)local_ticks - (LONGLONG)utc_ticks;
 
   // 10^7 ticks/sec * 3600 sec/hr = 3.6 * 10^10 ticks/hr.
-  return (double)diff / 36000000000.0;
+  *out = (double)diff / 36000000000.0;
+  return 0;
 }
 
 int get_system_timezone(char *buf, size_t cap) {
@@ -694,9 +699,9 @@ int get_system_timezone(char *buf, size_t cap) {
 #include <string.h>
 #include <unistd.h>
 
-double parse_timezone_offset(const char *tz_name, time_t when) {
-  if (!tz_name)
-    return 0.0;
+int parse_timezone_offset(const char *tz_name, time_t when, double *out) {
+  if (!tz_name || !out)
+    return -1;
 
   // Save the current TZ so we never leak our setenv to other callers.
   const char *old_tz = getenv("TZ");
@@ -707,7 +712,7 @@ double parse_timezone_offset(const char *tz_name, time_t when) {
 
   struct tm lt;
   localtime_r(&when, &lt);
-  double offset = (double)lt.tm_gmtoff / 3600.0;
+  *out = (double)lt.tm_gmtoff / 3600.0;
 
   if (saved) {
     setenv("TZ", saved, 1);
@@ -717,7 +722,7 @@ double parse_timezone_offset(const char *tz_name, time_t when) {
   }
   tzset();
 
-  return offset;
+  return 0;
 }
 
 static int muslim_copy_zone_tail(const char *path, char *buf, size_t cap) {
