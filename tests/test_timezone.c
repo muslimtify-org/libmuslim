@@ -14,6 +14,7 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static int failures = 0;
@@ -104,16 +105,132 @@ static void test_dst_offsets(void) {
 }
 
 // ---------------------------------------------------------------------------
-// Invalid / unresolvable input must fall back to 0.0 (not crash).
+// Invalid / unresolvable input must be rejected, with *out left untouched.
 // ---------------------------------------------------------------------------
 
 static void test_invalid_zones(void) {
-  printf("Test group: invalid input is rejected or falls back\n");
+  printf("Test group: invalid input is rejected\n");
   check_unresolvable(NULL, TS_2026_JAN_15_NOON, "NULL zone");
-  check_offset("Not/AZone", TS_2026_JAN_15_NOON, 0.0, "unknown zone name");
-  check_offset("", TS_2026_JAN_15_NOON, 0.0, "empty zone name");
+  check_unresolvable("Not/AZone", TS_2026_JAN_15_NOON, "unknown zone name");
+  check_unresolvable("", TS_2026_JAN_15_NOON, "empty zone name");
   printf("\n");
 }
+
+// ---------------------------------------------------------------------------
+// Differential: the TZif reader vs libc's own reading of the same zone files.
+// This is the check that catches a plausible-but-wrong reading of the file
+// format (in particular of the trailing POSIX TZ footer), because it compares
+// against libc rather than against this author's reading of the spec.
+//
+// POSIX only: the reference is the setenv/tzset implementation that the reader
+// replaced, and the Windows branch never had it.
+// ---------------------------------------------------------------------------
+
+#if !defined(_WIN32)
+
+// Verbatim copy of the pre-change POSIX body of parse_timezone_offset. It is
+// racy under concurrency -- that is why it was replaced -- but this test is
+// single-threaded, so it serves as libc's answer for the same zone and instant.
+static int reference_offset_via_tz(const char *zone, time_t when, double *out) {
+  if (!zone || !out)
+    return -1;
+
+  const char *old_tz = getenv("TZ");
+  char *saved = old_tz ? strdup(old_tz) : NULL;
+
+  setenv("TZ", zone, 1);
+  tzset();
+
+  struct tm lt;
+  localtime_r(&when, &lt);
+  *out = (double)lt.tm_gmtoff / 3600.0;
+
+  if (saved) {
+    setenv("TZ", saved, 1);
+    free(saved);
+  } else {
+    unsetenv("TZ");
+  }
+  tzset();
+
+  return 0;
+}
+
+static void check_agrees_with_libc(const char *zone, time_t when) {
+  char label[48];
+  double mine = 0.0, ref = 0.0;
+  int rc = parse_timezone_offset(zone, when, &mine);
+  int ref_rc = reference_offset_via_tz(zone, when, &ref);
+
+  snprintf(label, sizeof label, "%s @ %ld", zone, (long)when);
+  total++;
+  if (rc == 0 && ref_rc == 0 && fabs(mine - ref) < 0.01) {
+    printf("  PASS  %-34s  offset=%+.2f  libc=%+.2f\n", label, mine, ref);
+  } else {
+    printf("  FAIL  %-34s  rc=%d offset=%+.2f  libc=%+.2f\n", label, rc, mine,
+           ref);
+    failures++;
+  }
+}
+
+static void test_differential(void) {
+  // Every zone named in the three groups above, plus a southern-hemisphere
+  // zone whose DST window wraps the year end.
+  static const char *const zones[] = {
+      "UTC",           "Asia/Jakarta",     "Asia/Dubai",
+      "Asia/Riyadh",   "Asia/Karachi",     "Asia/Tokyo",
+      "Asia/Kolkata",  "Asia/Kathmandu",   "Europe/London",
+      "America/New_York", "Australia/Sydney"};
+  // The 2026 DST transition instants straddled elsewhere in this file: US
+  // spring forward and fall back, AU DST start and end.
+  static const time_t transitions[] = {
+      (time_t)1772953200, // 2026-03-08 07:00 UTC
+      (time_t)1793512800, // 2026-11-01 06:00 UTC
+      (time_t)1791043200, // 2026-10-03 16:00 UTC
+      (time_t)1775318400  // 2026-04-04 16:00 UTC
+  };
+  static const long deltas[] = {-86400, 0, 86400};
+  size_t z, t, d;
+
+  printf("Test group: differential vs libc (setenv/tzset reference)\n");
+  for (z = 0; z < sizeof zones / sizeof zones[0]; z++)
+    for (t = 0; t < sizeof transitions / sizeof transitions[0]; t++)
+      for (d = 0; d < sizeof deltas / sizeof deltas[0]; d++)
+        check_agrees_with_libc(zones[z],
+                               (time_t)((long long)transitions[t] + deltas[d]));
+  printf("\n");
+}
+
+// ---------------------------------------------------------------------------
+// The input forms the spec records as working: a bare zone name, the same with
+// a leading colon, an absolute path to a zone file, and two bare POSIX TZ
+// strings that match no file. Plus one form that must be rejected.
+// ---------------------------------------------------------------------------
+
+static void test_input_forms(void) {
+  printf("Test group: accepted input forms\n");
+  check_offset("Asia/Jakarta", TS_2026_JUL_15_NOON, 7.0, "bare zone name");
+  check_offset(":Asia/Jakarta", TS_2026_JUL_15_NOON, 7.0, "leading colon");
+  check_offset("/usr/share/zoneinfo/Asia/Jakarta", TS_2026_JUL_15_NOON, 7.0,
+               "absolute path to zone file");
+  check_offset("XYZ8", TS_2026_JUL_15_NOON, -8.0, "TZ string, no such file");
+  check_offset("UTC-7", TS_2026_JUL_15_NOON, 7.0, "UTC-7 TZ string");
+  check_unresolvable("../../etc/passwd", TS_2026_JUL_15_NOON,
+                     "name containing ..");
+  printf("\n");
+}
+
+#else /* _WIN32 */
+
+static void test_differential(void) {
+  printf("Test group: differential vs libc (skipped on Windows)\n\n");
+}
+
+static void test_input_forms(void) {
+  printf("Test group: accepted input forms (skipped on Windows)\n\n");
+}
+
+#endif
 
 // ---------------------------------------------------------------------------
 // POSIX TZ string evaluator (POSIX build only — the Windows branch of
@@ -284,6 +401,8 @@ int main(void) {
   test_fractional_offsets();
   test_dst_offsets();
   test_invalid_zones();
+  test_differential();
+  test_input_forms();
   test_posix_tz_strings();
   test_system_timezone();
 

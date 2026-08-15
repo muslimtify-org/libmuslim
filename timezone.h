@@ -33,7 +33,7 @@
  *
  * Unlike `prayertimes.h` (which depends only on <math.h> and is fully
  * portable), this header touches the OS:
- *   - POSIX  : setenv(TZ) -> tzset() -> localtime_r() -> tm_gmtoff
+ *   - POSIX  : reads the zone's TZif file from the system tzdb directly
  *   - Windows: EnumDynamicTimeZoneInformation +
  * SystemTimeToTzSpecificLocalTimeEx Use it only if you want libmuslim to
  * compute the offset for you; otherwise keep supplying the offset to
@@ -688,15 +688,16 @@ int get_system_timezone(char *buf, size_t cap) {
 #else /* !_WIN32 */
 
 /* ---- POSIX implementation ---------------------------------------------- *
- * Uses the system tzdb (typically /usr/share/zoneinfo) via libc:
- *   setenv(TZ) -> tzset() -> localtime_r() -> tm_gmtoff.
- * DST and historical zone changes are honored automatically.
- * (The tm_gmtoff feature-test macro is set at the top of this header, before
- * <time.h>, so it is already in effect here.)                                */
+ * Reads the system tzdb (typically /usr/share/zoneinfo) directly: the zone's
+ * TZif file is opened and its 64-bit transition table searched for the instant,
+ * falling back to the file's trailing POSIX TZ string when the instant lies
+ * past the table. DST and historical zone changes are honored automatically.
+ * Nothing global is touched, so this is safe to call from any thread.        */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 /* ---- POSIX TZ string evaluator ------------------------------------------ *
@@ -975,30 +976,222 @@ static int muslim_posix_tz_offset(const char *tz, time_t when, double *out) {
   return 0;
 }
 
+/* ---- TZif reader --------------------------------------------------------- *
+ * A zone file (RFC 8536) is a 44-byte header, a 32-bit v1 data block kept only
+ * for backwards compatibility, a second 44-byte header, the 64-bit v2 data
+ * block this reader uses, and a newline-delimited POSIX TZ string footer that
+ * governs every instant past the last transition. Version 1 files are not
+ * supported; every zone in a current tzdb is version 2 or higher.
+ *
+ * All integers are big-endian regardless of host, so they are assembled byte by
+ * byte. Nothing is allocated: the transition table is binary-searched in place
+ * with one seek and one read per probe. */
+
+static unsigned long muslim_tzif_u32(const unsigned char *b) {
+  return ((unsigned long)b[0] << 24) | ((unsigned long)b[1] << 16) |
+         ((unsigned long)b[2] << 8) | (unsigned long)b[3];
+}
+
+static long long muslim_tzif_u64(const unsigned char *b) {
+  unsigned long long v = 0;
+  int i;
+  for (i = 0; i < 8; i++)
+    v = (v << 8) | (unsigned long long)b[i];
+  /* Two's complement without relying on an implementation-defined conversion
+   * of an out-of-range unsigned value. */
+  if (v > 0x7FFFFFFFFFFFFFFFULL)
+    return -(long long)(~v) - 1;
+  return (long long)v;
+}
+
+/* A relative zone name becomes a filesystem path, so it is untrusted input. */
+static int muslim_tzif_name_is_safe(const char *name) {
+  size_t i, n = strlen(name);
+
+  if (n == 0 || n > 255 || name[0] == '/' || name[n - 1] == '/')
+    return -1;
+  for (i = 0; i < n; i++) {
+    char c = name[i];
+    /* name[i + 1] is in bounds for every i < n: at worst it is the NUL. */
+    if ((c == '.' && name[i + 1] == '.') || (c == '/' && name[i + 1] == '/'))
+      return -1;
+    if (!MUSLIM_TZ_ISALPHA(c) && !MUSLIM_TZ_ISDIGIT(c) && c != '_' &&
+        c != '-' && c != '+' && c != '/')
+      return -1;
+  }
+  return 0;
+}
+
+/* Read the 44-byte header at the current position into `counts`, in the order
+ * the file stores them: isut, isstd, leap, time, type, char. */
+static int muslim_tzif_counts(FILE *f, unsigned long *counts) {
+  unsigned char h[44];
+  int i;
+
+  if (fread(h, 1, sizeof h, f) != sizeof h)
+    return -1;
+  if (memcmp(h, "TZif", 4) != 0 || h[4] < '2')
+    return -1;
+  for (i = 0; i < 6; i++)
+    counts[i] = muslim_tzif_u32(h + 20 + 4 * i);
+  return 0;
+}
+
+/* Validate both headers and report where the 64-bit data block starts, along
+ * with its own counts (which differ from the v1 ones). The lookup and the
+ * footer reader both need exactly this, hence one helper for both. */
+static int muslim_tzif_open_v2(FILE *f, unsigned long *counts,
+                               long long *data_pos) {
+  struct stat st;
+  unsigned long v1[6];
+  long long start;
+
+  if (fstat(fileno(f), &st) != 0 || fseek(f, 0L, SEEK_SET) != 0)
+    return -1;
+  if (muslim_tzif_counts(f, v1) != 0)
+    return -1;
+
+  /* v1 header + v1 data. 64-bit arithmetic throughout, then compared against
+   * the file size, so hostile counts cannot overflow into a valid-looking
+   * offset. */
+  start = 44 + (long long)v1[3] * 5 + (long long)v1[4] * 6 + (long long)v1[5] +
+          (long long)v1[2] * 8 + (long long)v1[1] + (long long)v1[0];
+  if (start + 44 > (long long)st.st_size)
+    return -1;
+  if (fseek(f, (long)start, SEEK_SET) != 0)
+    return -1;
+  if (muslim_tzif_counts(f, counts) != 0)
+    return -1;
+
+  *data_pos = start + 44;
+  return 0;
+}
+
+/* Offset in hours at `when`, from the 64-bit transition table.
+ * Returns 0 with *out set, -1 on a malformed file, and 1 when the table does
+ * not cover the instant and the caller must consult the footer instead. */
+static int muslim_tzif_offset_at(FILE *f, time_t when, double *out) {
+  unsigned long c[6], timecnt, typecnt;
+  long long base, target = (long long)when;
+  long long lo, hi, best = -1;
+  unsigned char b[8];
+
+  if (muslim_tzif_open_v2(f, c, &base) != 0)
+    return -1;
+  timecnt = c[3];
+  typecnt = c[4];
+  if (typecnt == 0)
+    return -1;
+
+  /* Greatest transition at or before `when`. */
+  lo = 0;
+  hi = (long long)timecnt - 1;
+  while (lo <= hi) {
+    long long mid = lo + (hi - lo) / 2;
+    if (fseek(f, (long)(base + mid * 8), SEEK_SET) != 0 ||
+        fread(b, 1, 8, f) != 8)
+      return -1;
+    if (muslim_tzif_u64(b) <= target) {
+      best = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  if (best < 0 || best == (long long)timecnt - 1)
+    return 1; /* before the table, or at/past its end: the footer governs */
+
+  /* One-byte type index per transition, then that ttinfo's 4-byte utoff. */
+  if (fseek(f, (long)(base + (long long)timecnt * 8 + best), SEEK_SET) != 0 ||
+      fread(b, 1, 1, f) != 1)
+    return -1;
+  if ((unsigned long)b[0] >= typecnt)
+    return -1;
+  if (fseek(f, (long)(base + (long long)timecnt * 9 + (long long)b[0] * 6),
+            SEEK_SET) != 0 ||
+      fread(b, 1, 4, f) != 4)
+    return -1;
+  {
+    unsigned long u = muslim_tzif_u32(b);
+    long long utoff =
+        (u > 0x7FFFFFFFUL) ? (long long)u - 4294967296LL : (long long)u;
+    *out = (double)utoff / 3600.0;
+  }
+  return 0;
+}
+
+/* The TZ string stored after the 64-bit data block, e.g. "WIB-7". */
+static int muslim_tzif_footer(FILE *f, char *buf, size_t cap) {
+  unsigned long c[6];
+  long long base, end;
+  size_t n = 0;
+  int ch;
+
+  if (muslim_tzif_open_v2(f, c, &base) != 0)
+    return -1;
+
+  /* transitions + type indices + ttinfo records + abbreviation bytes +
+   * leap-second pairs + isstd/isut indicators. */
+  end = base + (long long)c[3] * 9 + (long long)c[4] * 6 + (long long)c[5] +
+        (long long)c[2] * 12 + (long long)c[1] + (long long)c[0];
+  if (fseek(f, (long)end, SEEK_SET) != 0)
+    return -1;
+  if (fgetc(f) != '\n')
+    return -1;
+  while ((ch = fgetc(f)) != EOF && ch != '\n') {
+    if (n + 1 >= cap)
+      return -1;
+    buf[n++] = (char)ch;
+  }
+  if (ch != '\n')
+    return -1;
+  buf[n] = '\0';
+  return 0;
+}
+
 int parse_timezone_offset(const char *tz_name, time_t when, double *out) {
+  char path[512];
+  char footer[128];
+  const char *name;
+  FILE *f = NULL;
+  int rc;
+
   if (!tz_name || !out)
     return -1;
 
-  // Save the current TZ so we never leak our setenv to other callers.
-  const char *old_tz = getenv("TZ");
-  char *saved = old_tz ? strdup(old_tz) : NULL;
+  /* A single leading ':' is the POSIX "implementation-defined" marker and is
+   * how TZ values are conventionally written; strip it. */
+  name = (tz_name[0] == ':') ? tz_name + 1 : tz_name;
 
-  setenv("TZ", tz_name, 1);
-  tzset();
-
-  struct tm lt;
-  localtime_r(&when, &lt);
-  *out = (double)lt.tm_gmtoff / 3600.0;
-
-  if (saved) {
-    setenv("TZ", saved, 1);
-    free(saved);
-  } else {
-    unsetenv("TZ");
+  if (name[0] == '/') {
+    f = fopen(name, "rb");
+  } else if (muslim_tzif_name_is_safe(name) == 0) {
+    const char *dir = getenv("TZDIR");
+    size_t dlen, nlen;
+    if (!dir || dir[0] == '\0')
+      dir = "/usr/share/zoneinfo";
+    dlen = strlen(dir);
+    nlen = strlen(name);
+    if (dlen + 1 + nlen + 1 <= sizeof path) {
+      memcpy(path, dir, dlen);
+      path[dlen] = '/';
+      memcpy(path + dlen + 1, name, nlen + 1);
+      f = fopen(path, "rb");
+    }
   }
-  tzset();
 
-  return 0;
+  /* No such file: the name may itself be a TZ string, e.g. "WIB-7". */
+  if (!f)
+    return muslim_posix_tz_offset(name, when, out);
+
+  rc = muslim_tzif_offset_at(f, when, out);
+  if (rc > 0) {
+    rc = (muslim_tzif_footer(f, footer, sizeof footer) == 0)
+             ? muslim_posix_tz_offset(footer, when, out)
+             : -1;
+  }
+  fclose(f);
+  return rc;
 }
 
 static int muslim_copy_zone_tail(const char *path, char *buf, size_t cap) {
