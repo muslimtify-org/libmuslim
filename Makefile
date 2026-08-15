@@ -99,11 +99,10 @@ examples: $(EXAMPLE_BINS)
 # changes to it show up in review. Any change to the ephemeris, the predicates,
 # or the evening calculation moves it. This is the check that catches that.
 #
-# PLATFORM-DEPENDENT. The CSV prints Julian Days to nine decimals (~0.1 ms) and
-# libm rounding differs between implementations, so cmp only succeeds on the
-# platform that generated the committed file -- currently glibc. CI runs this
-# target on Linux only. Running it elsewhere will report a one-digit difference
-# that is rounding noise, not a regression.
+# PLATFORM-DEPENDENT: cmp only succeeds on the platform that generated the
+# committed file -- currently glibc -- because libm rounding differs between
+# implementations. See the DETERMINISM section in hijri.h for the full
+# contract. CI runs this target on Linux only.
 baseline: $(BUILD)/tests/hijri_research_probe
 	@$(BUILD)/tests/hijri_research_probe > $(BUILD)/baseline.csv
 	@if cmp -s $(BUILD)/baseline.csv docs/research/hijri-2020-2025-baseline.csv; then \

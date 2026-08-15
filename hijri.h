@@ -168,6 +168,41 @@
  * docs/research/2026-08-05-solar-hour-angle-frame.md.
  *
  * -----------------------------------------------------------------------
+ * THREAD SAFETY
+ *
+ * Every public function in this file is a pure function of its arguments.
+ * None retains state between calls, and none touches a mutable object at
+ * file scope, so calls from any number of threads at once are safe, with no
+ * locking required by the caller. This rests on a sweep run for this claim,
+ * not on an impression from reading: `grep -nE '^[[:space:]]*static'
+ * hijri.h prayertimes.h timezone.h | grep -v 'static const'` was run over
+ * all three headers this repository ships, and every line it reported names
+ * a function definition or declaration, none names a mutable object. See
+ * issue #26, where this contract started as an impression rather than a
+ * checked claim.
+ *
+ * -----------------------------------------------------------------------
+ * DETERMINISM
+ *
+ * These are three separate claims, not one.
+ *
+ * Same platform, same compiler, same flags gives bit-identical results for
+ * hijri.h. This is enforced on every run by the byte-exact comparison the
+ * `make baseline` target runs against the committed
+ * docs/research/hijri-2020-2025-baseline.csv.
+ *
+ * Across platforms, results are NOT bit-identical, because libm rounding
+ * differs between implementations. The difference becomes visible at the
+ * nine decimals of Julian Day the baseline CSV prints, about 0.1 ms. No
+ * bound on the size of that difference is stated here, because only one
+ * libm was available to measure against when this was written, and a bound
+ * without a second libm to measure against would be invented rather than
+ * observed.
+ *
+ * This determinism contract covers hijri.h only. prayertimes.h and
+ * timezone.h are explicitly not audited for it.
+ *
+ * -----------------------------------------------------------------------
  * LICENSE
  *
  * MIT -- see the full license text at the top of this file. Provided as-is,

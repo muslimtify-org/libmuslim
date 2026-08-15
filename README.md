@@ -151,6 +151,17 @@ wujud/belum-wujud verdict — fixture-enforced; see
 A calculated result is still not an observation, and nothing here decides
 religious validity.
 
+**Thread safety and determinism.** Every public function in `hijri.h` is a
+pure function of its arguments, keeps no state between calls, and is safe to
+call from any number of threads at once. Results are bit-identical run to
+run on the same platform, same compiler, and same flags, which is exactly
+what `make baseline` checks on every run. If you compare computed times
+across different machines, expect them to agree to within about 0.1 ms
+(the ninth decimal of the Julian Day figures this library works in) rather
+than to the last bit, because libm rounding differs between platforms. This
+determinism claim is specific to `hijri.h`, see `hijri.h` itself for the
+full contract.
+
 ## timezone.h
 
 > `prayertimes.h` takes a fixed numeric UTC offset and has no notion of zones or
