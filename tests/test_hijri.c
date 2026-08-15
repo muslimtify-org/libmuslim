@@ -15,11 +15,18 @@ static void check_int(const char *name, int actual, int expected) {
   }
 }
 
+/* The comparison must be the negated form, not the direct greater-than form.
+ * fabs(NAN - expected) is NAN, and comparing NAN with tolerance using a
+ * direct greater-than test is false, so that direct form counts a NAN
+ * actual as a pass. Confirmed with a temporary assertion passing NAN as
+ * actual, which produced:
+ * FAIL exact/nan_probe actual=nan expected=8.000000000000 diff=nan tol=0.000000001000
+ */
 static void check_close(const char *name, double actual, double expected,
                         double tolerance) {
   double difference = fabs(actual - expected);
   checks++;
-  if (difference > tolerance) {
+  if (!(difference <= tolerance)) {
     failures++;
     printf("FAIL exact/%s actual=%.12f expected=%.12f diff=%.12f tol=%.12f\n",
            name, actual, expected, difference, tolerance);
@@ -1664,10 +1671,29 @@ static void test_kemenag_published_quantities(void) {
  * genuine ephemeris improvement cannot fail the suite; never-early is
  * asserted as equality because it is the claim that matters.
  *
+ * topo_ok calls hijri_local_predicate_evaluate(HIJRI_PREDICATE_MABIMS_2021,
+ * &p) directly, so this fixture exercises the library's own predicate
+ * rather than a copy of it. geo_ok stays inline because no predicate offers
+ * the geocentric-elongation variant this fixture also checks, and its two
+ * literals were replaced with HIJRI_MABIMS_2021_ALTITUDE_DEG and
+ * HIJRI_MABIMS_2021_ELONGATION_DEG so it cannot drift from the criterion it
+ * varies either. Confirmed the switch to hijri_local_predicate_evaluate
+ * changed none of support_topo, support_geo, early_topo or early_geo from
+ * their prior values (33, 34, 0, 0), so the inline copy and the predicate
+ * agreed.
+ *
  * Mutation-tested on 2026-08-01: shifting one fixture date by one day
  * fails both never-early checks (actual=1); raising the altitude
  * threshold to 4.0 fails both support floors (support drops to 31).
- * Reverting either restores 475 checks, 0 failures. */
+ * Reverting either restores 475 checks, 0 failures.
+ *
+ * Mutation-tested on 2026-08-15: raising HIJRI_MABIMS_2021_ALTITUDE_DEG
+ * from 3.0 to 4.0 in hijri.h fails both support floors, confirming this
+ * fixture now guards the constant through the predicate rather than a
+ * hardcoded copy. Reverted, original state restored. Observed FAIL lines:
+ *
+ *   FAIL synthetic/kemenag_support_floor_topocentric expected=true
+ *   FAIL synthetic/kemenag_support_floor_geocentric expected=true */
 static void test_kemenag_official_calendar(void) {
   static const int KEMENAG_STARTS[][3] = {
       {2024, 1, 13},  {2024, 2, 11}, {2024, 3, 12}, {2024, 4, 10},
@@ -1704,10 +1730,11 @@ static void test_kemenag_official_calendar(void) {
       if (p.sunset_status != HIJRI_EVENT_OK) {
         continue;
       }
-      topo_ok = (p.moon_center_geometric_altitude_deg >= 3.0 &&
-                 p.topocentric_elongation_deg >= 6.4);
-      geo_ok = (p.moon_center_geometric_altitude_deg >= 3.0 &&
-                p.geocentric_elongation_deg >= 6.4);
+      topo_ok = hijri_local_predicate_evaluate(HIJRI_PREDICATE_MABIMS_2021, &p);
+      geo_ok = (p.moon_center_geometric_altitude_deg >=
+                    HIJRI_MABIMS_2021_ALTITUDE_DEG &&
+                p.geocentric_elongation_deg >=
+                    HIJRI_MABIMS_2021_ELONGATION_DEG);
       if (offset == 1) {
         support_topo += topo_ok;
         support_geo += geo_ok;
@@ -1874,6 +1901,316 @@ static void test_conjunction_status_returns(void) {
               1e-9);
 }
 
+/* Each predicate's boolean structure, written a SECOND time, by hand, from
+ * the criterion rather than from hijri_predicate_margins. The duplication is
+ * the entire mechanism of test_decision_margins below. Recombining the
+ * reported per-term results with an INDEPENDENT expression of the same logic
+ * is what detects the margin table drifting from the predicate switch. Do not
+ * factor this into a shared table, and do not call
+ * hijri_local_predicate_evaluate here: either collapses the two expressions
+ * into one and deletes the safeguard while leaving a test that always passes.
+ *
+ * The `moonset_status == HIJRI_EVENT_OK` guard the two moonset predicates
+ * carry is absent on purpose. It is availability, not a term, and a failed
+ * moonset leaves lag_time_minutes NAN, so the lag term already reports a NAN
+ * margin and does not pass. */
+static int recombine_margins(HijriLocalPredicate predicate,
+                             const HijriDecisionMargins *m) {
+  switch (predicate) {
+  case HIJRI_PREDICATE_MABIMS_1992:
+    return (m->terms[0].passes && m->terms[1].passes) || m->terms[2].passes;
+  case HIJRI_PREDICATE_MABIMS_2021:
+    return m->terms[0].passes && m->terms[1].passes;
+  case HIJRI_PREDICATE_WUJUDUL_HILAL:
+    return m->terms[0].passes && m->terms[1].passes;
+  case HIJRI_PREDICATE_LAG_AT_LEAST_5_MINUTES:
+    return m->terms[0].passes;
+  case HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8:
+    return m->terms[0].passes && m->terms[1].passes;
+  case HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET:
+    return m->terms[0].passes && m->terms[1].passes;
+  default:
+    return 0;
+  }
+}
+
+/* Mutation record for test_decision_margins. Each entry was produced by making
+ * the edit, running `make test`, copying the FAIL lines out of the real
+ * output, and editing the value back.
+ *
+ * 1. HIJRI_PREDICATE_WUJUDUL_HILAL's upper-limb term had `strict` flipped
+ *    from 1 to 0 in hijri_predicate_margins. Observed:
+ *      FAIL exact/margins_wujudul_hilal_term1_strict actual=0 expected=1
+ *      Hijri tests: 2403 checks, 1 failures
+ *    Only the operator table caught it. The grid invariant could not, since
+ *    the two operators differ only at a margin of exactly zero and no
+ *    computed evening lands there. This is why step 8 fabricates the
+ *    boundary case rather than looking for one in the ephemeris.
+ *
+ * 2. HIJRI_PREDICATE_MABIMS_2021's altitude term reported
+ *    HIJRI_MABIMS_1992_ALTITUDE_DEG instead of HIJRI_MABIMS_2021_ALTITUDE_DEG
+ *    in hijri_predicate_margins only, leaving the predicate switch untouched.
+ *    Observed:
+ *      FAIL exact/margins_mabims_2021_term0_threshold actual=2.000000000000 expected=3.000000000000 diff=1.000000000000 tol=0.000000000000
+ *      FAIL exact/margins_boundary_mabims_2021_term0_zero actual=1.000000000000 expected=0.000000000000 diff=1.000000000000 tol=0.000000000000
+ *      Hijri tests: 2403 checks, 2 failures
+ *    The grid invariant did not catch this one either. A 2 deg versus 3 deg
+ *    altitude changes the answer only when the altitude falls between them
+ *    AND the topocentric elongation clears 6.4 deg, which no grid row hit.
+ *    The threshold table is what constrains this, not the invariant.
+ *
+ * 3. HIJRI_PREDICATE_MABIMS_1992's moon-age term was dropped from
+ *    hijri_predicate_margins, leaving count at 2. Observed:
+ *      FAIL exact/margins_mabims_1992_count actual=2 expected=3
+ *      FAIL exact/margins_mabims_1992_term2_identity actual=0 expected=4
+ *      FAIL exact/margins_mabims_1992_term2_unit actual=0 expected=1
+ *      FAIL exact/margins_invariant_lat60_mabims_1992_202608 actual=0 expected=1
+ *      FAIL exact/margins_invariant_lat60_mabims_1992_202609 actual=0 expected=1
+ *      FAIL exact/margins_invariant_lat60_mabims_1992_202610 actual=0 expected=1
+ *      Hijri tests: 2303 checks, 6 failures
+ *    Here the invariant does fire, on the rows where the age term alone
+ *    carried the decision.
+ */
+static void test_decision_margins(void) {
+  static const struct {
+    HijriLocalPredicate predicate;
+    const char *name;
+    int count;
+    HijriDecisionTerm terms[HIJRI_MAX_DECISION_TERMS];
+    HijriUnit units[HIJRI_MAX_DECISION_TERMS];
+    double thresholds[HIJRI_MAX_DECISION_TERMS];
+    int strict[HIJRI_MAX_DECISION_TERMS];
+  } table[] = {
+      {HIJRI_PREDICATE_MABIMS_1992,
+       "mabims_1992",
+       3,
+       {HIJRI_TERM_MOON_CENTER_ALTITUDE, HIJRI_TERM_GEOCENTRIC_ELONGATION,
+        HIJRI_TERM_MOON_AGE},
+       {HIJRI_UNIT_DEGREES, HIJRI_UNIT_DEGREES, HIJRI_UNIT_HOURS},
+       {HIJRI_MABIMS_1992_ALTITUDE_DEG, HIJRI_MABIMS_1992_ELONGATION_DEG,
+        HIJRI_MABIMS_1992_AGE_HOURS},
+       {0, 0, 0}},
+      {HIJRI_PREDICATE_MABIMS_2021,
+       "mabims_2021",
+       2,
+       {HIJRI_TERM_MOON_CENTER_ALTITUDE, HIJRI_TERM_TOPOCENTRIC_ELONGATION,
+        HIJRI_TERM_MOON_AGE},
+       {HIJRI_UNIT_DEGREES, HIJRI_UNIT_DEGREES, HIJRI_UNIT_HOURS},
+       {HIJRI_MABIMS_2021_ALTITUDE_DEG, HIJRI_MABIMS_2021_ELONGATION_DEG,
+        0.0},
+       {0, 0, 0}},
+      {HIJRI_PREDICATE_WUJUDUL_HILAL,
+       "wujudul_hilal",
+       2,
+       {HIJRI_TERM_MOON_AGE, HIJRI_TERM_MOON_UPPER_LIMB_ALTITUDE,
+        HIJRI_TERM_MOON_AGE},
+       {HIJRI_UNIT_HOURS, HIJRI_UNIT_DEGREES, HIJRI_UNIT_HOURS},
+       {0.0, HIJRI_WUJUDUL_HILAL_LIMB_DEG, 0.0},
+       {1, 1, 0}},
+      {HIJRI_PREDICATE_LAG_AT_LEAST_5_MINUTES,
+       "lag_at_least_5_minutes",
+       1,
+       {HIJRI_TERM_LAG_TIME, HIJRI_TERM_MOON_AGE, HIJRI_TERM_MOON_AGE},
+       {HIJRI_UNIT_MINUTES, HIJRI_UNIT_HOURS, HIJRI_UNIT_HOURS},
+       {HIJRI_LAG_THRESHOLD_MINUTES, 0.0, 0.0},
+       {0, 0, 0}},
+      {HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8,
+       "altitude_5_elongation_8",
+       2,
+       {HIJRI_TERM_MOON_CENTER_ALTITUDE, HIJRI_TERM_GEOCENTRIC_ELONGATION,
+        HIJRI_TERM_MOON_AGE},
+       {HIJRI_UNIT_DEGREES, HIJRI_UNIT_DEGREES, HIJRI_UNIT_HOURS},
+       {HIJRI_RESEARCH_ALTITUDE_DEG, HIJRI_RESEARCH_ELONGATION_DEG, 0.0},
+       {0, 0, 0}},
+      {HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET,
+       "conjunction_and_moonset",
+       2,
+       {HIJRI_TERM_MOON_AGE, HIJRI_TERM_LAG_TIME, HIJRI_TERM_MOON_AGE},
+       {HIJRI_UNIT_HOURS, HIJRI_UNIT_MINUTES, HIJRI_UNIT_HOURS},
+       {0.0, 0.0, 0.0},
+       {1, 1, 0}},
+  };
+  static const HijriLocation sites[] = {
+      {-6.2088, 106.8456, 8.0, "jakarta"},
+      {21.4225, 39.8262, 240.0, "mecca"},
+      {45.0, 0.0, 0.0, "lat45"},
+      {60.0, 0.0, 0.0, "lat60"},
+  };
+  /* One fabricated evening per predicate, with every quantity that predicate
+   * tests placed EXACTLY on its own threshold. Fabricating rather than
+   * computing is what makes the boundary exact instead of subject to whatever
+   * the ephemeris happens to produce. */
+  const HijriEveningParameters boundary[] = {
+      parameters(HIJRI_MABIMS_1992_ALTITUDE_DEG, 0.0,
+                 HIJRI_MABIMS_1992_ELONGATION_DEG, 0.0,
+                 HIJRI_MABIMS_1992_AGE_HOURS, 0.0, 1, 1),
+      parameters(HIJRI_MABIMS_2021_ALTITUDE_DEG, 0.0, 0.0,
+                 HIJRI_MABIMS_2021_ELONGATION_DEG, 0.0, 0.0, 1, 1),
+      parameters(0.0, HIJRI_WUJUDUL_HILAL_LIMB_DEG, 0.0, 0.0, 0.0, 0.0, 1, 1),
+      parameters(0.0, 0.0, 0.0, 0.0, 0.0, HIJRI_LAG_THRESHOLD_MINUTES, 1, 1),
+      parameters(HIJRI_RESEARCH_ALTITUDE_DEG, 0.0,
+                 HIJRI_RESEARCH_ELONGATION_DEG, 0.0, 0.0, 0.0, 1, 1),
+      parameters(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1, 1),
+  };
+  size_t predicate_index;
+  size_t site_index;
+  int year;
+  int month;
+  int term_index;
+  char name[128];
+
+  /* The reported threshold must be the public constant the predicate reads,
+   * so the table cannot report one number while the criterion tests another.
+   * The unit, term identity and count are asserted here too, since a dropped
+   * or misfiled term is the other way the table can stop describing the
+   * criterion. */
+  for (predicate_index = 0;
+       predicate_index < sizeof(table) / sizeof(table[0]);
+       predicate_index++) {
+    HijriEveningParameters any =
+        parameters(1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1, 1);
+    HijriDecisionMargins m =
+        hijri_predicate_margins(table[predicate_index].predicate, &any);
+    snprintf(name, sizeof(name), "margins_%s_count",
+             table[predicate_index].name);
+    check_int(name, m.count, table[predicate_index].count);
+    for (term_index = 0; term_index < table[predicate_index].count;
+         term_index++) {
+      snprintf(name, sizeof(name), "margins_%s_term%d_identity",
+               table[predicate_index].name, term_index);
+      check_int(name, (int)m.terms[term_index].term,
+                (int)table[predicate_index].terms[term_index]);
+      snprintf(name, sizeof(name), "margins_%s_term%d_unit",
+               table[predicate_index].name, term_index);
+      check_int(name, (int)m.terms[term_index].unit,
+                (int)table[predicate_index].units[term_index]);
+      snprintf(name, sizeof(name), "margins_%s_term%d_threshold",
+               table[predicate_index].name, term_index);
+      check_close(name, m.terms[term_index].threshold,
+                  table[predicate_index].thresholds[term_index], 0.0);
+      snprintf(name, sizeof(name), "margins_%s_term%d_strict",
+               table[predicate_index].name, term_index);
+      check_int(name, m.terms[term_index].strict,
+                table[predicate_index].strict[term_index]);
+    }
+  }
+
+  /* The anti-drift invariant, over four sites and twenty four consecutive
+   * months. Recombining the reported per-term results with the criterion's
+   * own boolean structure must give the predicate back, term for term. */
+  for (site_index = 0; site_index < sizeof(sites) / sizeof(sites[0]);
+       site_index++) {
+    for (year = 2025; year <= 2026; year++) {
+      for (month = 1; month <= 12; month++) {
+        HijriEveningParameters p = hijri_compute_evening_parameters(
+            year, month, 15, &sites[site_index],
+            &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL);
+        for (predicate_index = 0;
+             predicate_index < sizeof(table) / sizeof(table[0]);
+             predicate_index++) {
+          HijriDecisionMargins m =
+              hijri_predicate_margins(table[predicate_index].predicate, &p);
+          snprintf(name, sizeof(name), "margins_invariant_%s_%s_%04d%02d",
+                   sites[site_index].name, table[predicate_index].name, year,
+                   month);
+          check_int(name,
+                    recombine_margins(table[predicate_index].predicate, &m),
+                    hijri_local_predicate_evaluate(
+                        table[predicate_index].predicate, &p) != 0);
+          for (term_index = 0; term_index < m.count; term_index++) {
+            if (isnan(m.terms[term_index].value))
+              continue;
+            snprintf(name, sizeof(name),
+                     "margins_arith_%s_%s_%04d%02d_term%d",
+                     sites[site_index].name, table[predicate_index].name,
+                     year, month, term_index);
+            check_true(name, m.terms[term_index].margin ==
+                                 m.terms[term_index].value -
+                                     m.terms[term_index].threshold);
+          }
+        }
+      }
+    }
+  }
+
+  /* Exactly on the threshold, the operator alone decides. */
+  for (predicate_index = 0;
+       predicate_index < sizeof(table) / sizeof(table[0]);
+       predicate_index++) {
+    HijriDecisionMargins m = hijri_predicate_margins(
+        table[predicate_index].predicate, &boundary[predicate_index]);
+    for (term_index = 0; term_index < m.count; term_index++) {
+      snprintf(name, sizeof(name), "margins_boundary_%s_term%d_zero",
+               table[predicate_index].name, term_index);
+      check_close(name, m.terms[term_index].margin, 0.0, 0.0);
+      snprintf(name, sizeof(name), "margins_boundary_%s_term%d_passes",
+               table[predicate_index].name, term_index);
+      check_int(name, m.terms[term_index].passes,
+                m.terms[term_index].strict ? 0 : 1);
+    }
+  }
+
+  /* Sunset never found, so every quantity is NAN. Every term of every
+   * predicate must report a NAN margin and must not pass. */
+  {
+    HijriEveningParameters dark =
+        parameters(NAN, NAN, NAN, NAN, NAN, NAN, 0, 0);
+    dark.sunset_status = HIJRI_EVENT_NOT_FOUND;
+    dark.moonset_status = HIJRI_EVENT_NOT_FOUND;
+    for (predicate_index = 0;
+         predicate_index < sizeof(table) / sizeof(table[0]);
+         predicate_index++) {
+      HijriDecisionMargins m =
+          hijri_predicate_margins(table[predicate_index].predicate, &dark);
+      for (term_index = 0; term_index < m.count; term_index++) {
+        snprintf(name, sizeof(name), "margins_nosunset_%s_term%d_margin_nan",
+                 table[predicate_index].name, term_index);
+        check_int(name, isnan(m.terms[term_index].margin) != 0, 1);
+        snprintf(name, sizeof(name), "margins_nosunset_%s_term%d_no_pass",
+                 table[predicate_index].name, term_index);
+        check_int(name, m.terms[term_index].passes, 0);
+      }
+    }
+  }
+
+  /* Sunset found, moonset not. The interesting case: the moon-age term must
+   * still report a real margin while the lag term reports NAN, which is how
+   * the NAN margin stands in for the availability guard the predicates spell
+   * out as moonset_status == HIJRI_EVENT_OK. */
+  {
+    HijriEveningParameters no_moonset =
+        parameters(4.0, 5.0, 9.0, 9.0, 30.0, NAN, 1, 0);
+    HijriDecisionMargins conj;
+    HijriDecisionMargins lag;
+    no_moonset.moonset_status = HIJRI_EVENT_NOT_FOUND;
+
+    conj = hijri_predicate_margins(HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET,
+                                   &no_moonset);
+    check_int("margins_nomoonset_age_margin_real",
+              isnan(conj.terms[0].margin) != 0, 0);
+    check_close("margins_nomoonset_age_margin", conj.terms[0].margin, 30.0,
+                0.0);
+    check_int("margins_nomoonset_age_passes", conj.terms[0].passes, 1);
+    check_int("margins_nomoonset_lag_margin_nan",
+              isnan(conj.terms[1].margin) != 0, 1);
+    check_int("margins_nomoonset_lag_no_pass", conj.terms[1].passes, 0);
+    check_int("margins_nomoonset_conjunction_predicate_false",
+              hijri_local_predicate_evaluate(
+                  HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET, &no_moonset),
+              0);
+
+    lag = hijri_predicate_margins(HIJRI_PREDICATE_LAG_AT_LEAST_5_MINUTES,
+                                  &no_moonset);
+    check_int("margins_nomoonset_lag5_margin_nan",
+              isnan(lag.terms[0].margin) != 0, 1);
+    check_int("margins_nomoonset_lag5_no_pass", lag.terms[0].passes, 0);
+    check_int("margins_nomoonset_lag5_predicate_false",
+              hijri_local_predicate_evaluate(
+                  HIJRI_PREDICATE_LAG_AT_LEAST_5_MINUTES, &no_moonset),
+              0);
+  }
+}
+
 int main(void) {
   test_julian_day();
   test_tabular_calendar();
@@ -1896,6 +2233,7 @@ int main(void) {
   test_kemenag_published_quantities();
   test_muhammadiyah_official_calendar();
   test_conjunction_status_returns();
+  test_decision_margins();
   check_true("all_predicate_enums_represented",
              HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET -
                          HIJRI_PREDICATE_MABIMS_1992 +
