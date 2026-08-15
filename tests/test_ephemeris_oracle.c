@@ -297,7 +297,19 @@
  *
  * This is NOT the library's error against physical truth in any looser sense:
  * both sides pair a mean-of-date Moon with an apparent Sun on purpose, so what
- * is measured is the position error, not the frame choice. */
+ * is measured is the position error, not the frame choice.
+ *
+ * DELTA-T ASYMMETRY WORTH RECORDING HERE, for a future reader, not a new
+ * assertion. This residual carries the library's delta-T model error
+ * additively, since the stored instants are Julian Days in UT and the solve
+ * runs through hijri_jd_tt_from_ut. Group 14's set solvers are comparatively
+ * insensitive to delta-T, since sunset is anchored to the observer's own
+ * meridian. So a future change to hijri_delta_t_seconds would move this
+ * fixture while leaving group 14 roughly where it is, and a group 15 drift
+ * after such a change should read as expected, not as a conjunction
+ * regression. At the 50.2953 s residual measured here the delta-T
+ * contribution sits far below the 101.0 s bound, so nothing is asserted
+ * about it. */
 #define TOL_CONJUNCTION_S 101.0
 
 /* Horizons cross-check on the two positions the conjunction is solved from.
@@ -1341,6 +1353,31 @@ static const double HORIZONS_CONJUNCTION[3][3] = {
  *     cannot be one-sidedly sensitive to a perturbation of the measurement's
  *     own size, and tightening it to close that would make it fail whenever
  *     the library improves.
+ *
+ *     THE GAP IS BOUNDED, NOT OPEN ENDED, and here is its measured size.
+ *     Bisecting the plus direction on 2026-08-15 with the same build and run
+ *     as above, 309.8568542 -> 309.8677245 (+0.0108703) is the largest plus
+ *     perturbation confirmed NOT caught, suite stayed at "1157 checks, 0
+ *     failures", exit 0. 309.8568542 -> 309.8677246 (+0.0108704) is the
+ *     smallest plus perturbation confirmed caught
+ *       FAIL conjunction_horizons_sun_lon at jd=2460705.0: got 309.8603245 want 309.8677246 (err 0.0074001 > tol 0.0074000)
+ *     Suite went to "1157 checks, 1 failures", exit 1. So the plus direction
+ *     is insensitive up to a perturbation of about 0.0109 deg, not without
+ *     limit, before it is caught.
+ *
+ *     THE MINUS DIRECTION HAS ITS OWN, SMALLER GAP, measured the same way.
+ *     Because the row's own residual runs opposite the minus direction, the
+ *     table value and the library's got value move apart immediately instead
+ *     of crossing first, so the gap closes much sooner. 309.8568542 ->
+ *     309.8529246 (-0.0039296) is the largest minus perturbation confirmed
+ *     NOT caught, suite stayed at "1157 checks, 0 failures", exit 0.
+ *     309.8568542 -> 309.8529245 (-0.0039297) is the smallest minus
+ *     perturbation confirmed caught
+ *       FAIL conjunction_horizons_sun_lon at jd=2460705.0: got 309.8603245 want 309.8529245 (err 0.0074000 > tol 0.0074000)
+ *     Suite went to "1157 checks, 1 failures", exit 1. The -0.01 mutation
+ *     recorded above already sat past this threshold, which is why it was
+ *     caught. The two directions differ by about a factor of 2.8 in
+ *     magnitude, for the reason just given, and neither is unbounded.
  *
  * C3  HORIZONS_CONJUNCTION lunar longitude column replaced with the library's
  *     own values at the same three instants, 309.8575034, 94.1299344 and
