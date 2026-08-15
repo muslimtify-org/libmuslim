@@ -1604,9 +1604,9 @@ hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
    * Left as-is deliberately. Changing it on the strength of a news article
    * would replace a documented gap with a guess. */
   case HIJRI_PREDICATE_MABIMS_1992:
-    return (p->moon_center_geometric_altitude_deg >= HIJRI_MABIMS_1992_ALTITUDE_DEG &&
-            p->geocentric_elongation_deg >= HIJRI_MABIMS_1992_ELONGATION_DEG) ||
-           (p->moon_age_hours >= HIJRI_MABIMS_1992_AGE_HOURS);
+    return p->moon_center_geometric_altitude_deg >= HIJRI_MABIMS_1992_ALTITUDE_DEG &&
+           p->geocentric_elongation_deg >= HIJRI_MABIMS_1992_ELONGATION_DEG &&
+           p->moon_age_hours >= HIJRI_MABIMS_1992_AGE_HOURS;
   /* Both parameters are topocentric. The criterion derives from Odeh (2004),
    * whose elongation is topocentric, and pairing a geocentric elongation with
    * a topocentric altitude is geometrically incoherent -- the two would be

@@ -331,20 +331,24 @@ static void test_binary_criteria(void) {
 
   check_predicate("mabims_1992_below", HIJRI_PREDICATE_MABIMS_1992,
                   parameters(1.999, 0, 2.999, 99, 7.999, 0, 0, 0), 0);
-  check_predicate("mabims_1992_geocentric_equal",
+  check_predicate("mabims_1992_all_at_threshold",
                   HIJRI_PREDICATE_MABIMS_1992,
-                  parameters(2.0, 0, 3.0, 2.0, 0, 0, 0, 0), 1);
-  check_predicate("mabims_1992_age_equal", HIJRI_PREDICATE_MABIMS_1992,
-                  parameters(0, 0, 0, 0, 8.0, 0, 0, 0), 1);
-  check_predicate("mabims_1992_altitude_above",
+                  parameters(2.0, 0, 3.0, 0, 8.0, 0, 0, 0), 1);
+  check_predicate("mabims_1992_altitude_below_others_pass",
                   HIJRI_PREDICATE_MABIMS_1992,
-                  parameters(2.001, 0, 3.0, 0, 0, 0, 0, 0), 1);
-  check_predicate("mabims_1992_elongation_above",
+                  parameters(1.999, 0, 3.0, 0, 8.0, 0, 0, 0), 0);
+  check_predicate("mabims_1992_elongation_below_others_pass",
                   HIJRI_PREDICATE_MABIMS_1992,
-                  parameters(2.0, 0, 3.001, 0, 0, 0, 0, 0), 1);
-  check_predicate("mabims_1992_age_above",
+                  parameters(2.0, 0, 2.999, 0, 8.0, 0, 0, 0), 0);
+  check_predicate("mabims_1992_age_below_others_pass",
                   HIJRI_PREDICATE_MABIMS_1992,
-                  parameters(0, 0, 0, 0, 8.001, 0, 0, 0), 1);
+                  parameters(2.0, 0, 3.0, 0, 7.999, 0, 0, 0), 0);
+  /* Under the shipped disjunctive form this passed on age alone, letting a
+   * crescent at zero altitude and zero elongation clear the criterion. That
+   * is the defect this change fixes: the conjunctive form fails it. */
+  check_predicate("mabims_1992_age_only_old_form_fails",
+                  HIJRI_PREDICATE_MABIMS_1992,
+                  parameters(0, 0, 0, 0, 8.0, 0, 0, 0), 0);
   /* MABIMS 2021 uses the TOPOCENTRIC elongation, not the geocentric one.
    * Every case below except the altitude test deliberately sets the geocentric
    * elongation to a value that contradicts the expected result, so that
@@ -1918,7 +1922,7 @@ static int recombine_margins(HijriLocalPredicate predicate,
                              const HijriDecisionMargins *m) {
   switch (predicate) {
   case HIJRI_PREDICATE_MABIMS_1992:
-    return (m->terms[0].passes && m->terms[1].passes) || m->terms[2].passes;
+    return m->terms[0].passes && m->terms[1].passes && m->terms[2].passes;
   case HIJRI_PREDICATE_MABIMS_2021:
     return m->terms[0].passes && m->terms[1].passes;
   case HIJRI_PREDICATE_WUJUDUL_HILAL:
@@ -1970,6 +1974,30 @@ static int recombine_margins(HijriLocalPredicate predicate,
  *      Hijri tests: 2303 checks, 6 failures
  *    Here the invariant does fire, on the rows where the age term alone
  *    carried the decision.
+ *
+ * 4. The predicate switch's HIJRI_PREDICATE_MABIMS_1992 case was reverted to
+ *    the old disjunctive form, `(alt AND elong) OR age`, while
+ *    recombine_margins below was left conjunctive. Observed:
+ *      FAIL exact/mabims_1992_altitude_below_others_pass actual=1 expected=0
+ *      FAIL exact/mabims_1992_elongation_below_others_pass actual=1 expected=0
+ *      FAIL exact/mabims_1992_age_below_others_pass actual=1 expected=0
+ *      FAIL exact/mabims_1992_age_only_old_form_fails actual=1 expected=0
+ *      FAIL exact/margins_invariant_jakarta_mabims_1992_202606 actual=0 expected=1
+ *      FAIL exact/margins_invariant_lat60_mabims_1992_202608 actual=0 expected=1
+ *      FAIL exact/margins_invariant_lat60_mabims_1992_202609 actual=0 expected=1
+ *      FAIL exact/margins_invariant_lat60_mabims_1992_202610 actual=0 expected=1
+ *      Hijri tests: 2499 checks, 8 failures
+ *    Reverted after recording.
+ *
+ * 5. recombine_margins's MABIMS 1992 case alone was reverted to
+ *    `(m->terms[0].passes && m->terms[1].passes) || m->terms[2].passes`,
+ *    while the predicate switch stayed conjunctive. Observed:
+ *      FAIL exact/margins_invariant_jakarta_mabims_1992_202606 actual=1 expected=0
+ *      FAIL exact/margins_invariant_lat60_mabims_1992_202608 actual=1 expected=0
+ *      FAIL exact/margins_invariant_lat60_mabims_1992_202609 actual=1 expected=0
+ *      FAIL exact/margins_invariant_lat60_mabims_1992_202610 actual=1 expected=0
+ *      Hijri tests: 2499 checks, 4 failures
+ *    Reverted after recording.
  */
 static void test_decision_margins(void) {
   static const struct {
@@ -2129,6 +2157,34 @@ static void test_decision_margins(void) {
                                      m.terms[term_index].threshold);
           }
         }
+      }
+    }
+  }
+
+  /* Strictness of the conjunctive MABIMS 1992 form against the disjunctive
+   * form it replaced. The old expression is written here a SECOND time, by
+   * hand, as a local copy kept only to prove the direction of the change: it
+   * must never be reintroduced into hijri.h. Over the same grid the
+   * anti-drift invariant above uses, no evening may pass the new conjunctive
+   * predicate while failing this old disjunctive one, since the new form is
+   * strictly narrower. */
+  for (site_index = 0; site_index < sizeof(sites) / sizeof(sites[0]);
+       site_index++) {
+    for (year = 2025; year <= 2026; year++) {
+      for (month = 1; month <= 12; month++) {
+        HijriEveningParameters p = hijri_compute_evening_parameters(
+            year, month, 15, &sites[site_index],
+            &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL);
+        int new_form =
+            hijri_local_predicate_evaluate(HIJRI_PREDICATE_MABIMS_1992, &p);
+        int old_form =
+            (p.moon_center_geometric_altitude_deg >=
+                 HIJRI_MABIMS_1992_ALTITUDE_DEG &&
+             p.geocentric_elongation_deg >= HIJRI_MABIMS_1992_ELONGATION_DEG) ||
+            (p.moon_age_hours >= HIJRI_MABIMS_1992_AGE_HOURS);
+        snprintf(name, sizeof(name), "mabims_1992_strictness_%s_%04d%02d",
+                 sites[site_index].name, year, month);
+        check_true(name, !new_form || old_form);
       }
     }
   }
