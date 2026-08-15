@@ -277,6 +277,74 @@
 
 #define TOL_SETSOLVE_HORIZONS_FLOOR_DEG 1e-5
 
+/* Group 15, hijri_find_relevant_conjunction() against oracle-solved instants
+ * with the frame pairing held equal on both sides. Measured 2026-08-15,
+ * printed by this binary with the bound below set to zero to read it off:
+ * maximum residual 50.2953 s over the twelve 2025 lunations, with the per-row
+ * figures running 1.5659 s to 50.2953 s. 101.0 s is that rounded up to leave
+ * 2.01x margin, consistent with the roughly 2x margin used elsewhere here.
+ *
+ * WHY TENS OF SECONDS IS THE RIGHT SCALE, WHICH IS THE POINT OF THIS NUMBER.
+ * The Moon closes on the Sun in ecliptic longitude at about 0.508 deg per
+ * hour. This file's header records the library's dominant error as the Meeus
+ * ch. 25 solar longitude at 0.0084042 deg against DE440, with the ch. 47 lunar
+ * truncation at 0.0012755 deg. A combined longitude error of 0.008 deg divided
+ * by that closing rate is 57 s, and the measured 50.2953 s sits just under it.
+ * So this bound reports the library's KNOWN solar error projected onto the
+ * time axis, not a defect in the conjunction search. A residual far above 57 s
+ * would mean the frame pairing had drifted on one side, and a residual far below
+ * it would mean the fixture was not measuring an independent instant at all.
+ *
+ * This is NOT the library's error against physical truth in any looser sense:
+ * both sides pair a mean-of-date Moon with an apparent Sun on purpose, so what
+ * is measured is the position error, not the frame choice.
+ *
+ * DELTA-T ASYMMETRY WORTH RECORDING HERE, for a future reader, not a new
+ * assertion. This residual carries the library's delta-T model error
+ * additively, since the stored instants are Julian Days in UT and the solve
+ * runs through hijri_jd_tt_from_ut. Group 14's set solvers are comparatively
+ * insensitive to delta-T, since sunset is anchored to the observer's own
+ * meridian. So a future change to hijri_delta_t_seconds would move this
+ * fixture while leaving group 14 roughly where it is, and a group 15 drift
+ * after such a change should read as expected, not as a conjunction
+ * regression. At the 50.2953 s residual measured here the delta-T
+ * contribution sits far below the 101.0 s bound, so nothing is asserted
+ * about it. */
+#define TOL_CONJUNCTION_S 101.0
+
+/* Horizons cross-check on the two positions the conjunction is solved from.
+ * Measured maxima over the three rows on 2026-08-15, printed by this binary
+ * with both bounds set to zero: Sun 0.0036797 deg, Moon 0.0005523 deg. Each
+ * bound is that rounded up to leave roughly 2x margin, 2.01x and 2.17x.
+ *
+ * The Sun figure sits below the 0.0084042 deg maximum solar longitude error
+ * this file's header records against DE440, which is what a matching query
+ * convention should produce.
+ *
+ * THE MOON BOUND IS SMALL FOR A REASON SPECIFIC TO THESE THREE DATES, AND
+ * SAYING OTHERWISE WOULD BE TRUE OF THE TESTED CASES AND FALSE IN GENERAL.
+ * Horizons reports the Moon apparent, the true equinox of date, while
+ * hijri_moon_position() returns the mean equinox of date, so the residual is
+ * the ch. 47 truncation error MINUS nutation in longitude. Nutation in
+ * longitude reaches about 0.0047 deg over its 18.6 year cycle, but 2025 sits
+ * near a node of it: at these three instants iau2000b gives 0.0004438,
+ * 0.0007174 and 0.0013453 deg. The two terms are therefore both small here and
+ * partly cancel. 0.0012 deg is a bound on THIS table at THESE dates and must
+ * be remeasured if the rows are ever moved to another year. */
+#define TOL_CONJUNCTION_SUN_DEG 0.0074
+#define TOL_CONJUNCTION_MOON_DEG 0.0012
+
+/* The FLOOR every one of the same six cells must clear, binding against the
+ * MINIMUM for the reason given in full above TOL_SETSOLVE_HORIZONS_FLOOR_DEG.
+ * Measured 2026-08-15, printed as "conjunction_horizons residual min ... max
+ * ...": the minimum is 0.0002751 deg and the maximum is 0.0036797 deg. 1e-5
+ * deg is 27.5x below the measured minimum and 200x above the roughly 5e-8 deg
+ * a table regenerated from the library and transcribed at Horizons' seven
+ * decimals would show, so it sits between the two populations. Same value as
+ * its group 14 sibling, deliberately, since it separates the same two
+ * populations. */
+#define TOL_CONJUNCTION_HORIZONS_FLOOR_DEG 1e-5
+
 /* MEASURED MUTATION SENSITIVITY of the four tables above.
  *
  * The Meeus 47.a block further down records an exhaustive 120-mutation sweep of
@@ -1145,6 +1213,190 @@ static const double HORIZONS_SETSOLVE_SUN[3][3] = {
  *     constrain the distance-varying semidiameter, only that group 14's
  *     existing convergence check already did.
  */
+
+/* Group 15: the conjunction instants hijri_find_relevant_conjunction() solves
+ * for, which had no external oracle before this table existed. That gap
+ * mattered because the conjunction is not a leaf: moon_age_hours and
+ * conjunction_before_sunset both derive from it, and conjunction_before_sunset
+ * is one of the two conditions HIJRI_PREDICATE_WUJUDUL_HILAL tests, so an
+ * instant wrong by an hour would move a Muhammadiyah calendar date with
+ * nothing in the suite reporting it.
+ *
+ * PROVENANCE: generated 2026-08-15 with Skyfield 1.55 on JPL DE440
+ * (de440s.bsp). One column, the conjunction instant as Julian Day in UT1 to
+ * nine decimals, which is 86 microseconds against a second-scale residual.
+ * Conjunction is geocentric, so unlike the set-solver tables there is no site
+ * axis and the table is one-dimensional. Twelve rows, one per lunation across
+ * 2025. The generator was run by hand and is not committed, matching every
+ * other oracle table in this file.
+ *
+ * THE FRAME PAIRING IS THE LOAD-BEARING STEP AND IT IS THE EASY THING TO GET
+ * WRONG SILENTLY. hijri__search_conjunction solves a zero of
+ * hijri__moon_sun_wrapped_diff, which pairs a MEAN-of-date Moon ecliptic
+ * longitude (Meeus ch. 47, neither nutation nor aberration) with an APPARENT
+ * Sun ecliptic longitude (Meeus ch. 25, both applied). The generator
+ * replicates exactly that pairing: the Moon side is the instantaneous
+ * geocentric vector in skyfield.framelib.ecliptic_frame with nutation in
+ * longitude subtracted via iau2000b to reach the mean equinox, and the Sun
+ * side is observe().apparent() in the same frame with nutation left in. Using
+ * apparent for both, or mean for both, moves the solved instant by tens of
+ * seconds and the residual would read as library error rather than generator
+ * error.
+ *
+ * THE FRAME WAS PROVED BY A CONTROL RUN, NOT ASSUMED. Before solving anything
+ * the generator recomputed the longitude columns of the already-committed
+ * SKY_MOON_GEOMETRIC and SKY_SUN_APPARENT tables above at all 24 of their
+ * epochs. Every one of the 48 values reproduced to all seven printed decimals,
+ * with a maximum deviation of 5.0e-8 deg for the Moon and 4.6e-8 deg for the
+ * Sun, which is transcription rounding. The two functions the generator then
+ * pairs are therefore the same two the committed tables were made with.
+ *
+ * A SECOND, INDEPENDENT SANITY CHECK. SETSOLVE_DATES above is documented as
+ * "one day after each 2025 conjunction" and was produced by separate work. All
+ * twelve rows below land exactly one day before their matching grid date. */
+static const double SKY_CONJUNCTION[12] = {
+  2460705.025006607,   /* 2025-01-29 12:36 UT */
+  2460734.531146590,   /* 2025-02-28 00:44 UT */
+  2460763.956824325,   /* 2025-03-29 10:57 UT */
+  2460793.313286942,   /* 2025-04-27 19:31 UT */
+  2460822.626633422,   /* 2025-05-27 03:02 UT */
+  2460851.938661769,   /* 2025-06-25 10:31 UT */
+  2460881.299519901,   /* 2025-07-24 19:11 UT */
+  2460910.754636561,   /* 2025-08-23 06:06 UT */
+  2460940.329329283,   /* 2025-09-21 19:54 UT */
+  2460970.017533096,   /* 2025-10-21 12:25 UT */
+  2460999.782886487,   /* 2025-11-20 06:47 UT */
+  2461029.571873693,   /* 2025-12-20 01:43 UT */
+};
+
+/* Horizons cross-check on the two POSITIONS the conjunction is solved from,
+ * retrieved 2026-08-15 with the query form recorded in
+ * docs/research/2026-08-08-set-solver-oracle.md, changed only in QUANTITIES
+ * and COMMAND:
+ *
+ *   curl -s -G "https://ssd.jpl.nasa.gov/api/horizons.api" \
+ *     --data-urlencode "format=text" \
+ *     --data-urlencode "COMMAND='10'"        # and again with '301'
+ *     --data-urlencode "OBJ_DATA='NO'" \
+ *     --data-urlencode "MAKE_EPHEM='YES'" \
+ *     --data-urlencode "EPHEM_TYPE='OBSERVER'" \
+ *     --data-urlencode "CENTER='500@399'" \
+ *     --data-urlencode "APPARENT='AIRLESS'" \
+ *     --data-urlencode "TLIST=2460705.025006607 2460851.938661769 2461029.571873693" \
+ *     --data-urlencode "TLIST_TYPE='JD'" \
+ *     --data-urlencode "TIME_TYPE='UT'" \
+ *     --data-urlencode "QUANTITIES='31'" \
+ *     --data-urlencode "CSV_FORMAT='YES'"
+ *
+ * Columns are jd_ut1, apparent geocentric ecliptic longitude of the Sun, and
+ * apparent geocentric ecliptic longitude of the Moon, at rows 0, 5 and 11 of
+ * SKY_CONJUNCTION copied verbatim. Returned as, verbatim:
+ *
+ *   COMMAND='10'
+ *    2025-Jan-29 12:36:00.571, , , 309.8568542, -0.0001507,
+ *    2025-Jun-25 10:31:40.377, , ,  94.1291411,  0.0000489,
+ *    2025-Dec-20 01:43:29.887, , , 268.4158134, -0.0001151,
+ *   COMMAND='301'
+ *    2025-Jan-29 12:36:00.571, , , 309.8571039, -3.8407097,
+ *    2025-Jun-25 10:31:40.377, , ,  94.1296593,  4.8962907,
+ *    2025-Dec-20 01:43:29.887, , , 268.4169815, -4.7988076,
+ *
+ * THE MOON COLUMN CARRIES A DELIBERATE FRAME OFFSET. Horizons reports the Moon
+ * APPARENT, i.e. the true equinox of date, while hijri_moon_position() returns
+ * the MEAN equinox of date, so the residual is the ch. 47 truncation error
+ * minus nutation in longitude. That is the same comparison, with the same
+ * explanation, that this file's FIXTURE already makes against TOL_LON_DEG, so
+ * it is a documented convention difference rather than an unexplained
+ * residual. The Sun column has no such offset: both sides are apparent. How
+ * large the offset happens to be at these three dates, and why the Moon bound
+ * is therefore not a general one, is recorded at TOL_CONJUNCTION_MOON_DEG.
+ *
+ * WHAT THIS DOES NOT COVER, stated plainly. It validates the two positions, not
+ * the generator's frame pairing, because the pairing is precisely what a
+ * single-body query cannot see. The control run described above covers the
+ * pairing instead, by reproducing two committed tables that were generated
+ * with the same two functions. */
+static const double HORIZONS_CONJUNCTION[3][3] = {
+  {2460705.025006607, 309.8568542, 309.8571039},
+  {2460851.938661769,  94.1291411,  94.1296593},
+  {2461029.571873693, 268.4158134, 268.4169815},
+};
+
+/* MEASURED MUTATION SENSITIVITY of the two conjunction fixtures above. Every
+ * mutation below was applied, built with `make test`, run, and reverted.
+ * Nothing in this file or in hijri.h carries a mutation. The unmutated suite is
+ * "1157 checks, 0 failures", exit 0, with "conjunction max residual 50.2953 s"
+ * and "conjunction_horizons residual min 0.0002751 max 0.0036797 deg".
+ *
+ * C1  SKY_CONJUNCTION row 0, 2460705.025006607 -> 2460705.027006607, which is
+ *     +0.002 d = 172.8 s.
+ *     CAUGHT
+ *       conjunction max residual 153.9557 s
+ *       FAIL conjunction at jd=2460705.0: got 153.9556727 want 0.0000000 (err 153.9556727 > tol 101.0000000)
+ *     Suite went to "1157 checks, 1 failures", exit 1. The 153.9557 s is not
+ *     172.8 s because the row's own unmutated residual of 18.8443 s runs the
+ *     other way and is subtracted, which is the same arithmetic the S-series
+ *     record above describes.
+ *
+ * C2  HORIZONS_CONJUNCTION row 0 solar longitude, 309.8568542 -> 309.8468542
+ *     (-0.01).
+ *     CAUGHT
+ *       FAIL conjunction_horizons_sun_lon at jd=2460705.0: got 309.8603245 want 309.8468542 (err 0.0134703 > tol 0.0074000)
+ *     Suite went to "1157 checks, 1 failures", exit 1.
+ *
+ *     THE SAME CELL IN THE PLUS DIRECTION IS NOT CAUGHT, recorded rather than
+ *     smoothed over, and it is the same gap the S-series already records for
+ *     HORIZONS_SETSOLVE_SUN. 309.8568542 -> 309.8668542 leaves the residual at
+ *     0.0065297 deg, inside the 0.0074 deg bound, because the row's own
+ *     residual of 0.0034703 deg runs the other way. The suite stayed at "1157
+ *     checks, 0 failures", exit 0. A bound sized at 2x the measured maximum
+ *     cannot be one-sidedly sensitive to a perturbation of the measurement's
+ *     own size, and tightening it to close that would make it fail whenever
+ *     the library improves.
+ *
+ *     THE GAP IS BOUNDED, NOT OPEN ENDED, and here is its measured size.
+ *     Bisecting the plus direction on 2026-08-15 with the same build and run
+ *     as above, 309.8568542 -> 309.8677245 (+0.0108703) is the largest plus
+ *     perturbation confirmed NOT caught, suite stayed at "1157 checks, 0
+ *     failures", exit 0. 309.8568542 -> 309.8677246 (+0.0108704) is the
+ *     smallest plus perturbation confirmed caught
+ *       FAIL conjunction_horizons_sun_lon at jd=2460705.0: got 309.8603245 want 309.8677246 (err 0.0074001 > tol 0.0074000)
+ *     Suite went to "1157 checks, 1 failures", exit 1. So the plus direction
+ *     is insensitive up to a perturbation of about 0.0109 deg, not without
+ *     limit, before it is caught.
+ *
+ *     THE MINUS DIRECTION HAS ITS OWN, SMALLER GAP, measured the same way.
+ *     Because the row's own residual runs opposite the minus direction, the
+ *     table value and the library's got value move apart immediately instead
+ *     of crossing first, so the gap closes much sooner. 309.8568542 ->
+ *     309.8529246 (-0.0039296) is the largest minus perturbation confirmed
+ *     NOT caught, suite stayed at "1157 checks, 0 failures", exit 0.
+ *     309.8568542 -> 309.8529245 (-0.0039297) is the smallest minus
+ *     perturbation confirmed caught
+ *       FAIL conjunction_horizons_sun_lon at jd=2460705.0: got 309.8603245 want 309.8529245 (err 0.0074000 > tol 0.0074000)
+ *     Suite went to "1157 checks, 1 failures", exit 1. The -0.01 mutation
+ *     recorded above already sat past this threshold, which is why it was
+ *     caught. The two directions differ by about a factor of 2.8 in
+ *     magnitude, for the reason just given, and neither is unbounded.
+ *
+ * C3  HORIZONS_CONJUNCTION lunar longitude column replaced with the library's
+ *     own values at the same three instants, 309.8575034, 94.1299344 and
+ *     268.4175338, which is the "regenerated from the library rather than from
+ *     Horizons" failure the floor exists for.
+ *     CAUGHT
+ *       conjunction_horizons residual min 0.0000000 max 0.0036797 deg
+ *       FAIL conjunction_horizons_independent: expected a non-zero value, got -0.000009992
+ *     Suite went to "1157 checks, 1 failures", exit 1.
+ *
+ *     NOTE THE PRINTED MAXIMUM: it is 0.0036797 deg, unchanged from the
+ *     unmutated run, because the untouched solar column holds it up. A floor
+ *     written over the maximum would have passed this mutation. That is the
+ *     mistake this project made once in the group 14 guard, recorded as S5b,
+ *     and this run is the evidence that the correction was carried across
+ *     rather than assumed. The failure value -0.000009992 is the floor minus a
+ *     residual of order 1e-9, the rounding of a seven-decimal transcription
+ *     against the library's doubles, which is the population the floor
+ *     separates from. */
 
 /* Topocentric fixtures for issue #17.
  *
@@ -2405,6 +2657,71 @@ static void check_group14_setsolve(void) {
   }
 }
 
+/* Group 15: hijri_find_relevant_conjunction() against the twelve DE440-solved
+ * instants in SKY_CONJUNCTION, plus the Horizons cross-check on the two
+ * positions the solve is made from.
+ *
+ * Each row is queried by asking for the conjunction relevant to an evening one
+ * day after the stored instant. hijri_find_relevant_conjunction() takes
+ * whichever of the previous or next conjunction is nearer, and one day against
+ * roughly 28.5 is not a close call, so the row under test is the one selected.
+ * That the call succeeds at all is asserted separately, because the returned
+ * Julian Day is not written on failure. */
+static void check_group15_conjunction(void) {
+  int i;
+  double max_s = 0.0;
+  for (i = 0; i < 12; i++) {
+    double lib, err;
+    if (hijri_find_relevant_conjunction(SKY_CONJUNCTION[i] + 1.0, &lib) !=
+        HIJRI_EVENT_OK) {
+      check_true_nonzero("conjunction_available", 0.0);
+      continue;   /* lib is not written on failure, so do not read it */
+    }
+    check_true_nonzero("conjunction_available", 1.0);
+    err = fabs(lib - SKY_CONJUNCTION[i]) * 86400.0;
+    if (err > max_s) max_s = err;
+    check_within("conjunction", SKY_CONJUNCTION[i], err, 0.0,
+                 TOL_CONJUNCTION_S);
+  }
+  printf("conjunction max residual %.4f s\n", max_s);
+
+  {
+    int k;
+    double max_resid = 0.0, min_resid = 1e9;
+    for (k = 0; k < 3; k++) {
+      double jd = HORIZONS_CONJUNCTION[k][0];
+      double jd_tt = hijri_jd_tt_from_ut(jd);
+      double dsun = angdiff(hijri_sun_position(jd_tt).apparent_longitude_deg,
+                            HORIZONS_CONJUNCTION[k][1]);
+      double dmoon =
+          angdiff(hijri_moon_position(jd_tt).geocentric_longitude_deg,
+                  HORIZONS_CONJUNCTION[k][2]);
+      if (dsun > max_resid) max_resid = dsun;
+      if (dmoon > max_resid) max_resid = dmoon;
+      if (dsun < min_resid) min_resid = dsun;
+      if (dmoon < min_resid) min_resid = dmoon;
+      check_angle_within("conjunction_horizons_sun_lon", jd,
+                         hijri_sun_position(jd_tt).apparent_longitude_deg,
+                         HORIZONS_CONJUNCTION[k][1], TOL_CONJUNCTION_SUN_DEG);
+      check_angle_within("conjunction_horizons_moon_lon", jd,
+                         hijri_moon_position(jd_tt).geocentric_longitude_deg,
+                         HORIZONS_CONJUNCTION[k][2], TOL_CONJUNCTION_MOON_DEG);
+    }
+    /* A FLOOR over the MINIMUM of the six differences, not the maximum, for
+     * the reason spelled out in full above TOL_SETSOLVE_HORIZONS_FLOOR_DEG: a
+     * floor on the maximum passes even when one cell goes degenerate, because
+     * the other cells hold the maximum up. This project wrote that bug once,
+     * in the group 14 guard, and mutation S5b is the record of correcting it.
+     * The failure this guards is the table being regenerated from the LIBRARY
+     * instead of from Horizons, which would collapse every cell to the
+     * rounding of a seven-decimal transcription. */
+    printf("conjunction_horizons residual min %.7f max %.7f deg\n",
+           min_resid, max_resid);
+    check_true_nonzero("conjunction_horizons_independent",
+                       min_resid - TOL_CONJUNCTION_HORIZONS_FLOOR_DEG);
+  }
+}
+
 /* MUTATION M8 (2026-08-05): negating the sign of hijri__eqeq_deg() fails this
  * group with, verbatim:
  *   FAIL eqeq at jd=2415020.5: got -0.0043072 want 0.0044419 (err 0.0087491 > tol 0.0010000)
@@ -2472,6 +2789,7 @@ int main(void) {
   check_group6_sun_harness();
   check_group7_shipped_elongation();
   check_group14_setsolve();
+  check_group15_conjunction();
   check_group8_eqeq();
   check_group10_ref_selftest();
   check_group9_topo_altitude();

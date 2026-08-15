@@ -1341,6 +1341,78 @@ static void test_solar_position_pin(void) {
               -21.614342073587583, 1e-9);
 }
 
+/* HijriEveningParameters field contracts, one evening where sunset, moonset
+ * and the conjunction are all available. Jakarta 2025-03-01 is one of the grid
+ * dates tests/test_ephemeris_oracle.c already solves against DE440, so the two
+ * Julian Days these assertions read are externally pinned rather than merely
+ * self-consistent.
+ *
+ * THE FIRST ASSERTION IS A GENUINE CROSS-CHECK. It recomputes the selected
+ * convention's own crossing target at the reported sunset instant, from the
+ * convention's constants and the Sun's distance at that instant, and requires
+ * sun_center_geometric_altitude_deg to sit on it. That establishes two separate
+ * things: that hijri_find_sunset converged on the target the convention
+ * specifies, and that this field reports the same quantity the solver was
+ * driving to zero rather than some other altitude.
+ *
+ * THE OTHER THREE ARE WIRING CHECKS, NOT REPRODUCTIONS, and describing them
+ * otherwise would be a false claim. Each is plain arithmetic on jd_sunset_ut,
+ * jd_moonset_ut and jd_relevant_conjunction_ut, which the oracle fixtures
+ * already pin against DE440. They therefore CANNOT discover an astronomy
+ * error, because any error in those instants moves both sides of the
+ * comparison identically. What they catch is a field assigned from the wrong
+ * variable, a sign flipped, a unit dropped, or a comparison written the wrong
+ * way round, which is exactly the class of defect the field comments in
+ * hijri.h now promise against.
+ *
+ * MEASURED MUTATION SENSITIVITY (2026-08-15). The unmutated suite is "570
+ * checks, 0 failures", exit 0. Comparing the first assertion against a
+ * different convention's target, by reading
+ * HIJRI_SUNSET_CONVENTION_ASTRONOMICAL.refraction_at_horizon_deg in place of
+ * the Kemenag value the parameters were computed with, fails it, verbatim:
+ *   FAIL exact/field_sun_center_altitude_on_convention_target actual=-0.844118173768 expected=-0.835818069952 diff=0.008300103817 tol=0.000000210000
+ * The suite went to "570 checks, 1 failures", exit 1. The mutation was
+ * reverted. The three wiring checks carry no mutation record of their own,
+ * because a mutation of a fixture cannot reach them: they read only the
+ * struct's own fields, which is precisely the limitation stated above. */
+static void test_evening_field_contracts(void) {
+  HijriLocation jakarta = {-6.2088, 106.8456, 0.0, "Jakarta"};
+  HijriEveningParameters p = hijri_compute_evening_parameters(
+      2025, 3, 1, &jakarta, &HIJRI_SUNSET_CONVENTION_KEMENAG);
+  double target;
+
+  check_int("field_sunset_available", p.sunset_status, HIJRI_EVENT_OK);
+  check_int("field_moonset_available", p.moonset_status, HIJRI_EVENT_OK);
+  if (p.sunset_status != HIJRI_EVENT_OK ||
+      p.moonset_status != HIJRI_EVENT_OK) {
+    return;
+  }
+
+  target =
+      -(HIJRI_SUNSET_CONVENTION_KEMENAG.refraction_at_horizon_deg +
+        (HIJRI_SUNSET_CONVENTION_KEMENAG.solar_semidiameter_arcsec_at_1au /
+         3600.0) /
+            hijri_sun_position(hijri_jd_tt_from_ut(p.jd_sunset_ut))
+                .distance_au);
+  /* 2.1e-7 deg is the residual measured on 2026-08-15 with the bound set to
+   * zero to read it off, 1.038e-7 deg, rounded up to leave 2.02x margin. That
+   * residual is bisection convergence and nothing else. It is about 100000x
+   * above the 1.933e-12 deg architecture quantum documented at
+   * test_solar_position_pin above, and about 80000x below the 0.0083 deg by
+   * which the astronomical convention's target differs from this one, so the
+   * bound still separates the conventions by a wide margin. */
+  check_close("field_sun_center_altitude_on_convention_target",
+              p.sun_center_geometric_altitude_deg, target, 2.1e-7);
+
+  check_close("field_lag_time_minutes",
+              p.lag_time_minutes,
+              (p.jd_moonset_ut - p.jd_sunset_ut) * 1440.0, 1e-9);
+  check_int("field_conjunction_before_sunset", p.conjunction_before_sunset,
+            p.jd_relevant_conjunction_ut < p.jd_sunset_ut);
+  check_int("field_moonset_after_sunset", p.moonset_after_sunset,
+            p.jd_moonset_ut > p.jd_sunset_ut);
+}
+
 static void test_pedoman_worked_example(void) {
   HijriLocation yogyakarta = {-(7.0 + 48.0 / 60.0), 110.0 + 21.0 / 60.0,
                               90.0, "Yogyakarta"};
@@ -1818,6 +1890,7 @@ int main(void) {
   test_moonset_crossing_convention();
   test_crescent_equivalence_property();
   test_solar_position_pin();
+  test_evening_field_contracts();
   test_pedoman_worked_example();
   test_kemenag_official_calendar();
   test_kemenag_published_quantities();
