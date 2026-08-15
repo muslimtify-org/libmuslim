@@ -434,10 +434,89 @@ static void test_posix_tz_strings(void) {
   printf("\n");
 }
 
+// ---------------------------------------------------------------------------
+// TZif footer fixtures. parse_timezone_offset only consults a zone file's
+// trailing POSIX TZ string once the instant is at or past the last explicit
+// transition. A fat tzdata build (this repository's development machines, most
+// desktops) writes transitions out to 2499, so no real DST zone ever gets
+// there; slim builds (Debian, Ubuntu, Alpine) reach it for ordinary
+// present-day lookups. The fixtures in tests/fixtures/zoneinfo have a single
+// 1950 transition and hand every later instant to the footer, so this group is
+// what covers the footer's DST-rule evaluation end to end rather than only the
+// rule-free fixed-offset footers the system zones happen to provide.
+// See tests/fixtures/zoneinfo/README.md for how the files are regenerated.
+//
+// DELIBERATE ENVIRONMENT MUTATION: this group setenv()s TZDIR and restores it
+// before returning. It must therefore run BEFORE test_concurrent_resolution,
+// which resolves zones from other threads -- a setenv racing those threads is
+// exactly the class of bug issue #41 was.
+//
+// TZDIR is relative, so the binary must be run from the repository root, which
+// is how `make check` runs it. From elsewhere the fixture files are simply not
+// found and every check below fails loudly.
+// ---------------------------------------------------------------------------
+
+#define FIXTURE_TZDIR "tests/fixtures/zoneinfo"
+
+static void test_footer_fixtures(void) {
+  const char *old_tzdir = getenv("TZDIR");
+  char *saved = old_tzdir ? strdup(old_tzdir) : NULL;
+
+  printf("Test group: TZif POSIX footer fixtures (TZDIR=" FIXTURE_TZDIR ")\n");
+  setenv("TZDIR", FIXTURE_TZDIR, 1);
+
+  // Footer "FIX-7": fixed offset, no rules.
+  check_offset("Fixture/Fixed", TS_2026_JAN_15_NOON, 7.0,
+               "footer FIX-7 (Jan)");
+  check_offset("Fixture/Fixed", TS_2026_JUL_15_NOON, 7.0,
+               "footer FIX-7 (Jul)");
+
+  // Footer "FST5FDT,M3.2.0,M11.1.0": northern hemisphere.
+  check_offset("Fixture/North", TS_2026_JAN_15_NOON, -5.0,
+               "footer north winter");
+  check_offset("Fixture/North", TS_2026_JUL_15_NOON, -4.0,
+               "footer north summer");
+  check_offset("Fixture/North", TS_2026_MAR_08_06Z, -5.0,
+               "footer north pre-spring-forward");
+  check_offset("Fixture/North", TS_2026_MAR_08_08Z, -4.0,
+               "footer north post-spring-forward");
+  check_offset("Fixture/North", TS_2026_NOV_01_05Z, -4.0,
+               "footer north pre-fall-back");
+  check_offset("Fixture/North", TS_2026_NOV_01_07Z, -5.0,
+               "footer north post-fall-back");
+
+  // Footer "GST-10GDT,M10.1.0,M4.1.0/3": southern hemisphere, the DST window
+  // wraps the year end.
+  check_offset("Fixture/South", TS_2026_JAN_15_NOON, 11.0,
+               "footer south January (in DST)");
+  check_offset("Fixture/South", TS_2026_JUL_15_NOON, 10.0,
+               "footer south July (standard)");
+  check_offset("Fixture/South", TS_2026_OCT_03_15Z, 10.0,
+               "footer south pre-DST-start");
+  check_offset("Fixture/South", TS_2026_OCT_03_17Z, 11.0,
+               "footer south post-DST-start");
+  check_offset("Fixture/South", TS_2026_APR_04_15Z, 11.0,
+               "footer south pre-DST-end");
+  check_offset("Fixture/South", TS_2026_APR_04_17Z, 10.0,
+               "footer south post-DST-end");
+
+  if (saved) {
+    setenv("TZDIR", saved, 1);
+    free(saved);
+  } else {
+    unsetenv("TZDIR");
+  }
+  printf("\n");
+}
+
 #else /* _WIN32 */
 
 static void test_posix_tz_strings(void) {
   printf("Test group: POSIX TZ string evaluator (skipped on Windows)\n\n");
+}
+
+static void test_footer_fixtures(void) {
+  printf("Test group: TZif POSIX footer fixtures (skipped on Windows)\n\n");
 }
 
 #endif
@@ -491,6 +570,8 @@ int main(void) {
   test_input_forms();
   test_posix_tz_strings();
   test_system_timezone();
+  // Mutates TZDIR; must stay ahead of the threaded group below.
+  test_footer_fixtures();
   test_concurrent_resolution();
 
   printf("=== Summary ===\n");
