@@ -39,6 +39,12 @@
  * compute the offset for you; otherwise keep supplying the offset to
  * `calculate_prayer_times` yourself.
  *
+ * On POSIX, `tz_name` accepts: an IANA zone name resolved against `TZDIR`
+ * (falling back to `/usr/share/zoneinfo`), an absolute path to a TZif file,
+ * either of those with a leading ':' (ignored, per POSIX convention), or a
+ * bare POSIX TZ string (e.g. "WIB-7") when no matching file exists. TZif
+ * files below version 2 are not read.
+ *
  * Single-header usage — in exactly ONE translation unit:
  *     #define MUSLIM_TIMEZONE_IMPLEMENTATION
  *     #include "timezone.h"

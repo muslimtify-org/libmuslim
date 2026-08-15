@@ -196,6 +196,12 @@ double tz = 0.0;
 parse_timezone_offset(zone, time(NULL), &tz);        // DST applied
 ```
 
+`parse_timezone_offset` returns `0` on success with the offset written to
+`*out`, or `-1` on failure (unresolvable zone, or a NULL argument), in which
+case `*out` is left untouched — check the return value before trusting `tz`.
+It touches no global timezone state, so it is safe to call from multiple
+threads at once.
+
 On a platform without a timezone database, keep supplying the offset yourself.
 
 ## Building and tests
