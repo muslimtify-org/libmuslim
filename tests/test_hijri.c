@@ -15,11 +15,18 @@ static void check_int(const char *name, int actual, int expected) {
   }
 }
 
+/* The comparison must be the negated form, not the direct greater-than form.
+ * fabs(NAN - expected) is NAN, and comparing NAN with tolerance using a
+ * direct greater-than test is false, so that direct form counts a NAN
+ * actual as a pass. Confirmed with a temporary assertion passing NAN as
+ * actual, which produced:
+ * FAIL exact/nan_probe actual=nan expected=8.000000000000 diff=nan tol=0.000000001000
+ */
 static void check_close(const char *name, double actual, double expected,
                         double tolerance) {
   double difference = fabs(actual - expected);
   checks++;
-  if (difference > tolerance) {
+  if (!(difference <= tolerance)) {
     failures++;
     printf("FAIL exact/%s actual=%.12f expected=%.12f diff=%.12f tol=%.12f\n",
            name, actual, expected, difference, tolerance);
