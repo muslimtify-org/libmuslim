@@ -859,7 +859,14 @@ static int muslim_posix_tz_parse_rule(const char **p, int *mode, int *m, int *w,
   return 0;
 }
 
-/* Days from 1970-01-01 to y-m-d (proleptic Gregorian). */
+/* Days from 1970-01-01 to y-m-d (proleptic Gregorian).
+ *
+ * This intentionally duplicates mt_days_from_civil in prayertimes.h rather
+ * than sharing it: timezone.h and prayertimes.h are independent stb-style
+ * single-header libraries, a consumer may drop in only one of them, and
+ * having timezone.h include prayertimes.h would create a dependency the
+ * project's design forbids. The signature also differs here, taking
+ * `long long` for the year instead of `int`. */
 static long long muslim_days_from_civil(long long y, int m, int d) {
   y -= (m <= 2);
   long long era = (y >= 0 ? y : y - 399) / 400;
@@ -1043,6 +1050,12 @@ static int muslim_tzif_counts(FILE *f, unsigned long *counts) {
   return 0;
 }
 
+/* vibekit: fseek here takes a `long`, so on a 32-bit host (32-bit long) a
+ * zone file past the 2GB mark seeks to a wrong position; every read is still
+ * length-checked, so this yields a wrong answer or a clean error, never an
+ * out-of-bounds access. Same ceiling applies to the two fseek calls in
+ * muslim_tzif_offset_at below. Upgrade path: fseeko/off_t (POSIX, not C11;
+ * needs a feature-test macro or a portability shim). */
 /* Validate both headers and report where the 64-bit data block starts, along
  * with its own counts (which differ from the v1 ones). The lookup and the
  * footer reader both need exactly this, hence one helper for both. */
