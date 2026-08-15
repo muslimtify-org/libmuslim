@@ -99,10 +99,11 @@ examples: $(EXAMPLE_BINS)
 # changes to it show up in review. Any change to the ephemeris, the predicates,
 # or the evening calculation moves it. This is the check that catches that.
 #
-# PLATFORM-DEPENDENT: cmp only succeeds on the platform that generated the
-# committed file -- currently glibc -- because libm rounding differs between
-# implementations. See the DETERMINISM section in hijri.h for the full
-# contract. CI runs this target on Linux only.
+# PLATFORM-DEPENDENT: cmp is verified byte-identical between glibc 2.44 and
+# musl 1.2.6 on x86-64, the two libm implementations measured against each
+# other. Other platforms and architectures are untested and may differ. See
+# the DETERMINISM section in hijri.h for the full contract. CI runs this
+# target on Linux only.
 baseline: $(BUILD)/tests/hijri_research_probe
 	@$(BUILD)/tests/hijri_research_probe > $(BUILD)/baseline.csv
 	@if cmp -s $(BUILD)/baseline.csv docs/research/hijri-2020-2025-baseline.csv; then \

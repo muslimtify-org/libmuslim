@@ -155,12 +155,12 @@ religious validity.
 pure function of its arguments, keeps no state between calls, and is safe to
 call from any number of threads at once. Results are bit-identical run to
 run on the same platform, same compiler, and same flags, which is exactly
-what `make baseline` checks on every run. If you compare computed times
-across different machines, expect them to agree to within about 0.1 ms
-(the ninth decimal of the Julian Day figures this library works in) rather
-than to the last bit, because libm rounding differs between platforms. This
-determinism claim is specific to `hijri.h`, see `hijri.h` itself for the
-full contract.
+what `make baseline` checks on every run. Measured between glibc 2.44 and
+musl 1.2.6 on x86-64, the baseline CSV is byte-identical and Julian Day
+instants never differ across a 336-row sweep, though angular quantities
+occasionally differ by 1 to 2 units in the last place. Other platforms and
+architectures are not measured. This determinism claim is specific to
+`hijri.h`, see `hijri.h` itself for the full contract.
 
 ## timezone.h
 

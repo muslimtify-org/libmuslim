@@ -191,13 +191,25 @@
  * `make baseline` target runs against the committed
  * docs/research/hijri-2020-2025-baseline.csv.
  *
- * Across platforms, results are NOT bit-identical, because libm rounding
- * differs between implementations. The difference becomes visible at the
- * nine decimals of Julian Day the baseline CSV prints, about 0.1 ms. No
- * bound on the size of that difference is stated here, because only one
- * libm was available to measure against when this was written, and a bound
- * without a second libm to measure against would be invented rather than
- * observed.
+ * Across libm implementations on the same architecture, measured between
+ * glibc 2.44 and musl 1.2.6 on x86-64, both at -O2, built from the same
+ * source with gcc and musl-gcc: the full 132-row
+ * docs/research/hijri-2020-2025-baseline.csv is byte-identical between the
+ * two, and a wider sweep of raw double bit patterns (336 rows, 4 sites, 12
+ * months a year, 2020 to 2026) found no Julian Day instant differed. Angular
+ * quantities (moon altitude, elongation) differed on some rows, by 1 to 2
+ * units in the last place, worst case 1.203e-13 deg at Jakarta in November
+ * 2020, which is 4.0e-14 of the 3 degree MABIMS 2021 altitude threshold. Age
+ * and lag are arithmetic on Julian Days, so with no Julian Day differing,
+ * neither did they.
+ *
+ * This does not show the library is reproducible across platforms in
+ * general. It shows two implementations agreeing on one architecture. macOS,
+ * BSD, Windows, non-x86-64 architectures, and other optimisation levels are
+ * not measured and no claim is made about them. The residual risk that
+ * matters even within what was measured: a one-unit-in-the-last-place
+ * angular difference could in principle land next to a rounding boundary
+ * and move a printed digit at a date not among the 336 sampled here.
  *
  * This determinism contract covers hijri.h only. prayertimes.h and
  * timezone.h are explicitly not audited for it.
