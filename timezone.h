@@ -699,6 +699,282 @@ int get_system_timezone(char *buf, size_t cap) {
 #include <string.h>
 #include <unistd.h>
 
+/* ---- POSIX TZ string evaluator ------------------------------------------ *
+ * Self-contained parser for TZ strings of the form
+ *     std offset [dst [offset] , start[/time] , end[/time]]
+ * such as "WIB-7", "EST5EDT,M3.2.0,M11.1.0" and "GMT0BST,M3.5.0/1,M10.5.0".
+ * It touches no global state, so it is safe to call from any thread.
+ *
+ * POSIX offsets are WEST-POSITIVE ("EST5" means UTC-5), so every parsed
+ * offset is negated on the way out to become a UTC offset.
+ *
+ * Each helper returns 0 on success and -1 on failure, leaving its outputs
+ * untouched on failure, and advances `*p` past exactly what it consumed. */
+
+/* Digits, ASCII only: TZ strings are not locale-dependent. */
+#define MUSLIM_TZ_ISDIGIT(c) ((c) >= '0' && (c) <= '9')
+#define MUSLIM_TZ_ISALPHA(c)                                                   \
+  (((c) >= 'A' && (c) <= 'Z') || ((c) >= 'a' && (c) <= 'z'))
+
+/* Read an unsigned decimal of at most `max_digits` digits. */
+static int muslim_posix_tz_parse_num(const char **p, int max_digits,
+                                     long *value) {
+  const char *s = *p;
+  long v = 0;
+  int n = 0;
+  while (n < max_digits && MUSLIM_TZ_ISDIGIT(*s)) {
+    v = v * 10 + (*s - '0');
+    s++;
+    n++;
+  }
+  if (n == 0)
+    return -1;
+  *value = v;
+  *p = s;
+  return 0;
+}
+
+/* A zone abbreviation: three or more letters, or any run of alphanumerics,
+ * '+' and '-' wrapped in angle brackets ("<-03>"). */
+static int muslim_posix_tz_parse_name(const char **p, char *buf, size_t cap) {
+  const char *s = *p;
+  size_t n = 0;
+
+  if (*s == '<') {
+    s++;
+    while (*s && *s != '>') {
+      char c = *s;
+      if (!MUSLIM_TZ_ISALPHA(c) && !MUSLIM_TZ_ISDIGIT(c) && c != '+' &&
+          c != '-')
+        return -1;
+      if (n + 1 >= cap)
+        return -1;
+      buf[n++] = c;
+      s++;
+    }
+    if (*s != '>')
+      return -1;
+    s++;
+  } else {
+    while (MUSLIM_TZ_ISALPHA(*s)) {
+      if (n + 1 >= cap)
+        return -1;
+      buf[n++] = *s;
+      s++;
+    }
+  }
+
+  if (n < 3)
+    return -1;
+  buf[n] = '\0';
+  *p = s;
+  return 0;
+}
+
+/* [+-]hh[:mm[:ss]], west-positive, as written. */
+static int muslim_posix_tz_parse_offset(const char **p, long *seconds) {
+  const char *s = *p;
+  int neg = 0;
+  long h = 0, m = 0, sec = 0;
+
+  if (*s == '+') {
+    s++;
+  } else if (*s == '-') {
+    neg = 1;
+    s++;
+  }
+  if (muslim_posix_tz_parse_num(&s, 3, &h) != 0 || h > 24)
+    return -1;
+  if (*s == ':') {
+    s++;
+    if (muslim_posix_tz_parse_num(&s, 2, &m) != 0 || m > 59)
+      return -1;
+    if (*s == ':') {
+      s++;
+      if (muslim_posix_tz_parse_num(&s, 2, &sec) != 0 || sec > 59)
+        return -1;
+    }
+  }
+
+  *seconds = h * 3600 + m * 60 + sec;
+  if (neg)
+    *seconds = -*seconds;
+  *p = s;
+  return 0;
+}
+
+/* A transition rule: "Mm.w.d", "Jn" (1..365, never counting Feb 29) or
+ * "n" (0..365, counting it). `*mode` receives 'M', 'J' or 'n'. The optional
+ * "/time" is local wall time and defaults to 02:00:00. */
+static int muslim_posix_tz_parse_rule(const char **p, int *mode, int *m, int *w,
+                                      int *d, long *time_of_day) {
+  const char *s = *p;
+  long a = 0, b = 0, c = 0;
+  long tod = 7200;
+
+  if (*s == 'M') {
+    s++;
+    if (muslim_posix_tz_parse_num(&s, 2, &a) != 0 || a < 1 || a > 12)
+      return -1;
+    if (*s++ != '.')
+      return -1;
+    if (muslim_posix_tz_parse_num(&s, 1, &b) != 0 || b < 1 || b > 5)
+      return -1;
+    if (*s++ != '.')
+      return -1;
+    if (muslim_posix_tz_parse_num(&s, 1, &c) != 0 || c > 6)
+      return -1;
+    *mode = 'M';
+  } else if (*s == 'J') {
+    s++;
+    if (muslim_posix_tz_parse_num(&s, 3, &c) != 0 || c < 1 || c > 365)
+      return -1;
+    *mode = 'J';
+  } else if (MUSLIM_TZ_ISDIGIT(*s)) {
+    if (muslim_posix_tz_parse_num(&s, 3, &c) != 0 || c > 365)
+      return -1;
+    *mode = 'n';
+  } else {
+    return -1;
+  }
+
+  if (*s == '/') {
+    s++;
+    if (muslim_posix_tz_parse_offset(&s, &tod) != 0)
+      return -1;
+  }
+
+  *m = (int)a;
+  *w = (int)b;
+  *d = (int)c;
+  *time_of_day = tod;
+  *p = s;
+  return 0;
+}
+
+/* Days from 1970-01-01 to y-m-d (proleptic Gregorian). */
+static long long muslim_days_from_civil(long long y, int m, int d) {
+  y -= (m <= 2);
+  long long era = (y >= 0 ? y : y - 399) / 400;
+  long long yoe = y - era * 400;                                  /* 0..399 */
+  long long doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1; /* 0..365 */
+  long long doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;          /* 0..146096 */
+  return era * 146097 + doe - 719468;
+}
+
+static int muslim_tz_is_leap(int y) {
+  return (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+}
+
+/* Resolve a rule to an instant in `year`, expressed as seconds since the
+ * epoch on the LOCAL wall clock. The caller adds the applicable west-positive
+ * offset to convert it to true UTC seconds. */
+static int muslim_posix_tz_transition(int mode, int m, int w, int d,
+                                      long time_of_day, int year,
+                                      long long *utc_seconds) {
+  long long day;
+
+  if (mode == 'M') {
+    static const int mdays[12] = {31, 28, 31, 30, 31, 30,
+                                  31, 31, 30, 31, 30, 31};
+    int last = mdays[m - 1] + (m == 2 && muslim_tz_is_leap(year));
+    long long first = muslim_days_from_civil(year, m, 1);
+    /* Epoch day 0 (1970-01-01) was a Thursday; 0 = Sunday. */
+    int wd = (int)(((first % 7) + 11) % 7);
+    int dom = 1 + ((d - wd) + 7) % 7 + 7 * (w - 1);
+    if (dom > last)
+      dom -= 7;
+    day = muslim_days_from_civil(year, m, dom);
+  } else if (mode == 'J') {
+    /* Julian day 1..365: February 29 is never counted. */
+    day = muslim_days_from_civil(year, 1, 1) + (d - 1) +
+          ((muslim_tz_is_leap(year) && d >= 60) ? 1 : 0);
+  } else if (mode == 'n') {
+    day = muslim_days_from_civil(year, 1, 1) + d;
+  } else {
+    return -1;
+  }
+
+  *utc_seconds = day * 86400 + time_of_day;
+  return 0;
+}
+
+/* Evaluate a whole TZ string at `when`, writing the UTC offset in hours. */
+static int muslim_posix_tz_offset(const char *tz, time_t when, double *out) {
+  char name[32];
+  const char *p;
+  long std_off = 0, dst_off = 0, std_tod = 0, dst_tod = 0;
+  int smode = 0, sm = 0, sw = 0, sd = 0;
+  int emode = 0, em = 0, ew = 0, ed = 0;
+  long long start, end, t;
+  int in_dst;
+
+  if (!tz || !out)
+    return -1;
+  p = tz;
+
+  if (muslim_posix_tz_parse_name(&p, name, sizeof name) != 0)
+    return -1;
+  if (muslim_posix_tz_parse_offset(&p, &std_off) != 0)
+    return -1;
+  if (*p == '\0') {
+    *out = -(double)std_off / 3600.0;
+    return 0;
+  }
+
+  /* A DST section follows. Its offset defaults to one hour east of standard,
+   * i.e. one hour less in west-positive terms. */
+  if (muslim_posix_tz_parse_name(&p, name, sizeof name) != 0)
+    return -1;
+  if (*p != ',') {
+    if (muslim_posix_tz_parse_offset(&p, &dst_off) != 0)
+      return -1;
+  } else {
+    dst_off = std_off - 3600;
+  }
+
+  /* Without both rules there is nothing to evaluate; POSIX leaves the
+   * rule-less form implementation-defined, so reject it rather than guess. */
+  if (*p++ != ',')
+    return -1;
+  if (muslim_posix_tz_parse_rule(&p, &smode, &sm, &sw, &sd, &std_tod) != 0)
+    return -1;
+  if (*p++ != ',')
+    return -1;
+  if (muslim_posix_tz_parse_rule(&p, &emode, &em, &ew, &ed, &dst_tod) != 0)
+    return -1;
+  if (*p != '\0')
+    return -1;
+
+  t = (long long)when;
+  {
+    /* The year of `when` on the local standard clock. gmtime_r reads no
+     * global timezone state, so this stays thread-safe. */
+    time_t local = (time_t)(t - std_off);
+    struct tm g;
+    if (!gmtime_r(&local, &g))
+      return -1;
+    if (muslim_posix_tz_transition(smode, sm, sw, sd, std_tod,
+                                   g.tm_year + 1900, &start) != 0)
+      return -1;
+    if (muslim_posix_tz_transition(emode, em, ew, ed, dst_tod,
+                                   g.tm_year + 1900, &end) != 0)
+      return -1;
+  }
+  /* Rule times are local wall clock: standard time entering DST, DST time
+   * leaving it. Add the west-positive offset in force to reach UTC. */
+  start += std_off;
+  end += dst_off;
+
+  if (start <= end)
+    in_dst = (t >= start && t < end);
+  else /* southern hemisphere: the DST window wraps the year end */
+    in_dst = (t >= start || t < end);
+
+  *out = -(double)(in_dst ? dst_off : std_off) / 3600.0;
+  return 0;
+}
+
 int parse_timezone_offset(const char *tz_name, time_t when, double *out) {
   if (!tz_name || !out)
     return -1;

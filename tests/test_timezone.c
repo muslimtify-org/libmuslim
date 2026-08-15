@@ -116,6 +116,130 @@ static void test_invalid_zones(void) {
 }
 
 // ---------------------------------------------------------------------------
+// POSIX TZ string evaluator (POSIX build only — the Windows branch of
+// timezone.h has no such parser). The header is included above with the
+// implementation macro, so the static evaluator is visible right here.
+// ---------------------------------------------------------------------------
+
+#if !defined(_WIN32)
+
+// Instants straddling the transitions of the TZ strings used below.
+#define TS_2026_MAR_08_06Z ((time_t)1772949600) // 1h before US spring forward
+#define TS_2026_MAR_08_08Z ((time_t)1772956800) // 1h after
+#define TS_2026_NOV_01_05Z ((time_t)1793509200) // 1h before US fall back
+#define TS_2026_NOV_01_07Z ((time_t)1793516400) // 1h after
+#define TS_2026_OCT_03_15Z ((time_t)1791039600) // 1h before AU DST start
+#define TS_2026_OCT_03_17Z ((time_t)1791046800) // 1h after
+#define TS_2026_APR_04_15Z ((time_t)1775314800) // 1h before AU DST end
+#define TS_2026_APR_04_17Z ((time_t)1775322000) // 1h after
+
+static void check_tz_string(const char *tz, time_t when, double expected,
+                            const char *label) {
+  double got = 0.0;
+  int rc = muslim_posix_tz_offset(tz, when, &got);
+  total++;
+  if (rc == 0 && fabs(got - expected) < 0.01) {
+    printf("  PASS  %-34s  offset=%+.2f  expected=%+.2f\n", label, got,
+           expected);
+  } else {
+    printf("  FAIL  %-34s  rc=%d offset=%+.2f  expected=%+.2f\n", label, rc,
+           got, expected);
+    failures++;
+  }
+}
+
+static void check_tz_string_rejected(const char *tz, const char *label) {
+  double got = 12345.0;
+  int rc = muslim_posix_tz_offset(tz, TS_2026_JAN_15_NOON, &got);
+  total++;
+  if (rc != 0 && got == 12345.0) {
+    printf("  PASS  %-34s  rejected, out untouched\n", label);
+  } else {
+    printf("  FAIL  %-34s  rc=%d offset=%+.2f\n", label, rc, got);
+    failures++;
+  }
+}
+
+static void test_posix_tz_strings(void) {
+  printf("Test group: POSIX TZ string evaluator\n");
+
+  // Fixed offset, no DST section.
+  check_tz_string("WIB-7", TS_2026_JAN_15_NOON, 7.0, "WIB-7 (Jan)");
+  check_tz_string("WIB-7", TS_2026_JUL_15_NOON, 7.0, "WIB-7 (Jul)");
+  check_tz_string("EST5", TS_2026_JUL_15_NOON, -5.0, "EST5 west-positive");
+
+  // Northern hemisphere, both sides of both transitions.
+  check_tz_string("EST5EDT,M3.2.0,M11.1.0", TS_2026_JAN_15_NOON, -5.0,
+                  "EST/EDT deep winter");
+  check_tz_string("EST5EDT,M3.2.0,M11.1.0", TS_2026_JUL_15_NOON, -4.0,
+                  "EST/EDT deep summer");
+  check_tz_string("EST5EDT,M3.2.0,M11.1.0", TS_2026_MAR_08_06Z, -5.0,
+                  "EST/EDT before spring forward");
+  check_tz_string("EST5EDT,M3.2.0,M11.1.0", TS_2026_MAR_08_08Z, -4.0,
+                  "EST/EDT after spring forward");
+  check_tz_string("EST5EDT,M3.2.0,M11.1.0", TS_2026_NOV_01_05Z, -4.0,
+                  "EST/EDT before fall back");
+  check_tz_string("EST5EDT,M3.2.0,M11.1.0", TS_2026_NOV_01_07Z, -5.0,
+                  "EST/EDT after fall back");
+  // Explicit /time on the start rule (Europe/London switches at 01:00 UTC).
+  check_tz_string("GMT0BST,M3.5.0/1,M10.5.0", TS_2026_JAN_15_NOON, 0.0,
+                  "GMT/BST winter");
+  check_tz_string("GMT0BST,M3.5.0/1,M10.5.0", TS_2026_JUL_15_NOON, 1.0,
+                  "GMT/BST summer");
+
+  // Southern hemisphere: the DST window wraps the year end.
+  check_tz_string("AEST-10AEDT,M10.1.0,M4.1.0/3", TS_2026_JAN_15_NOON, 11.0,
+                  "AEST/AEDT January (in DST)");
+  check_tz_string("AEST-10AEDT,M10.1.0,M4.1.0/3", TS_2026_JUL_15_NOON, 10.0,
+                  "AEST/AEDT July (standard)");
+  check_tz_string("AEST-10AEDT,M10.1.0,M4.1.0/3", TS_2026_OCT_03_15Z, 10.0,
+                  "AEST/AEDT before DST start");
+  check_tz_string("AEST-10AEDT,M10.1.0,M4.1.0/3", TS_2026_OCT_03_17Z, 11.0,
+                  "AEST/AEDT after DST start");
+  check_tz_string("AEST-10AEDT,M10.1.0,M4.1.0/3", TS_2026_APR_04_15Z, 11.0,
+                  "AEST/AEDT before DST end");
+  check_tz_string("AEST-10AEDT,M10.1.0,M4.1.0/3", TS_2026_APR_04_17Z, 10.0,
+                  "AEST/AEDT after DST end");
+
+  // Quoted <...> names, including a quoted DST pair with Julian rules.
+  check_tz_string("<-03>3", TS_2026_JAN_15_NOON, -3.0, "<-03>3 quoted name");
+  check_tz_string("<+07>-7", TS_2026_JUL_15_NOON, 7.0, "<+07>-7 quoted name");
+  check_tz_string("<-04>4<-03>,J60,J300", TS_2026_JAN_15_NOON, -4.0,
+                  "quoted pair, Julian rules (Jan)");
+  check_tz_string("<-04>4<-03>,J60,J300", TS_2026_JUL_15_NOON, -3.0,
+                  "quoted pair, Julian rules (Jul)");
+
+  // Fractional offsets.
+  check_tz_string("IST-5:30", TS_2026_JAN_15_NOON, 5.5, "IST-5:30");
+  check_tz_string("NPT-5:45", TS_2026_JAN_15_NOON, 5.75, "NPT-5:45");
+  check_tz_string("XXX-5:45:30", TS_2026_JAN_15_NOON, 5.7583,
+                  "XXX-5:45:30 seconds field");
+
+  // Malformed strings must be rejected outright.
+  check_tz_string_rejected(NULL, "NULL string");
+  check_tz_string_rejected("", "empty string");
+  check_tz_string_rejected("XY5", "name shorter than 3");
+  check_tz_string_rejected("EST", "missing offset");
+  check_tz_string_rejected("EST25", "hour out of range");
+  check_tz_string_rejected("IST-5:75", "minute out of range");
+  check_tz_string_rejected("EST5EDT", "DST name without rules");
+  check_tz_string_rejected("EST5EDT,M13.2.0,M11.1.0", "month out of range");
+  check_tz_string_rejected("EST5EDT,M3.6.0,M11.1.0", "week out of range");
+  check_tz_string_rejected("EST5EDT,M3.2.7,M11.1.0", "weekday out of range");
+  check_tz_string_rejected("EST5EDT,M3.2.0,M11.1.0,", "trailing garbage");
+  check_tz_string_rejected("<-03", "unterminated quoted name");
+  printf("\n");
+}
+
+#else /* _WIN32 */
+
+static void test_posix_tz_strings(void) {
+  printf("Test group: POSIX TZ string evaluator (skipped on Windows)\n\n");
+}
+
+#endif
+
+// ---------------------------------------------------------------------------
 // get_system_timezone: value is host-dependent, so assert only the contract —
 // on success the buffer is a non-empty string that round-trips back through
 // parse_timezone_offset to a sane offset.
@@ -160,6 +284,7 @@ int main(void) {
   test_fractional_offsets();
   test_dst_offsets();
   test_invalid_zones();
+  test_posix_tz_strings();
   test_system_timezone();
 
   printf("=== Summary ===\n");
