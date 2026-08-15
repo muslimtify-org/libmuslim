@@ -398,8 +398,25 @@ HIJRIDEF int hijri_from_gregorian_with_local_predicate(
     int gy, int gm, int gd, const HijriLocation *loc,
     HijriLocalPredicate predicate, HijriDate *out);
 
+/* Table range: 1882-11-12 to 2174-11-25 Gregorian (Hijri 1300-1600). Inside
+ * that range the answer comes from the published table. Outside it, the
+ * answer comes from the astronomical reconstruction instead, the same
+ * calculation hijri_from_gregorian_with_local_predicate does at Mecca with
+ * the conjunction-and-moonset predicate. Inside the table range the return
+ * value is 1. Outside it, the reconstruction can fail, in which case the
+ * return value is 0 and out is not filled in, so a return of 1 does not by
+ * itself say which algorithm answered, hijri_umm_al_qura_covers below is how
+ * a caller tells the two apart. */
 HIJRIDEF int hijri_umm_al_qura_from_gregorian(int gy, int gm, int gd,
                                                HijriDate *out);
+
+/* True if the given Gregorian date falls inside the Umm al-Qura table's
+ * coverage. Inside coverage, hijri_umm_al_qura_from_gregorian answers from
+ * the table and returns 1. Outside it, the answer comes from the
+ * astronomical reconstruction instead, which can fail and return 0, so this
+ * function is what tells a caller which algorithm is in play, a return
+ * value of 1 alone does not say. */
+HIJRIDEF int hijri_umm_al_qura_covers(int gy, int gm, int gd);
 
 typedef enum {
   HIJRI_YALLOP_A_EASILY_VISIBLE,
@@ -452,8 +469,26 @@ hijri_odeh_evaluate_evening(int gy, int gm, int gd,
  * Umm al-Qura to within about +/-1-2 days. Epoch: 1 Muharram 1 AH = JD
  * 1948439.5 (civil/"Friday" epoch convention). */
 
+/* hijri_tabular_to_jd is unchecked arithmetic by design, an out-of-range
+ * month or day is not rejected, it produces a plausible wrong Julian Day
+ * instead of an error. Call hijri_tabular_date_valid first if the input is
+ * not already known good.
+ *
+ * hijri_tabular_from_jd rejects non-finite and out-of-range input and
+ * returns the sentinel HijriDate {0, 0, 0} rather than a garbage date.
+ *
+ * SUPPORTED AND TESTED RANGE: Hijri years 1 through 9999, round tripped in
+ * the test suite along with years -999 through 0. The representable and
+ * safe range that hijri_tabular_date_valid checks is wider, bounded by int
+ * overflow rather than by what the tests cover. The two are separate
+ * claims, one is not a stand-in for the other. */
 HIJRIDEF double hijri_tabular_to_jd(HijriDate date);
 HIJRIDEF HijriDate hijri_tabular_from_jd(double jd);
+
+/* True if date is representable by hijri_tabular_to_jd/hijri_tabular_from_jd,
+ * i.e. year in [-999999, 999999], month in [1, 12], and day a valid day of
+ * that month. This is the representable range, not the tested one. */
+HIJRIDEF int hijri_tabular_date_valid(HijriDate date);
 
 #ifdef __cplusplus
 }
@@ -1593,16 +1628,51 @@ static int hijri__month_length(int year, int month) {
   return (month % 2 == 1) ? 30 : 29;
 }
 
+/* Floor division. C's / truncates toward zero, so -6 / 30 is 0 rather than
+ * the -1 the cycle index needs. Negative Hijri years are inside this
+ * function's domain, so the distinction is load bearing. */
+static long hijri__floor_div(long a, long b) {
+  long q = a / b;
+  if ((a % b != 0) && ((a < 0) != (b < 0)))
+    q--;
+  return q;
+}
+
+#define HIJRI__TABULAR_MIN_YEAR (-999999)
+#define HIJRI__TABULAR_MAX_YEAR 999999
+
+/* Representable and safe range: the Julian Days whose implied Hijri year fits
+ * in an int with room to spare. Outside this, hijri_tabular_from_jd returns
+ * the {0, 0, 0} sentinel rather than overflowing. This is wider than the
+ * SUPPORTED and TESTED range, which is Hijri years 1 through 9999. The two are
+ * different claims and are stated separately on purpose.
+ *
+ * HIJRI__TABULAR_MIN_JD is the Julian Day of the first day, month 1 day 1, of
+ * HIJRI__TABULAR_MIN_YEAR, and HIJRI__TABULAR_MAX_JD is the Julian Day of the
+ * last day of month 12 of HIJRI__TABULAR_MAX_YEAR. A test asserts this, so
+ * the four constants must be changed together. */
+#define HIJRI__TABULAR_MIN_JD (-352418227.5)
+#define HIJRI__TABULAR_MAX_JD 356314750.5
+
+HIJRIDEF int hijri_tabular_date_valid(HijriDate date) {
+  if (date.year < HIJRI__TABULAR_MIN_YEAR || date.year > HIJRI__TABULAR_MAX_YEAR)
+    return 0;
+  if (date.month < 1 || date.month > 12)
+    return 0;
+  if (date.day < 1 || date.day > hijri__month_length(date.year, date.month))
+    return 0;
+  return 1;
+}
+
 HIJRIDEF double hijri_tabular_to_jd(HijriDate date) {
   long days = 0;
 
-  if (date.year >= 1) {
-    for (int y = 1; y < date.year; y++)
-      days += hijri__year_length(y);
-  } else {
-    for (int y = date.year; y < 1; y++)
-      days -= hijri__year_length(y);
-  }
+  /* The 30-year cycle is exactly 10631 days, so the walk only has to cover
+   * the partial cycle. At most 29 iterations instead of one per year. */
+  long cycles = hijri__floor_div((long)date.year - 1, 30);
+  days = cycles * 10631;
+  for (int y = (int)(cycles * 30) + 1; y < date.year; y++)
+    days += hijri__year_length(y);
 
   for (int m = 1; m < date.month; m++)
     days += hijri__month_length(date.year, m);
@@ -1612,32 +1682,39 @@ HIJRIDEF double hijri_tabular_to_jd(HijriDate date) {
 }
 
 HIJRIDEF HijriDate hijri_tabular_from_jd(double jd) {
-  long days_elapsed = (long)floor(jd - HIJRI__TABULAR_EPOCH_JD + 0.5);
+  HijriDate invalid = {0, 0, 0};
+  long days_elapsed, cycles, rem;
+  int year, month;
 
-  int year = 1;
-  if (days_elapsed >= 0) {
-    while (days_elapsed >= hijri__year_length(year)) {
-      days_elapsed -= hijri__year_length(year);
-      year++;
-    }
-  } else {
-    while (days_elapsed < 0) {
-      year--;
-      days_elapsed += hijri__year_length(year);
-    }
+  /* (long)floor(NAN) is undefined behaviour, and it is reachable: the
+   * evening parameters set jd_sunset_ut and jd_moonset_ut to NAN whenever
+   * their solver fails, so a caller who skips the status field lands here. */
+  if (!(jd >= HIJRI__TABULAR_MIN_JD && jd <= HIJRI__TABULAR_MAX_JD))
+    return invalid;
+
+  days_elapsed = (long)floor(jd - HIJRI__TABULAR_EPOCH_JD + 0.5);
+  cycles = hijri__floor_div(days_elapsed, 10631);
+  year = (int)(cycles * 30) + 1;
+  rem = days_elapsed - cycles * 10631; /* 0 <= rem < 10631 */
+
+  while (rem >= hijri__year_length(year)) { /* at most 29 iterations */
+    rem -= hijri__year_length(year);
+    year++;
   }
 
-  int month = 1;
-  while (days_elapsed >= hijri__month_length(year, month)) {
-    days_elapsed -= hijri__month_length(year, month);
+  month = 1;
+  while (rem >= hijri__month_length(year, month)) {
+    rem -= hijri__month_length(year, month);
     month++;
   }
 
-  HijriDate result;
-  result.year = year;
-  result.month = month;
-  result.day = (int)days_elapsed + 1;
-  return result;
+  {
+    HijriDate result;
+    result.year = year;
+    result.month = month;
+    result.day = (int)rem + 1;
+    return result;
+  }
 }
 
 /* ---- Top-level orchestration ----------------------------------------- */
@@ -1850,6 +1927,12 @@ HIJRIDEF int hijri_umm_al_qura_from_gregorian(int gy, int gm, int gd,
   return hijri_from_gregorian_with_local_predicate(
       gy, gm, gd, &HIJRI_LOCATION_MECCA,
       HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET, out);
+}
+
+HIJRIDEF int hijri_umm_al_qura_covers(int gy, int gm, int gd) {
+  double target_jd = floor(hijri_jd_from_gregorian(gy, gm, (double)gd));
+  return target_jd >= HIJRI__UQ_ANCHOR_JD &&
+         target_jd < HIJRI__UQ_ANCHOR_JD + (double)HIJRI__UQ_TOTAL_DAYS;
 }
 
 #endif /* HIJRI_IMPLEMENTATION */

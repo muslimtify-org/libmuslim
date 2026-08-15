@@ -122,6 +122,194 @@ static void test_tabular_calendar(void) {
                  samples[index].day);
     }
   }
+
+  /* Mutation record: cycle constant 10631 -> 10630 at all three sites in
+   * both converters (hijri_tabular_to_jd and hijri_tabular_from_jd), then
+   * `make test`. Observed FAIL line, verbatim:
+   * FAIL exact/tabular_negative_roundtrip_year_-480 actual=-479-01-01
+   * expected=-480-12-29
+   * (369 total failures were reported; this is the first.) Reverted after
+   * recording. */
+
+  /* Round-trip every day of Hijri years 1 through 9999 and every day of
+   * years -999 through 0, proving the closed form equals the loop it
+   * replaced. Negative years take a different code path in the original,
+   * so they are covered explicitly here (the design-time cycle check only
+   * covered years 1 to 2999). */
+  {
+    long total_days = 0;
+    int year;
+
+    for (year = 1; year <= 9999; year++) {
+      int month;
+      for (month = 1; month <= 12; month++) {
+        int length = hijri__month_length(year, month);
+        int day;
+        for (day = 1; day <= length; day++) {
+          HijriDate d;
+          HijriDate result;
+          d.year = year;
+          d.month = month;
+          d.day = day;
+          result = hijri_tabular_from_jd(hijri_tabular_to_jd(d));
+          total_days++;
+          if (result.year != d.year || result.month != d.month ||
+              result.day != d.day) {
+            checks++;
+            failures++;
+            printf("FAIL exact/tabular_year_full_roundtrip_year_%d "
+                   "actual=%04d-%02d-%02d expected=%04d-%02d-%02d\n",
+                   year, result.year, result.month, result.day, d.year,
+                   d.month, d.day);
+          }
+        }
+      }
+    }
+
+    for (year = -999; year <= 0; year++) {
+      int month;
+      for (month = 1; month <= 12; month++) {
+        int length = hijri__month_length(year, month);
+        int day;
+        for (day = 1; day <= length; day++) {
+          HijriDate d;
+          HijriDate result;
+          d.year = year;
+          d.month = month;
+          d.day = day;
+          result = hijri_tabular_from_jd(hijri_tabular_to_jd(d));
+          total_days++;
+          if (result.year != d.year || result.month != d.month ||
+              result.day != d.day) {
+            checks++;
+            failures++;
+            printf("FAIL exact/tabular_negative_roundtrip_year_%d "
+                   "actual=%04d-%02d-%02d expected=%04d-%02d-%02d\n",
+                   year, result.year, result.month, result.day, d.year,
+                   d.month, d.day);
+          }
+        }
+      }
+    }
+
+    check_true("tabular_roundtrip_nonempty", total_days >= 1);
+    printf("tabular_roundtrip covered %ld days\n", total_days);
+  }
+
+  /* Mutation record: range guard in hijri_tabular_from_jd mutated to
+   * `jd < HIJRI__TABULAR_MIN_JD || jd > HIJRI__TABULAR_MAX_JD`, which lets
+   * NAN through (NAN compares false against every operand, so it fails
+   * both disjuncts and reaches the undefined (long)floor(NAN)). The brief
+   * for this task expects this mutation to hang rather than fail, with no
+   * FAIL line to quote. Measured behavior differs: `timeout 20
+   * ./build/tests/test_hijri` (gcc and clang, -O0 and -O2, all four
+   * combinations) completed normally with exit status 0, not 124. It
+   * printed:
+   * FAIL exact/tabular_totality_nan actual=-383399864-02-02
+   * expected=0000-00-00
+   * The reason is structural: (long)floor(NAN) is undefined behavior, but
+   * on this toolchain it produces a large, finite (if nonsensical) long
+   * rather than a value that drives the recovery loop unboundedly. The
+   * closed-form rewrite in this task computes the year in O(1) from
+   * `cycles` and only loops at most 29 times regardless of how large or
+   * malformed `days_elapsed` is, so even a UB cast result cannot reopen
+   * the original unbounded loop; the guard's job here is to stop
+   * nonsensical output for non-finite input, not to prevent a hang. This
+   * is a stronger property than the brief assumed, not a weaker one, but
+   * it does mean this step's evidence is a FAIL line and an exit status of
+   * 0, not a timeout and exit status 124. Reverted after recording. */
+
+  /* Totality: hijri_tabular_from_jd must return the {0,0,0} sentinel for
+   * non-finite and grossly out-of-range input, never hang or invoke
+   * undefined behaviour. NAN and the infinities are built through a
+   * volatile double so -std=c11 -Wpedantic cannot fold them away. */
+  {
+    volatile double zero = 0.0;
+    volatile double one = 1.0;
+    double nan_v = zero / zero;
+    double pos_inf = one / zero;
+    double neg_inf = -one / zero;
+
+    check_date("tabular_totality_nan", hijri_tabular_from_jd(nan_v), 0, 0, 0);
+    check_date("tabular_totality_pos_inf", hijri_tabular_from_jd(pos_inf), 0,
+               0, 0);
+    check_date("tabular_totality_neg_inf", hijri_tabular_from_jd(neg_inf), 0,
+               0, 0);
+    check_date("tabular_totality_1e18", hijri_tabular_from_jd(1e18), 0, 0, 0);
+    check_date("tabular_totality_neg_1e18", hijri_tabular_from_jd(-1e18), 0,
+               0, 0);
+  }
+
+  /* hijri_tabular_date_valid checks the representable range, not the
+   * tested one, so it must accept and reject on the shape of the date
+   * itself, not on hard-coded years. */
+  {
+    int leap_year;
+    HijriDate d;
+
+    check_true("tabular_date_valid_month_zero",
+               !hijri_tabular_date_valid((HijriDate){1, 0, 1}));
+    check_true("tabular_date_valid_month_13",
+               !hijri_tabular_date_valid((HijriDate){1, 13, 1}));
+    check_true("tabular_date_valid_day_zero",
+               !hijri_tabular_date_valid((HijriDate){1, 1, 0}));
+    check_true("tabular_date_valid_day_30_of_29_day_month",
+               !hijri_tabular_date_valid((HijriDate){1, 2, 30}));
+
+    /* Year 1 is not a leap year (hijri__month_length(1, 12) == 29), so
+     * find a nearby leap year by asking the helper rather than hard-coding
+     * one, that way this case cannot silently stop being a leap year. */
+    for (leap_year = 1; hijri__month_length(leap_year, 12) != 30;
+         leap_year++)
+      ;
+    d.year = leap_year;
+    d.month = 12;
+    d.day = hijri__month_length(leap_year, 12);
+    check_true("tabular_date_valid_leap_year_last_day",
+               hijri_tabular_date_valid(d));
+  }
+
+  /* Mutation record: widened the month test in hijri_tabular_date_valid
+   * from `date.month > 12` to `date.month > 13`, so month 13 is accepted,
+   * then `make test`. Observed FAIL line, verbatim:
+   * FAIL synthetic/tabular_date_valid_month_13 expected=true
+   * Reverted after recording. */
+
+  /* HIJRI__TABULAR_MIN_JD and HIJRI__TABULAR_MAX_JD are the Julian Days of
+   * the first day of HIJRI__TABULAR_MIN_YEAR and the last day of
+   * HIJRI__TABULAR_MAX_YEAR. The four constants are derived from each
+   * other, so this checks they still agree. */
+  {
+    HijriDate min_year_first = {HIJRI__TABULAR_MIN_YEAR, 1, 1};
+    HijriDate max_year_last = {
+        HIJRI__TABULAR_MAX_YEAR, 12,
+        hijri__month_length(HIJRI__TABULAR_MAX_YEAR, 12)};
+
+    check_close("tabular_min_year_matches_min_jd",
+                hijri_tabular_to_jd(min_year_first), HIJRI__TABULAR_MIN_JD,
+                0.0);
+    check_close("tabular_max_year_matches_max_jd",
+                hijri_tabular_to_jd(max_year_last), HIJRI__TABULAR_MAX_JD,
+                0.0);
+
+    check_true("tabular_date_valid_min_year_accepted",
+               hijri_tabular_date_valid(
+                   (HijriDate){HIJRI__TABULAR_MIN_YEAR, 1, 1}));
+    check_true("tabular_date_valid_below_min_year_rejected",
+               !hijri_tabular_date_valid(
+                   (HijriDate){HIJRI__TABULAR_MIN_YEAR - 1, 1, 1}));
+    check_true("tabular_date_valid_max_year_accepted",
+               hijri_tabular_date_valid(max_year_last));
+    check_true("tabular_date_valid_above_max_year_rejected",
+               !hijri_tabular_date_valid(
+                   (HijriDate){HIJRI__TABULAR_MAX_YEAR + 1, 1, 1}));
+  }
+
+  /* Mutation record: changed HIJRI__TABULAR_MAX_YEAR to 999998 without
+   * changing HIJRI__TABULAR_MAX_JD, then `make test`. Observed FAIL line,
+   * verbatim:
+   * FAIL exact/tabular_max_year_matches_max_jd actual=356314396.500000000000 expected=356314750.500000000000 diff=354.000000000000 tol=0.000000000000
+   * Reverted after recording. */
 }
 
 static void check_predicate(const char *name, HijriLocalPredicate predicate,
@@ -919,6 +1107,48 @@ static void test_umm_al_qura_table_boundaries(void) {
     check_true("umm_boundary_post_table_sane",
                !ok || (h.day >= 1 && h.day <= 30));
   }
+
+  /* hijri_umm_al_qura_covers is the second question a caller needs: it must
+   * flip across both table boundaries while hijri_umm_al_qura_from_gregorian
+   * keeps returning 1 on all four dates (a table answer on two, the
+   * astronomical fallback on the other two). Asserting only the covers
+   * flip would not show that the two functions answer different
+   * questions, asserting both in the same loop does. */
+  {
+    static const struct {
+      int y, m, d;
+      int expect_covers;
+      const char *name;
+    } cases[] = {
+        {1882, 11, 12, 1, "umm_covers_first_day"},
+        {1882, 11, 11, 0, "umm_covers_before_first_day"},
+        {2174, 11, 25, 1, "umm_covers_last_day"},
+        {2174, 11, 26, 0, "umm_covers_after_last_day"},
+    };
+    size_t index;
+    char name[64];
+
+    for (index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {
+      snprintf(name, sizeof(name), "%s", cases[index].name);
+      check_int(name, hijri_umm_al_qura_covers(cases[index].y, cases[index].m,
+                                                cases[index].d),
+                cases[index].expect_covers);
+
+      snprintf(name, sizeof(name), "%s_from_gregorian_status",
+               cases[index].name);
+      check_int(name,
+                hijri_umm_al_qura_from_gregorian(cases[index].y,
+                                                  cases[index].m,
+                                                  cases[index].d, &h),
+                1);
+    }
+  }
+
+  /* Mutation record: hijri_umm_al_qura_covers mutated to `return 1;`
+   * unconditionally, then `make test`. Observed FAIL lines, verbatim:
+   * FAIL exact/umm_covers_before_first_day actual=1 expected=0
+   * FAIL exact/umm_covers_after_last_day actual=1 expected=0
+   * Reverted after recording. */
 }
 
 /* One Moon-horizon convention: at the instant hijri_find_moonset reports,
