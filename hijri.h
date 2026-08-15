@@ -412,6 +412,33 @@ hijri_find_next_conjunction(double jd_after, double *result_jd);
 HIJRIDEF HijriEventStatus
 hijri_find_relevant_conjunction(double jd_evening, double *result_jd);
 
+/* Criterion thresholds, public because they are part of each criterion's
+ * published definition. hijri_local_predicate_evaluate and
+ * hijri_predicate_margins both read these, so the decision and the reported
+ * margin cannot disagree about a number.
+ *
+ * Mutation record: HIJRI_MABIMS_2021_ALTITUDE_DEG was changed from 3.0 to
+ * 4.0 and `make test` was run. The observed failures, verbatim:
+ *   FAIL exact/mabims_2021_topocentric_equal actual=0 expected=1
+ *   FAIL exact/mabims_2021_altitude_above actual=0 expected=1
+ *   FAIL exact/mabims_2021_elongation_above actual=0 expected=1
+ *   Hijri tests: 570 checks, 3 failures
+ * This records that the existing calendar fixtures are the net that catches
+ * a threshold edit. A later invariant test recombines per-term margins with
+ * each predicate's boolean structure, but by construction both sides of
+ * that invariant read the same constant, so a threshold change moves them
+ * together and the invariant cannot catch it. These fixtures are the ones
+ * that do. */
+#define HIJRI_MABIMS_1992_ALTITUDE_DEG     2.0
+#define HIJRI_MABIMS_1992_ELONGATION_DEG   3.0
+#define HIJRI_MABIMS_1992_AGE_HOURS        8.0
+#define HIJRI_MABIMS_2021_ALTITUDE_DEG     3.0
+#define HIJRI_MABIMS_2021_ELONGATION_DEG   6.4
+#define HIJRI_WUJUDUL_HILAL_LIMB_DEG       0.0
+#define HIJRI_LAG_THRESHOLD_MINUTES        5.0
+#define HIJRI_RESEARCH_ALTITUDE_DEG        5.0
+#define HIJRI_RESEARCH_ELONGATION_DEG      8.0
+
 typedef enum {
   HIJRI_PREDICATE_MABIMS_1992,
   HIJRI_PREDICATE_MABIMS_2021,
@@ -1492,9 +1519,9 @@ hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
    * Left as-is deliberately. Changing it on the strength of a news article
    * would replace a documented gap with a guess. */
   case HIJRI_PREDICATE_MABIMS_1992:
-    return (p->moon_center_geometric_altitude_deg >= 2.0 &&
-            p->geocentric_elongation_deg >= 3.0) ||
-           (p->moon_age_hours >= 8.0);
+    return (p->moon_center_geometric_altitude_deg >= HIJRI_MABIMS_1992_ALTITUDE_DEG &&
+            p->geocentric_elongation_deg >= HIJRI_MABIMS_1992_ELONGATION_DEG) ||
+           (p->moon_age_hours >= HIJRI_MABIMS_1992_AGE_HOURS);
   /* Both parameters are topocentric. The criterion derives from Odeh (2004),
    * whose elongation is topocentric, and pairing a geocentric elongation with
    * a topocentric altitude is geometrically incoherent -- the two would be
@@ -1511,8 +1538,8 @@ hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
    * Moon's centre or upper limb, whether refraction applies, and whether
    * exactly 3.0 deg passes. Centre and no-refraction are assumed. */
   case HIJRI_PREDICATE_MABIMS_2021:
-    return p->moon_center_geometric_altitude_deg >= 3.0 &&
-           p->topocentric_elongation_deg >= 6.4;
+    return p->moon_center_geometric_altitude_deg >= HIJRI_MABIMS_2021_ALTITUDE_DEG &&
+           p->topocentric_elongation_deg >= HIJRI_MABIMS_2021_ELONGATION_DEG;
   /* Pedoman Hisab Muhammadiyah (Majelis Tarjih dan Tajdid, 2009), pp.
    * 88-95: h'b = (hb - Pb) + R'b + SDb + Dip, upper limb, apparent,
    * topocentric; the month begins when ijtimak precedes sunset and
@@ -1525,17 +1552,17 @@ hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
    * the altitude side alone would deviate from the source by ~17'. */
   case HIJRI_PREDICATE_WUJUDUL_HILAL:
     return p->conjunction_before_sunset &&
-           p->moon_upper_limb_apparent_altitude_deg > 0.0;
+           p->moon_upper_limb_apparent_altitude_deg > HIJRI_WUJUDUL_HILAL_LIMB_DEG;
   case HIJRI_PREDICATE_LAG_AT_LEAST_5_MINUTES:
     return p->moonset_status == HIJRI_EVENT_OK &&
-           p->lag_time_minutes >= 5.0;
+           p->lag_time_minutes >= HIJRI_LAG_THRESHOLD_MINUTES;
   /* Neutrally named research predicate -- claims no authority, so no external
    * convention governs it. Stated explicitly for the record: the elongation
    * here is geocentric. That is a choice, not a requirement; a caller wanting
    * the topocentric form should read topocentric_elongation_deg directly. */
   case HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8:
-    return p->moon_center_geometric_altitude_deg >= 5.0 &&
-           p->geocentric_elongation_deg >= 8.0;
+    return p->moon_center_geometric_altitude_deg >= HIJRI_RESEARCH_ALTITUDE_DEG &&
+           p->geocentric_elongation_deg >= HIJRI_RESEARCH_ELONGATION_DEG;
   case HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET:
     return p->conjunction_before_sunset &&
            p->moonset_status == HIJRI_EVENT_OK &&
