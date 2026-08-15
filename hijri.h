@@ -514,6 +514,61 @@ HIJRIDEF int
 hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
                                const HijriEveningParameters *p);
 
+typedef enum {
+  HIJRI_UNIT_DEGREES,
+  HIJRI_UNIT_HOURS,
+  HIJRI_UNIT_MINUTES
+} HijriUnit;
+
+typedef enum {
+  HIJRI_TERM_MOON_CENTER_ALTITUDE,
+  HIJRI_TERM_MOON_UPPER_LIMB_ALTITUDE,
+  HIJRI_TERM_GEOCENTRIC_ELONGATION,
+  HIJRI_TERM_TOPOCENTRIC_ELONGATION,
+  HIJRI_TERM_MOON_AGE,
+  HIJRI_TERM_LAG_TIME
+} HijriDecisionTerm;
+
+typedef struct {
+  /* Which quantity this row reports. */
+  HijriDecisionTerm term;
+  /* Unit of value, threshold and margin. Terms of different units must not
+   * be compared against each other, which is why no aggregate is offered. */
+  HijriUnit unit;
+  /* The computed quantity, copied from HijriEveningParameters. NAN when the
+   * solver that produces it did not succeed. */
+  double value;
+  /* What the criterion compares it against, from the constants above. */
+  double threshold;
+  /* value minus threshold. NAN when value is NAN. */
+  double margin;
+  /* 1 if the criterion uses >, 0 if it uses >=. At a margin of exactly zero
+   * this is what decides the term, and whether exactly zero passes is a
+   * policy question no measurement settles. */
+  int strict;
+  /* Whether this term alone passes, under its own operator. 0 when margin
+   * is NAN. */
+  int passes;
+} HijriDecisionTermMargin;
+
+#define HIJRI_MAX_DECISION_TERMS 3
+
+typedef struct {
+  /* Number of populated entries in terms. Never exceeds
+   * HIJRI_MAX_DECISION_TERMS. */
+  int count;
+  /* The criterion's terms, in the order the criterion states them. */
+  HijriDecisionTermMargin terms[HIJRI_MAX_DECISION_TERMS];
+} HijriDecisionMargins;
+
+/* Reports how far each term of `predicate` sits from its own threshold, in
+ * that term's own units. Reports only. It combines nothing, converts nothing
+ * between units, and labels nothing near, so it cannot change a decision.
+ * Compare a margin against the error bars documented in this file's header. */
+HIJRIDEF HijriDecisionMargins
+hijri_predicate_margins(HijriLocalPredicate predicate,
+                        const HijriEveningParameters *p);
+
 typedef struct {
   int month_starts_next_day;
   HijriEveningParameters parameters;
@@ -1570,6 +1625,112 @@ hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
   default:
     return 0;
   }
+}
+
+/* No isnan branch anywhere below, deliberately. When value is NAN the margin
+ * is NAN and both > and >= against it are already false, so passes falls out
+ * as 0 without a special case. A branch here would be a second place for the
+ * NAN policy to drift from the predicate's. */
+static HijriDecisionTermMargin
+hijri__decision_term(HijriDecisionTerm term, HijriUnit unit, double value,
+                     double threshold, int strict) {
+  HijriDecisionTermMargin row;
+  row.term = term;
+  row.unit = unit;
+  row.value = value;
+  row.threshold = threshold;
+  row.margin = value - threshold;
+  row.strict = strict;
+  row.passes = strict ? (row.margin > 0.0) : (row.margin >= 0.0);
+  return row;
+}
+
+/* Mirrors the switch above, term for term, reading the same constants. The
+ * `moonset_status == HIJRI_EVENT_OK` guard in two of those predicates is not
+ * a term, it is availability, and the NAN margin already expresses it: when
+ * moonset was not found lag_time_minutes is NAN, so the lag term reports a
+ * NAN margin and does not pass. Likewise conjunction_before_sunset is exactly
+ * jd_relevant_conjunction_ut < jd_sunset_ut, which is moon_age_hours > 0
+ * strictly, and moonset_after_sunset is lag_time_minutes > 0 on the same
+ * reasoning, so both appear here as strict terms against zero.
+ *
+ * tests/test_hijri.c writes each predicate's boolean structure a second time
+ * and recombines these per-term results with it. That duplication is the
+ * point: it is what detects this function drifting from the switch above. */
+HIJRIDEF HijriDecisionMargins
+hijri_predicate_margins(HijriLocalPredicate predicate,
+                        const HijriEveningParameters *p) {
+  HijriDecisionMargins out;
+  int index;
+
+  for (index = 0; index < HIJRI_MAX_DECISION_TERMS; index++)
+    out.terms[index] = hijri__decision_term(HIJRI_TERM_MOON_CENTER_ALTITUDE,
+                                            HIJRI_UNIT_DEGREES, NAN, NAN, 0);
+  out.count = 0;
+
+  switch (predicate) {
+  case HIJRI_PREDICATE_MABIMS_1992:
+    out.count = 3;
+    out.terms[0] = hijri__decision_term(
+        HIJRI_TERM_MOON_CENTER_ALTITUDE, HIJRI_UNIT_DEGREES,
+        p->moon_center_geometric_altitude_deg,
+        HIJRI_MABIMS_1992_ALTITUDE_DEG, 0);
+    out.terms[1] = hijri__decision_term(
+        HIJRI_TERM_GEOCENTRIC_ELONGATION, HIJRI_UNIT_DEGREES,
+        p->geocentric_elongation_deg, HIJRI_MABIMS_1992_ELONGATION_DEG, 0);
+    out.terms[2] = hijri__decision_term(HIJRI_TERM_MOON_AGE, HIJRI_UNIT_HOURS,
+                                        p->moon_age_hours,
+                                        HIJRI_MABIMS_1992_AGE_HOURS, 0);
+    break;
+  case HIJRI_PREDICATE_MABIMS_2021:
+    out.count = 2;
+    out.terms[0] = hijri__decision_term(
+        HIJRI_TERM_MOON_CENTER_ALTITUDE, HIJRI_UNIT_DEGREES,
+        p->moon_center_geometric_altitude_deg,
+        HIJRI_MABIMS_2021_ALTITUDE_DEG, 0);
+    out.terms[1] = hijri__decision_term(
+        HIJRI_TERM_TOPOCENTRIC_ELONGATION, HIJRI_UNIT_DEGREES,
+        p->topocentric_elongation_deg, HIJRI_MABIMS_2021_ELONGATION_DEG, 0);
+    break;
+  case HIJRI_PREDICATE_WUJUDUL_HILAL:
+    out.count = 2;
+    out.terms[0] = hijri__decision_term(HIJRI_TERM_MOON_AGE, HIJRI_UNIT_HOURS,
+                                        p->moon_age_hours, 0.0, 1);
+    out.terms[1] = hijri__decision_term(
+        HIJRI_TERM_MOON_UPPER_LIMB_ALTITUDE, HIJRI_UNIT_DEGREES,
+        p->moon_upper_limb_apparent_altitude_deg,
+        HIJRI_WUJUDUL_HILAL_LIMB_DEG, 1);
+    break;
+  case HIJRI_PREDICATE_LAG_AT_LEAST_5_MINUTES:
+    out.count = 1;
+    out.terms[0] = hijri__decision_term(HIJRI_TERM_LAG_TIME,
+                                        HIJRI_UNIT_MINUTES,
+                                        p->lag_time_minutes,
+                                        HIJRI_LAG_THRESHOLD_MINUTES, 0);
+    break;
+  case HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8:
+    out.count = 2;
+    out.terms[0] = hijri__decision_term(
+        HIJRI_TERM_MOON_CENTER_ALTITUDE, HIJRI_UNIT_DEGREES,
+        p->moon_center_geometric_altitude_deg, HIJRI_RESEARCH_ALTITUDE_DEG,
+        0);
+    out.terms[1] = hijri__decision_term(
+        HIJRI_TERM_GEOCENTRIC_ELONGATION, HIJRI_UNIT_DEGREES,
+        p->geocentric_elongation_deg, HIJRI_RESEARCH_ELONGATION_DEG, 0);
+    break;
+  case HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET:
+    out.count = 2;
+    out.terms[0] = hijri__decision_term(HIJRI_TERM_MOON_AGE, HIJRI_UNIT_HOURS,
+                                        p->moon_age_hours, 0.0, 1);
+    out.terms[1] = hijri__decision_term(HIJRI_TERM_LAG_TIME,
+                                        HIJRI_UNIT_MINUTES,
+                                        p->lag_time_minutes, 0.0, 1);
+    break;
+  default:
+    break;
+  }
+
+  return out;
 }
 
 HIJRIDEF double hijri_yallop_q(double arcv_deg, double w) {
