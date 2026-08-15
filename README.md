@@ -151,6 +151,21 @@ wujud/belum-wujud verdict — fixture-enforced; see
 A calculated result is still not an observation, and nothing here decides
 religious validity.
 
+**Numerical uncertainty and policy.** `hijri_predicate_margins()` reports how
+far each term of a predicate sits from its own threshold, in that term's own
+units, and nothing else. It does not combine terms, convert between units, or
+label a margin as near, so it cannot change a decision. Whether a margin is
+small enough to be unsafe is left to the application, and whether a term
+sitting at exactly its threshold passes is a convention the criterion states,
+not a measurement, which is why `HijriDecisionTermMargin` reports `strict`
+per term. The error bars a margin should be read against are the ones
+documented in `hijri.h` itself, under NUMERICAL UNCERTAINTY AND POLICY and
+ACCURACY CAVEAT, and are not repeated here since duplicated figures are how
+this file's past accuracy mistakes happened. That section also records that
+the solar longitude residual is biased rather than symmetric, so a margin
+should be weighed against the relevant side of that range, not against a
+symmetric tolerance.
+
 **Thread safety and determinism.** Every public function in `hijri.h` is a
 pure function of its arguments, keeps no state between calls, and is safe to
 call from any number of threads at once. Results are bit-identical run to

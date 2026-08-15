@@ -168,6 +168,36 @@
  * docs/research/2026-08-05-solar-hour-angle-frame.md.
  *
  * -----------------------------------------------------------------------
+ * NUMERICAL UNCERTAINTY AND POLICY
+ *
+ * hijri_predicate_margins() reports how far each term of a predicate sits
+ * from its own threshold, in that term's own units, and nothing else. It
+ * combines nothing, converts nothing between units, and labels nothing as
+ * near. Whether a given margin is small enough to be unsafe is the
+ * application's decision, not the library's.
+ *
+ * The relevant error bars are the ones already documented above under
+ * ACCURACY CAVEAT -- PLEASE READ. They are not restated here, because a
+ * figure duplicated in two places in this file has already drifted once
+ * before, with one place true and the other false, and that is the mistake
+ * this section exists to avoid repeating.
+ *
+ * Read a margin against the right side of that error, not against a
+ * symmetric band around it. Running `make test` and reading the oracle
+ * binary's own printed line, `sun_apparent signed lon: mean 0.0020391 deg
+ * min -0.0024953 deg max 0.0084042 deg`, the solar longitude residual is
+ * biased rather than symmetric: it runs from a negative minimum to a
+ * positive maximum roughly three times larger. A margin on the side of a
+ * threshold that this residual can push a decision across should be
+ * compared against whichever of those two figures applies to that
+ * direction, not against a single symmetric tolerance.
+ *
+ * Whether a term sitting at exactly its threshold passes is a convention
+ * the criterion states, not a measurement anything here makes. That is why
+ * HijriDecisionTermMargin reports `strict` per term rather than assuming
+ * the same answer for every criterion.
+ *
+ * -----------------------------------------------------------------------
  * THREAD SAFETY
  *
  * Every public function in this file is a pure function of its arguments.
