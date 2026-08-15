@@ -1664,10 +1664,29 @@ static void test_kemenag_published_quantities(void) {
  * genuine ephemeris improvement cannot fail the suite; never-early is
  * asserted as equality because it is the claim that matters.
  *
+ * topo_ok calls hijri_local_predicate_evaluate(HIJRI_PREDICATE_MABIMS_2021,
+ * &p) directly, so this fixture exercises the library's own predicate
+ * rather than a copy of it. geo_ok stays inline because no predicate offers
+ * the geocentric-elongation variant this fixture also checks, and its two
+ * literals were replaced with HIJRI_MABIMS_2021_ALTITUDE_DEG and
+ * HIJRI_MABIMS_2021_ELONGATION_DEG so it cannot drift from the criterion it
+ * varies either. Confirmed the switch to hijri_local_predicate_evaluate
+ * changed none of support_topo, support_geo, early_topo or early_geo from
+ * their prior values (33, 34, 0, 0), so the inline copy and the predicate
+ * agreed.
+ *
  * Mutation-tested on 2026-08-01: shifting one fixture date by one day
  * fails both never-early checks (actual=1); raising the altitude
  * threshold to 4.0 fails both support floors (support drops to 31).
- * Reverting either restores 475 checks, 0 failures. */
+ * Reverting either restores 475 checks, 0 failures.
+ *
+ * Mutation-tested on 2026-08-15: raising HIJRI_MABIMS_2021_ALTITUDE_DEG
+ * from 3.0 to 4.0 in hijri.h fails both support floors, confirming this
+ * fixture now guards the constant through the predicate rather than a
+ * hardcoded copy. Reverted, original state restored. Observed FAIL lines:
+ *
+ *   FAIL synthetic/kemenag_support_floor_topocentric expected=true
+ *   FAIL synthetic/kemenag_support_floor_geocentric expected=true */
 static void test_kemenag_official_calendar(void) {
   static const int KEMENAG_STARTS[][3] = {
       {2024, 1, 13},  {2024, 2, 11}, {2024, 3, 12}, {2024, 4, 10},
@@ -1704,10 +1723,11 @@ static void test_kemenag_official_calendar(void) {
       if (p.sunset_status != HIJRI_EVENT_OK) {
         continue;
       }
-      topo_ok = (p.moon_center_geometric_altitude_deg >= 3.0 &&
-                 p.topocentric_elongation_deg >= 6.4);
-      geo_ok = (p.moon_center_geometric_altitude_deg >= 3.0 &&
-                p.geocentric_elongation_deg >= 6.4);
+      topo_ok = hijri_local_predicate_evaluate(HIJRI_PREDICATE_MABIMS_2021, &p);
+      geo_ok = (p.moon_center_geometric_altitude_deg >=
+                    HIJRI_MABIMS_2021_ALTITUDE_DEG &&
+                p.geocentric_elongation_deg >=
+                    HIJRI_MABIMS_2021_ELONGATION_DEG);
       if (offset == 1) {
         support_topo += topo_ok;
         support_geo += geo_ok;
