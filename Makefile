@@ -58,11 +58,11 @@ HEADERS  = hijri.h prayertimes.h timezone.h
 TEST_BINS    = $(addprefix $(BUILD)/tests/,$(TESTS))
 EXAMPLE_BINS = $(addprefix $(BUILD)/examples/,$(EXAMPLES))
 
-.PHONY: all check test cxx examples baseline clean
+.PHONY: all check test cxx examples baseline fielddocs clean
 
 all: check
 
-check: test cxx examples baseline
+check: test cxx examples baseline fielddocs
 	@echo "OK  all checks passed ($(CC) / $(CXX))"
 
 $(BUILD)/tests $(BUILD)/examples:
@@ -120,6 +120,34 @@ baseline: $(BUILD)/tests/hijri_research_probe
 baseline-update: $(BUILD)/tests/hijri_research_probe
 	$(BUILD)/tests/hijri_research_probe > docs/research/hijri-2020-2025-baseline.csv
 	@echo "  baseline regenerated -- review the diff before committing"
+
+# Every field of HijriSunPosition, HijriMoonPosition and HijriEveningParameters
+# must carry a comment, either trailing on the field's own line or as a pure
+# comment line directly above it. In a single-header library the header IS the
+# API contract, so an undocumented field is a gap in that contract. A trailing
+# comment on the PREVIOUS field must not count towards the field below it,
+# which is the bug the first draft of this check had.
+#
+# Mutation record: with the comment on HijriEveningParameters.jd_sunset_ut
+# deleted, `make fielddocs` produced (and the comment was restored after):
+#   FAIL  HijriEveningParameters has 1 undocumented field(s)
+.PHONY: fielddocs
+fielddocs: hijri.h
+	@awk '\
+	  /^typedef struct \{/ { inb=1; prevcomment=0; bad=0; next } \
+	  /^\} Hijri(SunPosition|MoonPosition|EveningParameters);/ { \
+	      if (inb) { name=$$2; sub(";","",name); \
+	        if (bad>0) printf "  FAIL  %s has %d undocumented field(s)\n", name, bad; \
+	        total+=bad } \
+	      inb=0; next } \
+	  inb { \
+	      ispure = ($$0 ~ /^[[:space:]]*(\/\*|\*)/); \
+	      isfield = ($$0 ~ /;[[:space:]]*$$/ || $$0 ~ /;[[:space:]]*\/\*/) && !ispure; \
+	      if (isfield && $$0 !~ /\/\*/ && prevcomment == 0) bad++; \
+	      if ($$0 ~ /^[[:space:]]*$$/) next; \
+	      prevcomment = ispure; next } \
+	  END { if (total>0) exit 1; print "  PASS  every public struct field is documented" } \
+	' hijri.h
 
 clean:
 	rm -rf $(BUILD)

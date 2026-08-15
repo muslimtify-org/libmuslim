@@ -270,11 +270,19 @@ HIJRIDEF double hijri_jd_tt_from_ut(double jd_ut);
  * Meeus low-precision solar theory (ch. 25), accurate to ~0.01 degree. */
 
 typedef struct {
-  double apparent_longitude_deg; /* geocentric ecliptic longitude, apparent */
+  double apparent_longitude_deg; /* geocentric ecliptic longitude, apparent:
+                                   * nutation and the -20.4"/R aberration term
+                                   * are both applied, see the ACCURACY CAVEAT
+                                   * above for what that costs and buys. */
+  /* APPARENT, referred to the TRUE equinox of date, degrees. This is the
+   * "SOLAR position is NOT the same" fact from the file header: this Sun is
+   * apparent while HijriMoonPosition's RA/Dec below are mean of date. */
   double right_ascension_deg;
-  double declination_deg;
-  double distance_au;
-  double obliquity_deg; /* true obliquity of the ecliptic */
+  double declination_deg; /* Same apparent, true-equinox-of-date frame as
+                            * right_ascension_deg above. */
+  double distance_au; /* Geocentric distance, astronomical units. */
+  double obliquity_deg; /* true obliquity of the ecliptic, i.e. mean obliquity
+                          * plus nutation in obliquity, degrees. */
 } HijriSunPosition;
 
 HIJRIDEF HijriSunPosition hijri_sun_position(double jd_tt);
@@ -282,12 +290,21 @@ HIJRIDEF HijriSunPosition hijri_sun_position(double jd_tt);
 /* ---- Lunar position -------------------------------------------------- */
 
 typedef struct {
-  double geocentric_longitude_deg;
-  double geocentric_latitude_deg;
-  double distance_km;
+  double geocentric_longitude_deg; /* Ecliptic longitude, mean equinox of
+                                     * date, no nutation or aberration. */
+  double geocentric_latitude_deg; /* Ecliptic latitude, same mean-of-date
+                                    * frame as geocentric_longitude_deg. */
+  double distance_km; /* Geocentric distance, kilometres. */
+  /* MEAN OF DATE, not apparent: derived from a mean-of-date eps0 with no
+   * nutation term added, unlike HijriSunPosition's right_ascension_deg
+   * above, which is apparent. See the ACCURACY CAVEAT and "WHAT THIS STILL
+   * DOES NOT DO" sections in the file header for why. */
   double right_ascension_deg;
-  double declination_deg;
-  double horizontal_parallax_deg;
+  double declination_deg; /* Same mean-of-date frame as right_ascension_deg
+                            * above. */
+  double horizontal_parallax_deg; /* Geocentric horizontal parallax, degrees,
+                                    * from an Earth-radius/distance ratio,
+                                    * hijri_moon_topocentric() consumes it. */
 } HijriMoonPosition;
 
 /* See the ACCURACY CAVEAT at the top of this file. */
@@ -358,19 +375,59 @@ typedef enum {
 } HijriLocalPredicate;
 
 typedef struct {
+  /* UT, not TT. The name is a contract: hijri_jd_tt_from_ut() is applied
+   * internally before any ephemeris evaluation. Callers populate this from
+   * UTC in practice, and UT1 minus UTC ranges over +/- 0.9 s by
+   * construction, which no table in this file can remove. */
   double jd_sunset_ut;
+  /* UT. hijri_find_relevant_conjunction() picks whichever of the previous
+   * or next conjunction is nearer to jd_sunset_ut. NAN if sunset_status is
+   * not HIJRI_EVENT_OK, since the search below never ran. */
   double jd_relevant_conjunction_ut;
+  /* UT. From hijri_find_moonset() searching forward from jd_sunset_ut. NAN
+   * if moonset_status is not HIJRI_EVENT_OK. */
   double jd_moonset_ut;
+  /* Result of the jd_sunset_ut search. Everything below this field is only
+   * meaningful when this is HIJRI_EVENT_OK, otherwise the struct is
+   * returned early with the remaining fields left at NAN/0. */
   HijriEventStatus sunset_status;
+  /* Initialized to sunset_status, then overwritten with the actual
+   * hijri_find_moonset() result only when sunset_status is HIJRI_EVENT_OK,
+   * since moonset is never searched otherwise. */
   HijriEventStatus moonset_status;
+  /* GEOCENTRIC Sun, deliberately: solar parallax is omitted because the
+   * conventions this library reproduces omit it, see the file header.
+   * Unrefracted. Evaluated at sunset, so it sits at the selected
+   * convention's own target by construction. */
   double sun_center_geometric_altitude_deg;
+  /* TOPOCENTRIC and UNREFRACTED. "geometric" here means unrefracted, NOT
+   * geocentric: hijri_moon_altitude() applies hijri_moon_topocentric().
+   * The quantity MABIMS 2021 thresholds at 3 deg. */
   double moon_center_geometric_altitude_deg;
+  /* Topocentric centre altitude plus semidiameter plus horizon refraction,
+   * both taken from the HijriSunsetConvention the call selected. The
+   * quantity HIJRI_PREDICATE_WUJUDUL_HILAL tests against zero. */
   double moon_upper_limb_apparent_altitude_deg;
+  /* Apparent Sun against a MEAN-OF-DATE Moon, which are different frames.
+   * Measured at 0.0065798 deg against DE440. Making the frames consistent
+   * measures WORSE, see the file header. */
   double geocentric_elongation_deg;
+  /* Apparent Sun against a TOPOCENTRIC Moon, paired the way
+   * HIJRI_PREDICATE_MABIMS_2021 (Odeh-derived) needs. Measured at 0.0069925
+   * deg worst case against DE440, see the file header. */
   double topocentric_elongation_deg;
+  /* (jd_sunset_ut - jd_relevant_conjunction_ut) * 24, hours, signed: negative
+   * when the relevant conjunction is still ahead of sunset. NAN whenever
+   * jd_relevant_conjunction_ut is NAN. */
   double moon_age_hours;
+  /* (jd_moonset_ut - jd_sunset_ut) * 24 * 60, minutes, signed: negative when
+   * moonset precedes sunset. NAN whenever jd_moonset_ut is NAN. */
   double lag_time_minutes;
+  /* jd_relevant_conjunction_ut < jd_sunset_ut, as 0 or 1. 0 whenever
+   * jd_relevant_conjunction_ut is NAN, since the comparison never ran. */
   int conjunction_before_sunset;
+  /* jd_moonset_ut > jd_sunset_ut, as 0 or 1. 0 whenever jd_moonset_ut is
+   * NAN, since the comparison never ran. */
   int moonset_after_sunset;
 } HijriEveningParameters;
 
