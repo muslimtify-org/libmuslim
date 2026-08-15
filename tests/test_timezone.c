@@ -220,6 +220,88 @@ static void test_input_forms(void) {
   printf("\n");
 }
 
+// ---------------------------------------------------------------------------
+// Concurrency guard: two threads hammering parse_timezone_offset on distinct
+// fixed-offset zones must never see a wrong answer. This is a regression
+// guard for issue #41, where the old setenv/tzset body raced across threads.
+// POSIX only: pthreads, and the racy body it guards against, never existed on
+// the Windows branch.
+// ---------------------------------------------------------------------------
+
+#if !defined(_WIN32)
+
+#include <pthread.h>
+
+// Issue #41's own reproduction used 200000 iterations/thread and produced
+// 533 and 318 wrong answers (out of 200000) on the two zones respectively
+// against the pre-fix code. 20000 is enough to fail reliably there (dozens
+// of mismatches in local runs) while keeping this test's contribution to
+// `make check` small.
+#define CONCURRENT_ITERATIONS 20000
+
+typedef struct {
+  const char *zone;
+  double expected;
+  int mismatches;
+} concurrent_arg;
+
+static void *concurrent_resolve(void *p) {
+  concurrent_arg *arg = (concurrent_arg *)p;
+  int i;
+  for (i = 0; i < CONCURRENT_ITERATIONS; i++) {
+    double got = 0.0;
+    int rc = parse_timezone_offset(arg->zone, TS_2026_JAN_15_NOON, &got);
+    if (rc != 0 || fabs(got - arg->expected) > 0.01)
+      arg->mismatches++;
+  }
+  return NULL;
+}
+
+static void test_concurrent_resolution(void) {
+  printf("Test group: concurrent resolution (issue #41 guard)\n");
+
+  // Eastern hemisphere vs western hemisphere, both fixed-offset (no DST) so
+  // any mismatch can only come from cross-thread interference, not a real
+  // seasonal change.
+  concurrent_arg east = {"Asia/Jakarta", 7.0, 0};
+  concurrent_arg west = {"America/New_York", -5.0, 0};
+  pthread_t t_east, t_west;
+
+  pthread_create(&t_east, NULL, concurrent_resolve, &east);
+  pthread_create(&t_west, NULL, concurrent_resolve, &west);
+  pthread_join(t_east, NULL);
+  pthread_join(t_west, NULL);
+
+  total++;
+  if (east.mismatches == 0) {
+    printf("  PASS  %-34s  0 mismatches / %d\n", east.zone,
+           CONCURRENT_ITERATIONS);
+  } else {
+    printf("  FAIL  %-34s  %d mismatches / %d\n", east.zone, east.mismatches,
+           CONCURRENT_ITERATIONS);
+    failures++;
+  }
+
+  total++;
+  if (west.mismatches == 0) {
+    printf("  PASS  %-34s  0 mismatches / %d\n", west.zone,
+           CONCURRENT_ITERATIONS);
+  } else {
+    printf("  FAIL  %-34s  %d mismatches / %d\n", west.zone, west.mismatches,
+           CONCURRENT_ITERATIONS);
+    failures++;
+  }
+  printf("\n");
+}
+
+#else /* _WIN32 */
+
+static void test_concurrent_resolution(void) {
+  printf("Test group: concurrent resolution (skipped on Windows)\n\n");
+}
+
+#endif
+
 #else /* _WIN32 */
 
 static void test_differential(void) {
@@ -228,6 +310,10 @@ static void test_differential(void) {
 
 static void test_input_forms(void) {
   printf("Test group: accepted input forms (skipped on Windows)\n\n");
+}
+
+static void test_concurrent_resolution(void) {
+  printf("Test group: concurrent resolution (skipped on Windows)\n\n");
 }
 
 #endif
@@ -405,6 +491,7 @@ int main(void) {
   test_input_forms();
   test_posix_tz_strings();
   test_system_timezone();
+  test_concurrent_resolution();
 
   printf("=== Summary ===\n");
   printf("Total checks: %d\n", total);
