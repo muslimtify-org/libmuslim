@@ -1591,22 +1591,48 @@ HIJRIDEF int
 hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
                                const HijriEveningParameters *p) {
   switch (predicate) {
-  /* UNRESOLVED CONVENTION -- do not "clean up" without a primary source.
-   * Two things about the 1992 "2-3-8" criterion are not settled by any
-   * technical document located so far:
-   *   1. Whether the three parameters combine as (altitude AND elongation)
-   *      OR age -- as coded here -- or as all three ANDed together. Indonesian
-   *      government summaries word it with "serta" ("and"), which reads as a
-   *      conjunction, but they are press-register prose, not a specification.
-   *   2. Whether the 3 deg elongation is geocentric or topocentric. Unlike the
-   *      2021 criterion this one does not derive from Odeh, so the topocentric
-   *      argument below does not automatically carry over.
-   * Left as-is deliberately. Changing it on the strength of a news article
-   * would replace a documented gap with a guess. */
+  /* RESOLVED: combination rule. UNRESOLVED: elongation frame. Do not "clean
+   * up" the remaining gap without a primary source.
+   *
+   * Combination rule, resolved as conjunctive (all three ANDed). Three
+   * independent secondary sources agree: Kemenag's Bimas Islam directorate
+   * words it with "serta" (conjunctive), T. Djamaluddin's 2010 article words
+   * it with "dan" (conjunctive), and Sado (2014), as cited by Fitriyani,
+   * Isfihani and Octasari (2024), lists the three parameters as a three-item
+   * a/b/c list. One dissenting phrasing exists: Djamaluddin's own 2016
+   * article words the last two terms with "atau" (disjunctive) -- the same
+   * author writing "dan" six years earlier. The form this file shipped
+   * before this change, (altitude AND elongation) OR age, matched none of
+   * the four sources above. See docs/research/2026-08-15-mabims-1992-combination.md
+   * for the verbatim quotations and the measured impact of the change.
+   *
+   * Three convergent secondary sources are not a technical standard. No
+   * primary MABIMS document has been located. Anyone who later locates one
+   * should treat this resolution as provisional, not as a closed question.
+   *
+   * Elongation frame, still UNRESOLVED. Whether the 3 deg elongation is
+   * geocentric or topocentric is not stated by any source located for the
+   * 1992 criterion. T. Djamaluddin's 2023 article settles the frame for the
+   * NEW MABIMS criteria (3 deg altitude, 6.4 deg elongation, both
+   * topocentric) only, and says nothing about the 1992 criterion. His
+   * geometric argument -- that a geocentric elongation cannot be paired with
+   * a topocentric altitude -- would carry over to 1992 only if the 1992
+   * altitude is itself topocentric, and that premise is unspecified. The
+   * field below stays geocentric and stays flagged, and this file does not
+   * resolve it by inference.
+   *
+   * SUPERSEDED: the 2-3-8 criterion. Kemenag's Dirjen Bimas Islam circular
+   * B-79/DJ.III/HM.00/02/2022, issued 25 February 2022, replaced 2-3-8 with
+   * altitude 3 deg and elongation 6.4 deg for the four MABIMS states,
+   * first applied for Ramadan 1443 H. NU's Lembaga Falakiyah also adopted
+   * 3 and 6.4 deg. Muhammadiyah retained wujudul hilal, which this library
+   * ships separately as HIJRI_PREDICATE_WUJUDUL_HILAL. This predicate is
+   * retained here for historical evaluation, not as the currently governing
+   * rule. */
   case HIJRI_PREDICATE_MABIMS_1992:
-    return (p->moon_center_geometric_altitude_deg >= HIJRI_MABIMS_1992_ALTITUDE_DEG &&
-            p->geocentric_elongation_deg >= HIJRI_MABIMS_1992_ELONGATION_DEG) ||
-           (p->moon_age_hours >= HIJRI_MABIMS_1992_AGE_HOURS);
+    return p->moon_center_geometric_altitude_deg >= HIJRI_MABIMS_1992_ALTITUDE_DEG &&
+           p->geocentric_elongation_deg >= HIJRI_MABIMS_1992_ELONGATION_DEG &&
+           p->moon_age_hours >= HIJRI_MABIMS_1992_AGE_HOURS;
   /* Both parameters are topocentric. The criterion derives from Odeh (2004),
    * whose elongation is topocentric, and pairing a geocentric elongation with
    * a topocentric altitude is geometrically incoherent -- the two would be
