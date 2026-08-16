@@ -4,7 +4,7 @@
 
 `hijri_yallop_evaluate_evening` had never been checked against a real
 observational record. This note records what a one-time check against
-Technical Notice 69 Table 4 found, what the committed fixture at
+Technical Note 69 Table 4 found, what the committed fixture at
 `tests/fixtures/yallop/tn69-observations.csv` freezes from that check, and
 what remains true of Odeh, which has no equivalent check at all.
 

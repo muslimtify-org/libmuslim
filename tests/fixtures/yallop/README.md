@@ -1,4 +1,4 @@
-# TN69 fixture — the 295-observation Yallop crescent record
+# TN69 fixture, the 295-observation Yallop crescent record
 
 `hijri_yallop_evaluate_evening` implements B. D. Yallop's best-time q test.
 This fixture regression-tests it against the 295 real observations Yallop
@@ -22,7 +22,7 @@ Predicting the First Sighting of the New Crescent Moon" (1997, updated
 1998). The ICOP/IAC mirror was used:
 <https://astronomycenter.net/pdf/yallop_1997.pdf>. The ADS scans of the two
 Schaefer papers are image-only PDFs, with no extractable text layer, so they
-were not used directly; TN69's own transcription is the practical source.
+were not used directly. TN69's own transcription is the practical source.
 
 HMNAO reserves copyright on TN69's own computed columns (Yallop's ARCL, ARCV,
 DAZ, age, lag, parallax, crescent width W', q, and predicted outcome BDY) and
@@ -32,7 +32,7 @@ reproduced in this fixture.** Only the underlying observational data
 result) crosses into the committed file, plus this library's own
 `hijri_yallop_classify` result recomputed from that data. `q_yallop` and
 Yallop's ARCV/width are used only transiently in the scratch CSV that
-`compare_q`'s residual gate consumes; they are never written here.
+`compare_q`'s residual gate consumes. They are never written here.
 
 ## The date convention
 

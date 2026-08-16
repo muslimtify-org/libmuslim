@@ -248,7 +248,7 @@
  * EXTERNAL VALIDATION
  *
  * Yallop's criterion was checked once against 271 evening first-sighting
- * observations drawn from Technical Notice 69 Table 4, which TN69 credits
+ * observations drawn from Technical Note 69 Table 4, which TN69 credits
  * to Schaefer. TN69 Table 4 holds 295 observations in total, and the 24
  * morning observations were excluded because this library exposes only
  * hijri_yallop_evaluate_evening, so this validation covers evening
