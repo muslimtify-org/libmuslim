@@ -71,6 +71,10 @@ $(BUILD)/tests $(BUILD)/examples:
 $(BUILD)/tests/%: tests/%.c $(HEADERS) | $(BUILD)/tests
 	$(CC) $(CFLAGS) $< $(LDLIBS) -o $@
 
+# test_timezone.c spawns pthreads for its concurrency guard (issue #41); every
+# other test and example stays free of the extra link dependency.
+$(BUILD)/tests/test_timezone: CFLAGS += -pthread
+
 $(BUILD)/examples/%: examples/%.c $(HEADERS) | $(BUILD)/examples
 	$(CC) $(CFLAGS) $< $(LDLIBS) -o $@
 

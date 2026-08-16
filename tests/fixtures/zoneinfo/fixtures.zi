@@ -1,0 +1,25 @@
+# Source for the TZif fixtures in this directory. See README.md for the
+# generating command.
+#
+# Each zone has one historical transition in 1950 and then hands the whole
+# modern era to its trailing POSIX TZ footer, which is what a slim tzdata
+# build does for real zones and what this repository's development machine
+# (fat tzdata, transitions to 2499) otherwise never exercises.
+
+# --- fixed offset, no DST rules in the footer -----------------------------
+Zone	Fixture/Fixed	6:30	-	LMT	1950
+			7:00	-	FIX
+
+# --- northern hemisphere: DST runs Mar..Nov, US-style rules ---------------
+Rule	FIXN	1950	max	-	Mar	Sun>=8	2:00	1:00	D
+Rule	FIXN	1950	max	-	Nov	Sun>=1	2:00	0	S
+
+Zone	Fixture/North	-4:30	-	LMT	1950
+			-5:00	FIXN	F%sT
+
+# --- southern hemisphere: DST window wraps the year end -------------------
+Rule	FIXS	1950	max	-	Oct	Sun>=1	2:00	1:00	D
+Rule	FIXS	1950	max	-	Apr	Sun>=1	3:00	0	S
+
+Zone	Fixture/South	9:30	-	LMT	1950
+			10:00	FIXS	G%sT
