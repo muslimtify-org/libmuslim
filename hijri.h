@@ -245,6 +245,51 @@
  * timezone.h are explicitly not audited for it.
  *
  * -----------------------------------------------------------------------
+ * EXTERNAL VALIDATION
+ *
+ * Yallop's criterion was checked once against 271 evening first-sighting
+ * observations drawn from Technical Notice 69 Table 4, which TN69 credits
+ * to Schaefer. TN69 Table 4 holds 295 observations in total, and the 24
+ * morning observations were excluded because this library exposes only
+ * hijri_yallop_evaluate_evening, so this validation covers evening
+ * first-sighting only.
+ *
+ * The maximum absolute q residual against Yallop's own published q was
+ * 0.053577, on the 1984-08-28 row at latitude 15.6, longitude +35.6. Zone
+ * classification disagreed with Yallop's own zone on 36 of those 271
+ * rows, and every one of those 36 rows has Yallop's own q within that
+ * row's residual of a zone boundary, so the disagreements are boundary
+ * cases, not evidence the coefficients were mistranscribed. One
+ * consequence is worth naming directly, since a reader who sees only the
+ * count above is likely to trip over it: our zone E carries a naked-eye
+ * sighting while Yallop's zone E carries none, because TN69 observation
+ * 278, 1990-02-25 at latitude 35.6, longitude -83.5, sits at Yallop's own
+ * q of -0.222, which is 0.0100 from the D and E boundary, inside the
+ * measured residual, and Yallop's own classification already disagreed
+ * with the observer on that row.
+ *
+ * TN69's own date column is inconsistent between rows, holding the UT
+ * date of best time on some evening rows and the local evening date on
+ * the rest, with the same site two months apart using opposite
+ * conventions. This is a defect in the source table, not in this
+ * library. The committed fixture carries a local evening date derived
+ * from TN69's own columns 6 and 12 rather than the printed date, and that
+ * derivation shifted 5 of the 271 rows. See hijri.h:1493-1513 for this
+ * library's own solar-day evening convention.
+ *
+ * The committed fixture is a frozen regression baseline, not a live
+ * comparison. The validation above ran once, its full working is
+ * recorded in docs/research/2026-08-16-yallop-tn69-validation.md, and CI
+ * only checks the committed fixture for byte-exact regression. It does
+ * not re-run the comparison against Yallop's published values on every
+ * build.
+ *
+ * Odeh has no external validation at all. Its coefficients rest on
+ * secondary transcription, the original source, Experimental Astronomy
+ * 18 (2004) 39-64, is paywalled, and every apparently open link to it
+ * redirects to an authentication page. See issue #20.
+ *
+ * -----------------------------------------------------------------------
  * LICENSE
  *
  * MIT -- see the full license text at the top of this file. Provided as-is,
