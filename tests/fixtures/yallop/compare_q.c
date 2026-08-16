@@ -23,15 +23,45 @@ static HijriYallopZone zone_from_q(double q) {
   return HIJRI_YALLOP_F_NOT_VISIBLE_BELOW_LIMIT;
 }
 
+/* Single-letter zone codes for the --emit-zones fixture column. */
+static char zone_letter(HijriYallopZone zone) {
+  switch (zone) {
+    case HIJRI_YALLOP_A_EASILY_VISIBLE: return 'A';
+    case HIJRI_YALLOP_B_VISIBLE_PERFECT_CONDITIONS: return 'B';
+    case HIJRI_YALLOP_C_MAY_NEED_OPTICAL_AID: return 'C';
+    case HIJRI_YALLOP_D_NEEDS_OPTICAL_AID: return 'D';
+    case HIJRI_YALLOP_E_NOT_VISIBLE_TELESCOPE: return 'E';
+    case HIJRI_YALLOP_F_NOT_VISIBLE_BELOW_LIMIT: return 'F';
+  }
+  return '?';
+}
+
 int main(int argc, char **argv) {
   if (argc < 2) {
-    fprintf(stderr, "usage: %s <tn69-full.csv>\n", argv[0]);
+    fprintf(stderr, "usage: %s <tn69-full.csv> [--emit-zones <output.csv>]\n",
+            argv[0]);
     return 2;
+  }
+
+  /* --emit-zones writes year,month,day,lat_deg,lon_deg,zone for every
+   * evening row, in the same row order the input file presents them, so
+   * extract.py's --emit-fixture mode can pair them positionally without
+   * re-deriving the zone itself. It does not change the gating exit-status
+   * contract below: the residual halt still fires the same way. */
+  FILE *zones_out = NULL;
+  if (argc >= 4 && strcmp(argv[2], "--emit-zones") == 0) {
+    zones_out = fopen(argv[3], "w");
+    if (!zones_out) {
+      fprintf(stderr, "cannot open %s for writing\n", argv[3]);
+      return 2;
+    }
+    fprintf(zones_out, "year,month,day,lat_deg,lon_deg,zone\n");
   }
 
   FILE *f = fopen(argv[1], "r");
   if (!f) {
     fprintf(stderr, "cannot open %s\n", argv[1]);
+    if (zones_out) fclose(zones_out);
     return 2;
   }
 
@@ -69,6 +99,16 @@ int main(int argc, char **argv) {
     HijriYallopResult result =
         hijri_yallop_evaluate_evening(year, month, day, &loc);
 
+    if (zones_out) {
+      if (isnan(result.q)) {
+        fprintf(zones_out, "%d,%d,%d,%.4f,%.4f,NA\n", year, month, day,
+                lat_deg, lon_deg);
+      } else {
+        fprintf(zones_out, "%d,%d,%d,%.4f,%.4f,%c\n", year, month, day,
+                lat_deg, lon_deg, zone_letter(result.zone));
+      }
+    }
+
     if (isnan(result.q)) {
       nan_count++;
       continue;
@@ -90,6 +130,7 @@ int main(int argc, char **argv) {
   }
 
   fclose(f);
+  if (zones_out) fclose(zones_out);
 
   printf("evening_rows=%ld\n", evening_count);
   printf("nan_count=%ld\n", nan_count);

@@ -216,16 +216,125 @@ def _self_check(rows):
     return failures
 
 
+# TN69 item 17: the first character alone gives the naked-eye result, the
+# parenthesised qualifier describes optical aid used, if any. Any code
+# outside this table is a transcription or extraction defect, not a case
+# for a fallback bucket.
+OBSERVED_CODE_MAP = {
+    "V": "seen_unaided",
+    "V(F)": "seen_unaided",
+    "V(B)": "seen_unaided",
+    "V(T)": "seen_unaided",
+    "V(V)": "seen_unaided",
+    "I(B)": "seen_optical_aid",
+    "I(V)": "seen_optical_aid",
+    "I": "not_seen",
+    "I(I)": "not_seen",
+}
+
+FIXTURE_COLUMNS = ["year", "month", "day", "lat_deg", "lon_deg", "observed", "zone"]
+
+
+def _emit_fixture(corrected_csv_path, zones_csv_path, output_csv_path):
+    """Build the committed fixture from Task 2's corrected CSV and
+    compare_q's --emit-zones output.
+
+    Both files are read in their on-disk row order and the two evening-row
+    streams are paired positionally: both walk tn69-corrected.csv's evening
+    rows in the same order, compare_q filtering the same "phase" column this
+    function does, so index i in one is the same observation as index i in
+    the other. This avoids joining on re-serialised floats, whose printed
+    form does not necessarily match between Python's csv writer and C's
+    printf. The zone column is compare_q's own hijri_yallop_classify
+    result; nothing here recomputes it.
+    """
+    with open(corrected_csv_path, newline="") as f:
+        corrected_rows = list(csv.DictReader(f))
+    evening_rows = [row for row in corrected_rows if row["phase"] == "evening"]
+
+    with open(zones_csv_path, newline="") as f:
+        zone_rows = list(csv.DictReader(f))
+
+    if len(zone_rows) != len(evening_rows):
+        print(
+            f"FATAL: {zones_csv_path} has {len(zone_rows)} rows, expected "
+            f"{len(evening_rows)} evening rows to match {corrected_csv_path}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    fixture_rows = []
+    for corrected, zone_row in zip(evening_rows, zone_rows):
+        code = corrected["observed_code"]
+        observed = OBSERVED_CODE_MAP.get(code)
+        if observed is None:
+            print(
+                f"FATAL: observed_code {code!r} (obs {corrected['obs']}) is "
+                "outside the TN69 item 17 mapping",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        fixture_rows.append(
+            {
+                "year": int(corrected["year"]),
+                "month": int(corrected["month"]),
+                "day": int(corrected["day"]),
+                "lat_deg": float(corrected["lat_deg"]),
+                "lon_deg": float(corrected["lon_deg"]),
+                "observed": observed,
+                "zone": zone_row["zone"],
+            }
+        )
+
+    fixture_rows.sort(
+        key=lambda r: (r["year"], r["month"], r["day"], r["lat_deg"], r["lon_deg"])
+    )
+
+    with open(output_csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=FIXTURE_COLUMNS)
+        writer.writeheader()
+        writer.writerows(fixture_rows)
+
+    return fixture_rows
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("input_pdf")
+    parser.add_argument("input_pdf", nargs="?")
     parser.add_argument("output_csv")
     parser.add_argument(
         "--self-check",
         action="store_true",
         help="verify the three checksums documented above",
     )
+    parser.add_argument(
+        "--emit-fixture",
+        action="store_true",
+        help="build the committed fixture from --corrected and --zones "
+        "instead of parsing a PDF; output_csv is the fixture destination",
+    )
+    parser.add_argument(
+        "--corrected",
+        help="Task 2 corrected CSV, carrying the derived local evening date "
+        "(--emit-fixture mode)",
+    )
+    parser.add_argument(
+        "--zones",
+        help="compare_q --emit-zones output, paired positionally against "
+        "--corrected's evening rows (--emit-fixture mode)",
+    )
     args = parser.parse_args()
+
+    if args.emit_fixture:
+        if not args.corrected or not args.zones:
+            parser.error("--emit-fixture requires --corrected and --zones")
+        rows = _emit_fixture(args.corrected, args.zones, args.output_csv)
+        print(f"fixture OK: {len(rows)} rows written to {args.output_csv}",
+              file=sys.stderr)
+        return 0
+
+    if not args.input_pdf:
+        parser.error("input_pdf is required unless --emit-fixture is given")
 
     text = _pdftotext(args.input_pdf)
     rows = _parse_rows(text)
