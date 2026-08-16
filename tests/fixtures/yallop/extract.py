@@ -291,7 +291,7 @@ def _emit_fixture(corrected_csv_path, zones_csv_path, output_csv_path):
     )
 
     with open(output_csv_path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=FIXTURE_COLUMNS)
+        writer = csv.DictWriter(f, fieldnames=FIXTURE_COLUMNS, lineterminator="\n")
         writer.writeheader()
         writer.writerows(fixture_rows)
 
