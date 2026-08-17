@@ -454,6 +454,21 @@ static double hour_angle_safe(double lat, double decl, double angle,
   return ha * RAD_TO_DEG / 15.0;
 }
 
+/* Solve one hour-angle event with the Sun evaluated at the event's own
+   instant, one iteration from an initial guess. sign is -1 before local
+   noon and +1 after. Returns the refined local time in hours, or the guess
+   unchanged when the event does not occur at the refined instant. */
+static double refine_event(double jd, double latitude, double longitude,
+                           double timezone, double altitude, double sign,
+                           double guess) {
+  double d2, e2, n2, ha;
+  sun_position(jd + (guess - timezone) / 24.0, &d2, &e2);
+  n2 = 12.0 + timezone - (longitude / 15.0) - e2;
+  ha = hour_angle(latitude, d2, altitude);
+  if (isnan(ha)) return guess;
+  return n2 + sign * ha;
+}
+
 // Format time (double hours) into "HH:MM"
 PRAYERTIMESDEF void format_time_hm(double timeHours, char *outBuffer,
                                    size_t bufSize) {
@@ -506,6 +521,11 @@ calculate_prayer_times(int year, int month, int day, double latitude,
   double sunrise = noon - ha_sunrise;
   double sunset = noon + ha_sunrise;
 
+  sunrise = refine_event(jd, latitude, longitude, timezone,
+                         REFRACTION_CORRECTION, -1.0, sunrise);
+  sunset = refine_event(jd, latitude, longitude, timezone,
+                        REFRACTION_CORRECTION, +1.0, sunset);
+
   /* Night duration for high-latitude fallback */
   double night = (24.0 - sunset) + sunrise;
 
@@ -518,6 +538,9 @@ calculate_prayer_times(int year, int month, int day, double latitude,
     /* Angle-based high-latitude fallback */
     fajr = sunrise - (params->fajr_angle / 60.0) * night;
   }
+  if (!fajr_failed)
+    fajr = refine_event(jd, latitude, longitude, timezone, params->fajr_angle,
+                        -1.0, fajr);
 
   /* Maghrib */
   double maghrib = sunset;
@@ -535,6 +558,9 @@ calculate_prayer_times(int year, int month, int day, double latitude,
     if (isha_failed) {
       isha = sunset + (params->isha_angle / 60.0) * night;
     }
+    if (!isha_failed)
+      isha = refine_event(jd, latitude, longitude, timezone,
+                          params->isha_angle, +1.0, isha);
   } else {
     /* Interval-based (e.g. Makkah 90 min after maghrib) */
     isha = maghrib + (double)params->isha_interval / 60.0;
