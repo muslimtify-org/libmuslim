@@ -37,23 +37,29 @@ static int double_to_minutes(double hours) {
   return h * 60 + m;
 }
 
+// Circular distance in minutes between two clock times on a 24-hour clock
+// face. Without this, an event that crosses midnight is measured on a
+// 1440-minute number line instead of a clock, so 00:59 vs 23:25 reads as
+// 1346 minutes apart instead of 94. Taking the smaller of the direct and
+// the wrapped-around distance corrects this.
+//
+// Mutation record: removing the "if (diff > 720) diff = 1440 - diff;" line
+// below and running `make test` produced this FAIL line, pasted verbatim
+// from the terminal, from test_clock_diff_minutes():
+//   FAIL  23:59 vs 00:01, wraps         got=1438  expected=2
+// The fix was then restored.
+static int clock_diff_minutes(int a_min, int b_min) {
+  int diff = abs(a_min - b_min);
+  if (diff > 720) diff = 1440 - diff;
+  return diff;
+}
+
 // Check a single prayer time against expected value
 static void check_time(double calculated, const char *expected,
                        int tolerance_min, const char *label) {
   int calc_min = double_to_minutes(calculated);
   int exp_min = time_to_minutes(expected);
-  int diff = abs(calc_min - exp_min);
-  // Wrap fix: with no wrap handling, an event that crosses midnight is
-  // measured on a 1440-minute number line instead of a clock, so 00:59
-  // vs 23:25 reads as 1346 minutes apart instead of 94. Taking the
-  // smaller circular distance corrects this.
-  //
-  // Mutation record: commenting out the line below and running `make test`
-  // produced this FAIL line, pasted verbatim from the terminal, for the
-  // Maghrib check in test_midnight_wrap_reykjavik_jun:
-  //   FAIL  Maghrib     calculated=00:01  expected=23:59  (diff=1438 min)
-  // The fix was then restored.
-  if (diff > 720) diff = 1440 - diff;
+  int diff = clock_diff_minutes(calc_min, exp_min);
   total++;
 
   if (diff <= tolerance_min) {
@@ -1875,18 +1881,16 @@ static void test_egypt_alexandria_dec(void) {
 // roughly 24h away from an expected value near the same clock time).
 //
 // How the expected values were obtained:
-// - Fajr, Sunrise, Dhuha, Dhuhr, Asr and Isha are read directly from this
-//   library's own output for this input (diff=0 by construction). They are
-//   a regression guard, not an independent oracle check, and are only here
-//   to pin the rest of the day's schedule alongside the wrap case.
-// - Maghrib is the one boundary case: the library computes 00:01, and the
-//   expected value below is deliberately set to "23:59", two clock-minutes
-//   earlier on the other side of midnight. This is a hand-chosen synthetic
-//   value, not read from any source (library or oracle); it exists only to
-//   put calculated and expected on opposite sides of the midnight boundary,
-//   at exactly the 2-minute tolerance edge, so the circular-distance fix is
-//   actually exercised rather than coincidentally passing because both
-//   values happen to round to the same side of midnight.
+// All seven values, including Maghrib, are regression-guard values read
+// directly from this library's own output for this input (diff=0 by
+// construction), the same way as every other test case in this file. None
+// of them are an independent oracle check. What earns this case its place
+// is not any one expected value but the shape of the day: Maghrib and Isha
+// both genuinely fall after local midnight here, which is not exercised by
+// any other fixture, so this pins that after-midnight schedule against
+// regressions. The circular-distance arithmetic that makes such a schedule
+// comparable at all is tested directly and independently in
+// test_clock_diff_minutes() below.
 // ---------------------------------------------------------------------------
 
 static void test_midnight_wrap_reykjavik_jun(void) {
@@ -1899,8 +1903,8 @@ static void test_midnight_wrap_reykjavik_jun(void) {
   check_time(t.dhuha, "04:27", 2, "Dhuha");
   check_time(t.dhuhr, "13:27", 2, "Dhuhr");
   check_time(t.asr, "18:20", 2, "Asr");
-  check_time(t.maghrib, "23:59", 2, "Maghrib");  // synthetic wrap boundary
-  check_time(t.isha, "00:50", 2, "Isha");        // crosses midnight
+  check_time(t.maghrib, "00:01", 2, "Maghrib");  // after midnight
+  check_time(t.isha, "00:50", 2, "Isha");        // after midnight
   printf("\n");
 }
 
@@ -1913,6 +1917,33 @@ static void check_long(long got, long want, const char *label) {
     printf("  FAIL  %-28s  got=%ld  expected=%ld\n", label, got, want);
     failures++;
   }
+}
+
+// clock_diff_minutes: pure arithmetic checks, not prayer times. These do not
+// call the library at all; they pin the circular-distance helper itself.
+static void test_clock_diff_minutes(void) {
+  printf("Test group: clock_diff_minutes arithmetic\n");
+
+  // Two times on the same side of midnight: plain absolute difference.
+  check_long(clock_diff_minutes(600, 630), 30, "same side, 10:00 vs 10:30");
+  check_long(clock_diff_minutes(630, 600), 30, "same side, argument order");
+
+  // Straddling midnight, one direction: 23:59 vs 00:01 is 2 minutes apart
+  // on the clock, not 1438.
+  check_long(clock_diff_minutes(1439, 1), 2, "23:59 vs 00:01, wraps");
+
+  // Straddling midnight, the other direction: same pair, arguments swapped.
+  check_long(clock_diff_minutes(1, 1439), 2, "00:01 vs 23:59, wraps");
+
+  // Exactly 720 minutes apart is the boundary the "diff > 720" wrap
+  // condition itself tests: at exactly 720 no wrap should be applied.
+  check_long(clock_diff_minutes(0, 720), 720, "exact 12h separation, no wrap");
+
+  // One minute past that boundary must wrap, giving the shorter arc.
+  check_long(clock_diff_minutes(0, 721), 719, "12h01m separation, wraps");
+
+  // Identical times give zero.
+  check_long(clock_diff_minutes(500, 500), 0, "identical times");
 }
 
 // mt_days_from_civil / mt_civil_from_days: anchors, boundaries, round-trip.
@@ -2141,6 +2172,8 @@ int main(void) {
   test_egypt_alexandria_dec();
 
   test_midnight_wrap_reykjavik_jun();
+
+  test_clock_diff_minutes();
 
   test_civil_date_helpers();
 
