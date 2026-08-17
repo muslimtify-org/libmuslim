@@ -232,3 +232,10 @@ redirects to an authentication page rather than the paper. See issue #20,
 which tracks obtaining that paper. Until it is obtained and a comparison
 like the one in this note is run against it, nothing in this repository
 checks Odeh's coefficients against an independent source.
+
+**SUPERSEDED (2026-08-16):** This note was accurate when written earlier today.
+The Odeh paper was subsequently obtained from
+<https://astronomycenter.net/pdf/2006_cri.pdf>, the website of the Islamic
+Crescent Observation Project, the author's own organisation. The library's Odeh
+coefficients and zone thresholds match the source document verbatim. See
+[`docs/research/2026-08-16-odeh-primary-source.md`](2026-08-16-odeh-primary-source.md).
