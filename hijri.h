@@ -284,10 +284,27 @@
  * not re-run the comparison against Yallop's published values on every
  * build.
  *
- * Odeh has no external validation at all. Its coefficients rest on
- * secondary transcription, the original source, Experimental Astronomy
- * 18 (2004) 39-64, is paywalled, and every apparently open link to it
- * redirects to an authentication page. See issue #20.
+ * Odeh's coefficients and zone thresholds were checked against the primary
+ * source, obtained 2026-08-16 from
+ * https://astronomycenter.net/pdf/2006_cri.pdf, the site of the Islamic
+ * Crescent Observation Project, the author's own organisation. All four
+ * equation (2) coefficients and all three zone thresholds above match the
+ * paper verbatim. Springer paywalls its own copy of the paper, which is
+ * why earlier attempts failed, but the author's own organisation publishes
+ * the same paper openly. The topocentric frame this library uses for ARCV
+ * and W is confirmed by a published anchor rather than by inspection
+ * alone. See docs/research/2026-08-16-odeh-primary-source.md.
+ *
+ * Odeh still has no observation-level validation, because the paper's
+ * Table VI holds 737 observation records and does not extract as text,
+ * the table is image-only. See issue #47 for that gap.
+ *
+ * This leaves an asymmetry a reader should not miss. Yallop is validated
+ * above against 271 observations, but his coefficients were never checked
+ * against HMNAO's own statement of them. Odeh is the reverse, its
+ * coefficients are verified verbatim against the paper, but there is no
+ * observation-level validation at all. Neither model is complete in the
+ * other's sense.
  *
  * -----------------------------------------------------------------------
  * LICENSE
