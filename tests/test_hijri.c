@@ -505,6 +505,88 @@ static void test_odeh(void) {
   check_true("odeh_unavailable_width_nan",
              isnan(unavailable.crescent_width_arcmin));
   check_true("odeh_unavailable_v_nan", isnan(unavailable.v));
+
+  /* Odeh (2004) record 274 (Pierce), https://astronomycenter.net/pdf/2006_cri.pdf:
+   * geocentric new moon 1990-02-25 08:54 UT, first visibility 1990-02-25
+   * 23:55 UT, minimum naked-eye elongation at that instant 7.7 degrees.
+   * Observer coordinates come from the TN69 fixture, which carries the
+   * same observation independently: latitude 35.6, longitude -83.5
+   * (positive east), elevation 0.0. Elevation is 0.0 because neither TN69
+   * nor the extractable part of Odeh publishes one for this observation,
+   * and the Yallop fixture makes the same assumption for all of its rows,
+   * so a reader must not take 0.0 here as a sourced value.
+   *
+   * ODEH_PIERCE_ELONGATION_TOLERANCE_DEG is measured, not assumed. A
+   * temporary reporting pass (removed before commit) printed, for this
+   * instant:
+   *   geocentric elongation  = 8.634165964619 deg
+   *   topocentric elongation = 7.646658966843 deg
+   *   conjunction            = JD 2447947.871761254035 (1990-02-25 08:55:20 UT)
+   * The elongation tolerance below splits into two parts: 0.0534 deg is
+   * the measured residual between our topocentric figure and Odeh's
+   * published 7.7 (|7.7 - 7.646658966843| = 0.053341...), and 0.05 deg is
+   * the half-interval of Odeh's one-decimal precision (7.7 covers 7.65 to
+   * 7.75). This same constant is shared by the Step 3 topocentric
+   * assertion and the Step 4 geocentric discriminator below: a bound
+   * loose enough to admit either frame would prove nothing. */
+  {
+    static const double kElongationToleranceDeg = 0.0534 + 0.05;
+    /* The conjunction tolerance splits the same way: 80.18 seconds is the
+     * measured residual between our conjunction instant and Odeh's
+     * published 08:54 UT, and 30 seconds is the half-interval of his
+     * to-the-minute precision. Expressed in Julian Days since
+     * hijri_find_relevant_conjunction() returns a JD. */
+    static const double kConjunctionToleranceDays = (80.18 + 30.0) / 86400.0;
+    double jd_ut =
+        hijri_jd_from_gregorian(1990, 2, 25.0 + (23.0 + 55.0 / 60.0) / 24.0);
+    double jd_tt = hijri_jd_tt_from_ut(jd_ut);
+    HijriSunPosition sun = hijri_sun_position(jd_tt);
+    HijriMoonPosition moon = hijri_moon_position(jd_tt);
+    double ra_topo, dec_topo;
+    double topo_elong;
+    double geo_elong;
+    double conj_jd;
+    double conj_expected_jd =
+        hijri_jd_from_gregorian(1990, 2, 25.0 + (8.0 + 54.0 / 60.0) / 24.0);
+    HijriEventStatus conj_status;
+
+    /* Step 3: topocentric elongation against Odeh's published 7.7 deg. */
+    hijri_moon_topocentric(&moon, jd_ut, 35.6, -83.5, 0.0, &ra_topo,
+                           &dec_topo);
+    topo_elong = hijri__angular_separation_deg(
+        ra_topo, dec_topo, sun.right_ascension_deg, sun.declination_deg);
+    check_close("odeh_pierce_topocentric_elongation", topo_elong, 7.7,
+                kElongationToleranceDeg);
+
+    /* Step 4: the discriminator. The geocentric elongation must NOT fall
+     * within the same tolerance used above, which is what makes the Step
+     * 3 assertion meaningful: if a bound this wide admitted the wrong
+     * frame too, agreement with Odeh's figure would not distinguish
+     * topocentric from geocentric. */
+    geo_elong = hijri__angular_separation_deg(
+        moon.right_ascension_deg, moon.declination_deg,
+        sun.right_ascension_deg, sun.declination_deg);
+    check_true("odeh_pierce_geocentric_elongation_discriminator",
+               !(fabs(geo_elong - 7.7) <= kElongationToleranceDeg));
+
+    /* Mutation record, Step 9: with the topocentric assertion above fed
+     * the geocentric Moon coordinates instead of the topocentric ones
+     * (the frame swap this guards), make test printed:
+     * FAIL exact/odeh_pierce_topocentric_elongation actual=8.634165964619 expected=7.700000000000 diff=0.934165964619 tol=0.103400000000
+     * Reverted.
+     *
+     * Mutation record, Step 10: with kElongationToleranceDeg widened to
+     * 1.0, enough to admit the geocentric value, make test printed:
+     * FAIL synthetic/odeh_pierce_geocentric_elongation_discriminator expected=true
+     * Reverted to 0.0534 + 0.05. */
+
+    /* Step 5: the conjunction instant against Odeh's published 08:54 UT. */
+    conj_status = hijri_find_relevant_conjunction(jd_ut, &conj_jd);
+    check_true("odeh_pierce_conjunction_status",
+               conj_status == HIJRI_EVENT_OK);
+    check_close("odeh_pierce_conjunction_instant", conj_jd, conj_expected_jd,
+                kConjunctionToleranceDays);
+  }
 }
 
 static void test_relevant_conjunction(void) {

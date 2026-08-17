@@ -347,3 +347,9 @@ instead by the 1e-6 deg assertion against Meeus's own printed worked Example
   Odeh or Yallop correctly predict a sighting. The open items in
   [`2026-07-30-findings.md`](2026-07-30-findings.md) on the missing primary
   MABIMS standard and the paywalled Odeh paper are untouched by this work.
+
+  **SUPERSEDED (2026-08-16):** The Odeh paper was obtained from
+  <https://astronomycenter.net/pdf/2006_cri.pdf>, the website of the Islamic
+  Crescent Observation Project, the author's own organisation. The library's
+  Odeh coefficients and zone thresholds match the source document verbatim. See
+  [`docs/research/2026-08-16-odeh-primary-source.md`](2026-08-16-odeh-primary-source.md).
