@@ -4,11 +4,11 @@ An stb-style collection of single-header C libraries for Muslim applications.
 Drop a header in, define its `*_IMPLEMENTATION` macro in one translation unit,
 and you are done. C11 and C++17, no build system, no package manager.
 
-| Header | Provides | Depends on |
-|---|---|---|
-| [`prayertimes.h`](prayertimes.h) | Prayer times, 21 calculation methods | `<math.h>` |
-| [`hijri.h`](hijri.h) | Hijri calendar, crescent visibility models | `<math.h>` |
-| [`timezone.h`](timezone.h) | IANA zone name → UTC offset, DST applied | OS timezone database |
+| Header | Version | Provides | Depends on |
+|---|---|---|---|
+| [`prayertimes.h`](prayertimes.h) | `v0.1.1` | Prayer times, 21 calculation methods | `<math.h>` |
+| [`hijri.h`](hijri.h) | `v0.1.0` | Hijri calendar, crescent visibility models | `<math.h>` |
+| [`timezone.h`](timezone.h) | `v0.1.0` | IANA zone name → UTC offset, DST applied | OS timezone database |
 
 `prayertimes.h` and `hijri.h` are independent and dependency-free.
 `timezone.h` is optional and is the only header that touches the OS.
@@ -241,6 +241,33 @@ imply precision the underlying accuracy does not support.
 
 Sources, conventions, and fixture admission decisions are recorded in
 [`docs/research/`](docs/research/).
+
+## Versioning
+
+**The release tag and the header versions are different numbers on purpose.**
+If you downloaded `2026.08.18` and opened `prayertimes.h` to find `v0.1.1`,
+nothing is wrong.
+
+| | Looks like | Answers |
+|---|---|---|
+| Release tag | `2026.08.18` | When this snapshot was cut |
+| Header version | `v0.1.1` | Whether this header is compatible with the one you already have |
+
+The headers are independent libraries that happen to share a repository. You
+vendor one file, not the set, so each carries its own semantic version and they
+move at their own pace. A header that did not change does not get a new number,
+which is why the three above are not all equal.
+
+That leaves nothing sensible for a single repository-wide semantic version to
+mean. It would have to describe three libraries at once, so it could not tell
+you anything reliable about the one you actually copied. Release tags are
+therefore calendar dates, `YYYY.MM.DD`, which make no compatibility claim at
+all. Every release lists the version of each header it contains.
+
+Use the release tag to pin a download. Use the header version to reason about
+compatibility.
+
+The first release, `v0.1.0`, predates this scheme and keeps its name.
 
 ## Bindings
 
