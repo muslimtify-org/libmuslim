@@ -136,12 +136,18 @@ non-finite input or an empty window); the ambiguous
 free. Numerical invariance was proven by the byte-unchanged research
 baseline and 1e-9-day conjunction pins. The header now reads `v0.1.0`, and so
 do `prayertimes.h` and `timezone.h`. The 1.0 number is deliberately not
-claimed. No tag has ever been published, so the pre-1.0 window that made the
-removal above free is still open, and the remaining API-shaped work listed
-under Post-v1.0 is reason to keep it open. Deferred with a recorded
-disposition: input validation for the pure-arithmetic tabular converters
-(garbage-in garbage-out on an invalid month) was judged out of scope for
-this gate.
+claimed, and the pre-1.0 window that made the removal above free is still
+open, since the remaining API-shaped work listed under Post-v1.0 is reason to
+keep it open. Deferred with a recorded disposition: input validation for the
+pure-arithmetic tabular converters (garbage-in garbage-out on an invalid
+month) was judged out of scope for this gate.
+
+Each header carries its own version and they move independently, following the
+stb convention rather than in lockstep, so a header that did not change does
+not gain a version. `v0.1.0` was tagged on 2026-08-18. `prayertimes.h` then
+moved to `v0.1.1` for the time formatter fix in #57 and the field contract in
+#58, while `hijri.h` and `timezone.h` stayed at `v0.1.0` because neither
+changed.
 
 **Completion criteria:**
 
