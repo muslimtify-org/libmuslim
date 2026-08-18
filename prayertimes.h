@@ -24,6 +24,12 @@
 
 /* prayertimes.h -- v0.1.1 -- single-header C/C++ prayer-time calculation library
  *
+ * The version above is this file's own. It is not the libmuslim release
+ * tag, which is a calendar date such as 2026.08.18 and covers a snapshot
+ * of several independently versioned headers. A difference between the
+ * two is expected. Use this number for compatibility, the release tag to
+ * pin a download.
+ *
  * This library calculates daily prayer times for a date and location using a
  * selection of established calculation methods. It has no dependencies beyond
  * the C standard library and libm.

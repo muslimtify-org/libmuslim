@@ -24,6 +24,12 @@
 
 /* hijri.h -- v0.1.0 -- stb-style single-file astronomical Hijri calendar library
  *
+ * The version above is this file's own. It is not the libmuslim release
+ * tag, which is a calendar date such as 2026.08.18 and covers a snapshot
+ * of several independently versioned headers. A difference between the
+ * two is expected. Use this number for compatibility, the release tag to
+ * pin a download.
+ *
  * Do this:
  *      #define HIJRI_IMPLEMENTATION
  * before you include this file in *one* C or C++ file to create the

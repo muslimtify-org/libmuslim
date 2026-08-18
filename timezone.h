@@ -25,6 +25,12 @@
 /*
  * timezone.h -- v0.1.0 -- optional DST-aware timezone helper for libmuslim
  *
+ * The version above is this file's own. It is not the libmuslim release
+ * tag, which is a calendar date such as 2026.08.18 and covers a snapshot
+ * of several independently versioned headers. A difference between the
+ * two is expected. Use this number for compatibility, the release tag to
+ * pin a download.
+ *
  * `prayertimes.h` is pure astronomy: it takes a numeric UTC offset and does
  * math. It does NOT know about DST, because DST is a political rule, not an
  * astronomical one. This header is the optional companion that resolves the
