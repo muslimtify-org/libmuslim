@@ -46,7 +46,7 @@ CFLAGS   = $(CSTD) $(WARN) $(OPT)
 # headers *compile as C++* at all, which is what the README advertises.
 CXXFLAGS = $(CXXSTD) -Wall -Wextra $(OPT)
 
-TESTS    = test_hijri test_ephemeris_oracle test_prayertimes test_timezone test_yallop_tn69
+TESTS    = test_hijri test_ephemeris_oracle test_prayertimes test_timezone test_yallop_tn69 test_prayertimes_oracle
 EXAMPLES = hijri_example prayertimes_example
 HEADERS  = hijri.h prayertimes.h timezone.h
 

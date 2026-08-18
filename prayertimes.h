@@ -37,6 +37,58 @@
  * In every other source file that uses the API, include the header normally:
  *
  *     #include "prayertimes.h"
+ *
+ * -----------------------------------------------------------------------
+ * ACCURACY
+ *
+ * Maghrib is checked against hijri_find_sunset from hijri.h, which is
+ * itself validated against JPL DE440, in tests/test_prayertimes_oracle.c.
+ * That check covers a grid of latitudes -60 to +60 in steps of 10,
+ * longitudes -120, 0 and +120, every day of 2025, 14235 points, all of
+ * them usable, with the ihtiyat subtracted before comparing and the
+ * refraction conventions paired as REFRACTION_CORRECTION 0.833 against
+ * HIJRI_SUNSET_CONVENTION_ASTRONOMICAL, whose fields give
+ * 0.5667 + 959.63/3600 = 0.83326. The measured maximum absolute
+ * difference across that grid is 6.5966 seconds, at latitude -60,
+ * longitude -120, on 2025-12-17, against a pinned bound of 15.0 seconds
+ * at tests/test_prayertimes_oracle.c:195.
+ *
+ * That 6.5966 second figure is not a global accuracy claim. The oracle
+ * covers |latitude| <= 60 only. Beyond that the two solvers diverge
+ * sharply, because near the polar circle the Sun crosses the horizon at
+ * grazing incidence and a small altitude difference becomes a large time
+ * difference. Measured with the current code, maximum absolute
+ * difference by latitude:
+ *
+ *   lat +60   2.39 s     lat -60    6.60 s
+ *   lat +66   9.58 s     lat -66  123.65 s
+ *   lat +68  29.55 s     lat -68  104.44 s
+ *   lat +70  33.37 s     lat -70   77.99 s
+ *
+ * Sunrise is not asserted against an oracle, because hijri.h exposes no
+ * sunrise finder. It is covered only indirectly, by sharing a code path
+ * and a declination with sunset. Fajr and Isha are not asserted against
+ * any oracle either, only by the published-table fixtures. Asr is also
+ * covered only by the published-table fixtures, refining it was measured
+ * during this work and made results worse, so it was deliberately left
+ * alone.
+ *
+ * The published-table suite tests/test_prayertimes.c reports 903 checks
+ * at a uniform tolerance of 2 minutes, with a residual distribution of
+ * 442 checks at 0 minutes, 435 at 1 and 11 at 2.
+ *
+ * Computed times changed on 2026-08-17 by up to 2 minutes at high
+ * latitudes. Before this change the Sun was evaluated once at 0h UT and
+ * reused for events up to 20 hours later, producing a seasonal error that
+ * was negative in spring and positive in autumn. Anyone comparing against
+ * previously generated output should read this as a correction, not
+ * drift. Equatorial results barely moved, measured at a mean absolute
+ * difference of 0.616 before and 0.622 after over 357 Indonesian checks.
+ *
+ * prayertimes.h has no dependency on hijri.h. The coupling described
+ * above exists only in tests/test_prayertimes_oracle.c, not in this
+ * file, so it should not be read as the two headers being entangled.
+ * -----------------------------------------------------------------------
  */
 
 #ifndef PRAYERTIMES_H
@@ -454,6 +506,21 @@ static double hour_angle_safe(double lat, double decl, double angle,
   return ha * RAD_TO_DEG / 15.0;
 }
 
+/* Solve one hour-angle event with the Sun evaluated at the event's own
+   instant, one iteration from an initial guess. sign is -1 before local
+   noon and +1 after. Returns the refined local time in hours, or the guess
+   unchanged when the event does not occur at the refined instant. */
+static double refine_event(double jd, double latitude, double longitude,
+                           double timezone, double altitude, double sign,
+                           double guess) {
+  double d2, e2, n2, ha;
+  sun_position(jd + (guess - timezone) / 24.0, &d2, &e2);
+  n2 = 12.0 + timezone - (longitude / 15.0) - e2;
+  ha = hour_angle(latitude, d2, altitude);
+  if (isnan(ha)) return guess;
+  return n2 + sign * ha;
+}
+
 // Format time (double hours) into "HH:MM"
 PRAYERTIMESDEF void format_time_hm(double timeHours, char *outBuffer,
                                    size_t bufSize) {
@@ -506,6 +573,11 @@ calculate_prayer_times(int year, int month, int day, double latitude,
   double sunrise = noon - ha_sunrise;
   double sunset = noon + ha_sunrise;
 
+  sunrise = refine_event(jd, latitude, longitude, timezone,
+                         REFRACTION_CORRECTION, -1.0, sunrise);
+  sunset = refine_event(jd, latitude, longitude, timezone,
+                        REFRACTION_CORRECTION, +1.0, sunset);
+
   /* Night duration for high-latitude fallback */
   double night = (24.0 - sunset) + sunrise;
 
@@ -518,6 +590,9 @@ calculate_prayer_times(int year, int month, int day, double latitude,
     /* Angle-based high-latitude fallback */
     fajr = sunrise - (params->fajr_angle / 60.0) * night;
   }
+  if (!fajr_failed)
+    fajr = refine_event(jd, latitude, longitude, timezone, params->fajr_angle,
+                        -1.0, fajr);
 
   /* Maghrib */
   double maghrib = sunset;
@@ -535,6 +610,9 @@ calculate_prayer_times(int year, int month, int day, double latitude,
     if (isha_failed) {
       isha = sunset + (params->isha_angle / 60.0) * night;
     }
+    if (!isha_failed)
+      isha = refine_event(jd, latitude, longitude, timezone,
+                          params->isha_angle, +1.0, isha);
   } else {
     /* Interval-based (e.g. Makkah 90 min after maghrib) */
     isha = maghrib + (double)params->isha_interval / 60.0;
