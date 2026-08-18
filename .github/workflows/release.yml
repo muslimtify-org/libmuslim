@@ -1,0 +1,39 @@
+name: Release assets
+
+# The documentation tells readers to fetch headers from
+# releases/latest/download, which resolves only if the release carries the
+# headers as assets. Attaching them by hand worked for 2026.08.18 and would
+# fail silently the first time someone forgot: the release would publish fine,
+# and the documented download would start returning 404. This attaches them.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  attach:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      # A release whose headers do not compile is worse than a late release.
+      - name: Verify the headers build at this tag
+        run: make check
+
+      - name: Report the version each header carries
+        run: |
+          for h in prayertimes.h hijri.h timezone.h; do
+            printf '%-16s %s\n' "$h" "$(sed -n 's|.*-- \(v[0-9.]*\) --.*|\1|p' "$h" | head -1)"
+          done
+
+      - name: Attach the headers to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            prayertimes.h hijri.h timezone.h --clobber
