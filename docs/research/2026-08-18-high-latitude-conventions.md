@@ -117,6 +117,30 @@ The zone 3 count equals the current NaN count exactly at both cities where it is
 
 This is a measurement of behaviour, not an endorsement. It establishes that the decree's rule is implementable and total. It does not establish that it is the right convention for this library's users.
 
+## What the published tables said when the rule was actually implemented
+
+Added 2026-08-18, after implementing the Council rule rather than only prototyping it.
+
+The section above establishes that the Council rule is implementable and total, and that is still true. It does not establish that it is what a published MWL timetable does, and implementing it showed that it is not.
+
+Assigning `CALC_MWL` the proportional rule for the night-exists case broke three checks in the published-table suite, all London under MWL.
+
+```
+London 2026-06-15  isha   computed 23:22   published 23:25    3 min
+London 2026-07-15  fajr   computed 02:55   published 02:40   15 min
+London 2026-07-15  isha   computed 23:08   published 23:25   17 min
+```
+
+London is 51.5 degrees north, so in midsummer the Sun does not reach 18 degrees of depression and the substitution fires. The angle-based rule reproduces the published table to within 1 minute at these points. The Council rule is 15 to 17 minutes away.
+
+The conclusion is not that the decree is wrong. It is that the decree and the timetables published under the MWL name are two different things, and the library validates against the timetables. Whoever computes those tables uses the angle-based convention, so that is what the MWL method means in practice wherever a night exists.
+
+This is a halt condition in the sense the project uses the term, and it was resolved by changing the implementation rather than by widening the 2 minute tolerance that exposed it.
+
+What survives is narrower and better supported. The decree is used only where the published tables have nothing to say, which is inside the polar circle, where there is no night to take a fraction of and every angle-based rule is undefined. `CALC_MWL` therefore carries `HIGHLAT_ANGLE_BASED` with a reference latitude of 45, and the reference is consulted only when sunrise and sunset do not exist.
+
+Two lessons worth keeping. A rule being sourced does not make it the rule a given method's users receive. And a prototype that only shows a rule produces finite numbers has not been checked against anything, which is why the 15 minute disagreement appeared at implementation rather than at research time.
+
 ## A separate defect found while measuring
 
 Independent of NaN, the current fallback returns hour values outside the range 0 to 24, and these reach the public struct. Measured at real cities with their standard-time offsets, over 2025.

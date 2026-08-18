@@ -1977,6 +1977,27 @@ static void count_field_anomalies(double lat, double lon, double tz,
   }
 }
 
+/* NaN days for one field, indexed in struct order:
+   0 fajr, 1 sunrise, 2 dhuha, 3 dhuhr, 4 asr, 5 maghrib, 6 isha. */
+static int count_field_nan(double lat, double lon, double tz,
+                           const MethodParams *m, int field) {
+  static const int month_len[12] = {31, 28, 31, 30, 31, 30,
+                                    31, 31, 30, 31, 30, 31};
+  int days = 0;
+  for (int doy = 1; doy <= 365; doy++) {
+    int mo = 1, dy = doy;
+    while (dy > month_len[mo - 1]) {
+      dy -= month_len[mo - 1];
+      mo++;
+    }
+    struct PrayerTimes t = calculate_prayer_times(2025, mo, dy, lat, lon, tz, m);
+    const double v[7] = {t.fajr, t.sunrise, t.dhuha,   t.dhuhr,
+                         t.asr,  t.maghrib, t.isha};
+    if (isnan(v[field])) days++;
+  }
+  return days;
+}
+
 static void test_field_contract(void) {
   const MethodParams *mwl = method_params_get(CALC_MWL);
   int nan_days, out_days;
@@ -1999,9 +2020,35 @@ static void test_field_contract(void) {
   check_long(nan_days, 0, "Anchorage, no NaN day");
   check_long(out_days, 23, "Anchorage, out-of-range days");
 
-  // Longyearbyen, far enough north that NaN dominates.
+  // Longyearbyen. Every prescribed time now resolves, because MWL carries a
+  // reference latitude for the polar case. Only dhuha is left, and it is left
+  // deliberately: no source retrieved addresses dhuha, so inventing a value
+  // for it would be the library making a ruling rather than following one.
   count_field_anomalies(78.22, 15.65, 1.0, mwl, &nan_days, &out_days);
-  check_long(nan_days, 268, "Longyearbyen, NaN days");
+  check_long(nan_days, 236, "Longyearbyen MWL, NaN days");
+  check_long(count_field_nan(78.22, 15.65, 1.0, mwl, 0), 0,
+             "Longyearbyen MWL, fajr");
+  check_long(count_field_nan(78.22, 15.65, 1.0, mwl, 1), 0,
+             "Longyearbyen MWL, sunrise");
+  check_long(count_field_nan(78.22, 15.65, 1.0, mwl, 5), 0,
+             "Longyearbyen MWL, maghrib");
+  check_long(count_field_nan(78.22, 15.65, 1.0, mwl, 6), 0,
+             "Longyearbyen MWL, isha");
+  check_long(count_field_nan(78.22, 15.65, 1.0, mwl, 2), 236,
+             "Longyearbyen MWL, dhuha");
+
+  // The same place under Kemenag, which publishes no high-latitude rule and so
+  // carries no reference latitude. This is the point of putting the rule on
+  // the method: the library does not attribute a ruling to an authority that
+  // never issued one, so these stay non-finite and the caller is told rather
+  // than guessed at.
+  const MethodParams *kemenag = method_params_get(CALC_KEMENAG);
+  count_field_anomalies(78.22, 15.65, 1.0, kemenag, &nan_days, &out_days);
+  check_long(nan_days, 268, "Longyearbyen Kemenag, NaN days");
+  check_long(count_field_nan(78.22, 15.65, 1.0, kemenag, 0), 128,
+             "Longyearbyen Kemenag, fajr");
+  check_long(count_field_nan(78.22, 15.65, 1.0, kemenag, 1), 240,
+             "Longyearbyen Kemenag, sunrise");
 
   printf("\n");
 }
