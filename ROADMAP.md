@@ -144,10 +144,22 @@ month) was judged out of scope for this gate.
 
 Each header carries its own version and they move independently, following the
 stb convention rather than in lockstep, so a header that did not change does
-not gain a version. `v0.1.0` was tagged on 2026-08-18. `prayertimes.h` then
-moved to `v0.1.1` for the time formatter fix in #57 and the field contract in
-#58, while `hijri.h` and `timezone.h` stayed at `v0.1.0` because neither
-changed.
+not gain a version. `prayertimes.h` moved to `v0.1.1` for the time formatter
+fix in #57 and the field contract in #58, while `hijri.h` and `timezone.h`
+stayed at `v0.1.0` because neither changed.
+
+Release tags are separate from header versions and are calendar-dated,
+`YYYY.MM.DD`, with a `.N` suffix if a day ever needs a second one. A release
+here is a dated snapshot of three independently versioned headers, so a single
+semantic version at the repository level would have to describe all three at
+once and would mean nothing about any of them. The calendar date makes no such
+claim. Semantic versioning still governs each header banner, which is where a
+consumer's compatibility question is actually answered.
+
+The first release, `v0.1.0` on 2026-08-18, predates this decision and keeps its
+name. It is not renamed or withdrawn, because the published docs and anyone who
+has already downloaded it point at that tag. Releases from `2026.08.18` onward
+are calendar-dated.
 
 **Completion criteria:**
 
