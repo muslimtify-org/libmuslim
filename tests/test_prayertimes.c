@@ -1937,6 +1937,75 @@ static void check_long(long got, long want, const char *label) {
 
 // clock_diff_minutes: pure arithmetic checks, not prayer times. These do not
 // call the library at all; they pin the circular-distance helper itself.
+// struct PrayerTimes field contract: pins that a returned field is NOT
+// guaranteed to lie in [0, 24) and is NOT guaranteed to be finite. These are
+// not time comparisons and carry no residual.
+//
+// This group exists to stop the contract being changed by accident. Reducing
+// the fields into [0, 24) inside calculate_prayer_times would make these fail,
+// which is the point: the raw double is the only thing carrying the day
+// offset, so normalising it silently moves an event onto the wrong calendar
+// day. Whether the struct should carry the offset explicitly is open on issue
+// #56. If that is settled in favour of a change, update this group
+// deliberately rather than deleting it.
+static void count_field_anomalies(double lat, double lon, double tz,
+                                  const MethodParams *m, int *nan_days,
+                                  int *out_of_range_days) {
+  static const int month_len[12] = {31, 28, 31, 30, 31, 30,
+                                    31, 31, 30, 31, 30, 31};
+  *nan_days = 0;
+  *out_of_range_days = 0;
+  for (int doy = 1; doy <= 365; doy++) {
+    int mo = 1, dy = doy;
+    while (dy > month_len[mo - 1]) {
+      dy -= month_len[mo - 1];
+      mo++;
+    }
+    struct PrayerTimes t = calculate_prayer_times(2025, mo, dy, lat, lon, tz, m);
+    const double v[7] = {t.fajr, t.sunrise, t.dhuha,   t.dhuhr,
+                         t.asr,  t.maghrib, t.isha};
+    int saw_nan = 0, saw_out = 0;
+    for (int i = 0; i < 7; i++) {
+      if (isnan(v[i])) {
+        saw_nan = 1;
+      } else if (v[i] < 0.0 || v[i] >= 24.0) {
+        saw_out = 1;
+      }
+    }
+    *nan_days += saw_nan;
+    *out_of_range_days += saw_out;
+  }
+}
+
+static void test_field_contract(void) {
+  const MethodParams *mwl = method_params_get(CALC_MWL);
+  int nan_days, out_days;
+  printf("Test group: struct PrayerTimes field contract\n");
+
+  // Jakarta: the ordinary case. Nothing escapes, which is why the contract is
+  // easy to miss when only equatorial locations are exercised.
+  count_field_anomalies(-6.2088, 106.8456, 7.0, mwl, &nan_days, &out_days);
+  check_long(nan_days, 0, "Jakarta, no NaN day");
+  check_long(out_days, 0, "Jakarta, no out-of-range day");
+
+  // Reykjavik, which really does keep UTC year round. Both anomalies occur.
+  count_field_anomalies(64.15, -21.94, 0.0, mwl, &nan_days, &out_days);
+  check_long(nan_days, 44, "Reykjavik, NaN days");
+  check_long(out_days, 107, "Reykjavik, out-of-range days");
+
+  // Anchorage is the case that shows the two are independent. It never
+  // produces a NaN, yet it still returns hours outside the day.
+  count_field_anomalies(61.22, -149.90, -9.0, mwl, &nan_days, &out_days);
+  check_long(nan_days, 0, "Anchorage, no NaN day");
+  check_long(out_days, 23, "Anchorage, out-of-range days");
+
+  // Longyearbyen, far enough north that NaN dominates.
+  count_field_anomalies(78.22, 15.65, 1.0, mwl, &nan_days, &out_days);
+  check_long(nan_days, 268, "Longyearbyen, NaN days");
+
+  printf("\n");
+}
+
 // format_time_hm and format_time_hms: rendering only, not prayer times. These
 // carry no residual, like the clock_diff_minutes group above.
 //
@@ -2262,6 +2331,8 @@ int main(void) {
   test_clock_diff_minutes();
 
   test_format_time();
+
+  test_field_contract();
 
   test_civil_date_helpers();
 

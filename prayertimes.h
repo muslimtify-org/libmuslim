@@ -73,13 +73,14 @@
  * during this work and made results worse, so it was deliberately left
  * alone.
  *
- * The published-table suite tests/test_prayertimes.c reports 925 checks.
+ * The published-table suite tests/test_prayertimes.c reports 932 checks.
  * 895 of those compare a computed time against a published table at a
  * uniform tolerance of 2 minutes, with a residual distribution of 449
  * checks at 0 minutes, 435 at 1 and 11 at 2, which sums to the 895. The
- * remaining 30 carry no residual because they are not time comparisons:
+ * remaining 37 carry no residual because they are not time comparisons:
  * 7 assert the test's own clock_diff_minutes helper, 8 assert the
- * civil-day converters and 15 assert the time formatters.
+ * civil-day converters, 15 assert the time formatters and 7 pin the
+ * struct PrayerTimes field contract.
  *
  * Computed times changed on 2026-08-17 by up to 2 minutes at high
  * latitudes. Before this change the Sun was evaluated once at 0h UT and
@@ -195,6 +196,33 @@ typedef struct {
   int ihtiyat; /* precautionary minutes added to each time */
 } MethodParams;
 
+/**
+ * The seven computed times, each as decimal hours in local time, so 17.75
+ * means 17:45.
+ *
+ * A field is normally in [0, 24), but it is not guaranteed to be, and callers
+ * that do anything other than print it must handle two cases.
+ *
+ * Non-finite. Above roughly 66 degrees the Sun can fail to reach the altitude
+ * an event is defined by, and the field is then NaN. Test with isfinite()
+ * before use. dhuha reaches this first, from about 62.5 degrees.
+ *
+ * Outside [0, 24). The high-latitude fallback for fajr and isha can return a
+ * value below 0 or at or above 24, meaning the event falls on the previous or
+ * the next calendar day. This happens on 107 days a year at Reykjavik and 23
+ * at Anchorage, and Anchorage never produces a NaN at all, so the two cases
+ * are independent.
+ *
+ * The double is the only thing that carries the day offset. Reducing a field
+ * into [0, 24) before building a date or a timestamp therefore moves the event
+ * silently onto the wrong day. Keep the whole value. format_time_hm() and
+ * format_time_hms() handle both cases, but a clock string cannot express a
+ * date, so they do not preserve the offset either.
+ *
+ * Whether this struct should carry the offset explicitly is open, see issue
+ * #56. Until it is settled the raw value is the contract, and
+ * tests/test_prayertimes.c pins it.
+ */
 struct PrayerTimes {
   double fajr;
   double sunrise;
@@ -208,6 +236,12 @@ struct PrayerTimes {
 /**
  * Format a decimal-hours time (e.g. 5.5) into "HH:MM" in outBuffer.
  * Minutes are rounded up (Kemenag convention).
+ *
+ * A value outside [0, 24) is reduced onto the clock face first, so 25.075
+ * renders as "01:05" and -0.104 as "23:54". The result names an hour of the
+ * day and cannot say which day, so read the raw double if you need that.
+ *
+ * A non-finite value renders as "--:--". Six bytes are enough for either.
  */
 PRAYERTIMESDEF void format_time_hm(double timeHours, char *outBuffer,
                                    size_t bufSize);
@@ -216,6 +250,9 @@ PRAYERTIMESDEF void format_time_hm(double timeHours, char *outBuffer,
  * Format a decimal-hours time (e.g. 5.5) into "HH:MM:SS" in outBuffer.
  * Seconds are rounded to nearest; use format_time_hm for the Kemenag
  * round-up-to-the-minute convention.
+ *
+ * The same reduction applies, so -0.104 renders as "23:53:46". A non-finite
+ * value renders as "--:--:--". Nine bytes are enough for either.
  */
 PRAYERTIMESDEF void format_time_hms(double timeHours, char *outBuffer,
                                     size_t bufSize);
