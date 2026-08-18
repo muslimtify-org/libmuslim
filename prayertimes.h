@@ -73,9 +73,13 @@
  * during this work and made results worse, so it was deliberately left
  * alone.
  *
- * The published-table suite tests/test_prayertimes.c reports 903 checks
- * at a uniform tolerance of 2 minutes, with a residual distribution of
- * 442 checks at 0 minutes, 435 at 1 and 11 at 2.
+ * The published-table suite tests/test_prayertimes.c reports 910 checks.
+ * 895 of those compare a computed time against a published table at a
+ * uniform tolerance of 2 minutes, with a residual distribution of 449
+ * checks at 0 minutes, 435 at 1 and 11 at 2, which sums to the 895. The
+ * remaining 15 carry no residual because they are not time comparisons:
+ * 7 assert the test's own clock_diff_minutes helper and 8 assert the
+ * civil-day converters.
  *
  * Computed times changed on 2026-08-17 by up to 2 minutes at high
  * latitudes. Before this change the Sun was evaluated once at 0h UT and
