@@ -134,11 +134,14 @@ with the Julian Day in an out-parameter (`HIJRI_EVENT_NOT_FOUND` on
 non-finite input or an empty window); the ambiguous
 `hijri_find_conjunction()` was removed while the pre-1.0 window made that
 free. Numerical invariance was proven by the byte-unchanged research
-baseline and 1e-9-day conjunction pins. The header now reads `v1.0.0-rc1`;
-the remaining step is deliberate: bump to `v1.0.0` and `git tag v1.0.0`
-when the release is called. Deferred with a recorded disposition: input
-validation for the pure-arithmetic tabular converters (garbage-in
-garbage-out on an invalid month) was judged out of scope for this gate.
+baseline and 1e-9-day conjunction pins. The header now reads `v0.1.0`, and so
+do `prayertimes.h` and `timezone.h`. The 1.0 number is deliberately not
+claimed. No tag has ever been published, so the pre-1.0 window that made the
+removal above free is still open, and the remaining API-shaped work listed
+under Post-v1.0 is reason to keep it open. Deferred with a recorded
+disposition: input validation for the pure-arithmetic tabular converters
+(garbage-in garbage-out on an invalid month) was judged out of scope for
+this gate.
 
 **Completion criteria:**
 

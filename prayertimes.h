@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-/* prayertimes.h -- single-header C/C++ prayer-time calculation library
+/* prayertimes.h -- v0.1.0 -- single-header C/C++ prayer-time calculation library
  *
  * This library calculates daily prayer times for a date and location using a
  * selection of established calculation methods. It has no dependencies beyond
