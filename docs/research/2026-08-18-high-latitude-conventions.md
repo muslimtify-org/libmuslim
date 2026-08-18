@@ -247,17 +247,120 @@ printing oddly.
 This should be tracked separately from the convention question, because it
 needs no fiqh decision at all.
 
+## Whether the rule belongs to the method
+
+The rule should follow the authority being used. If a caller selects Kemenag,
+the Kemenag position should apply, and if a caller selects MWL, the MWL
+position should apply. That is the right shape. What the sources show is that
+most authorities have no position to follow.
+
+`prayertimes.h:176` already declares the enum for this.
+
+```c
+typedef enum {
+  HIGHLAT_NONE,
+  HIGHLAT_MIDDLE_OF_NIGHT,
+  HIGHLAT_ONE_SEVENTH,
+  HIGHLAT_ANGLE_BASED,
+} HighLatMethod;
+```
+
+It is dead. Grepping the whole repository for `HighLatMethod` or `HIGHLAT_`
+returns only these five lines. There is no field of that type in
+`MethodParams`, no function takes one, and nothing reads one. The angle-based
+rule is hardcoded in `calculate_prayer_times` and applied to all 22 methods
+alike, so today Kemenag silently receives a rule that Kemenag never published.
+
+### What each authority actually publishes
+
+Researched in this pass.
+
+- **MWL.** The Islamic Fiqh Council is a body of the Muslim World League
+  itself, so for `CALC_MWL` the decree recorded above is not an outside
+  analogy, it is the authority's own position. Three zones, reference latitude
+  45 degrees proposed.
+- **Moonsighting Committee Worldwide.** <https://www.moonsighting.com/how-we.html>
+  states that its formulae "are good up to the 55degrees latitude", that
+  between 55 and 60 degrees "the rule of Sab'u Lail (1/7th of the night), is
+  used because other methods give times that become hardship for those areas",
+  and that above 60 degrees it slides the calculation down to 60 degrees and
+  applies the one-seventh rule in summer. So `CALC_MOONSIGHTING` has a real,
+  specified rule, with a threshold at 55 and a nearest-latitude fallback
+  anchored at 60.
+- **Fiqh Council of North America.** Its current published recommendation is 15
+  degrees for both fajr and isha in the USA and 13 degrees in Canada, year
+  round. Its own page does not address the case where the angle is never
+  reached. A 2011 FCNA position deferring to the moonsighting.com functions is
+  reported by secondary sources but was not confirmed on an FCNA page in this
+  pass.
+- **Kemenag.** No high-latitude provision was found. The published Indonesian
+  guidance, going back to the 1994 Pedoman Penentuan Jadwal Waktu Shalat
+  Sepanjang Masa, is organised around sun altitude for isha and subuh, ihtiyat,
+  and elevation. This is unsurprising rather than an oversight, because
+  Indonesia spans roughly 6 degrees north to 11 degrees south, where the case
+  never arises. Recording it as absent is the honest entry, not a gap to be
+  filled by borrowing another authority's rule without saying so.
+
+Not researched in this pass, and therefore not to be assigned a value on the
+strength of this note: Egypt, Karachi, Umm al-Qura, Turkey, Singapore, JAKIM,
+France, Russia, Dubai, Qatar, Kuwait, Jordan, Gulf, Tunisia, Algeria, Morocco,
+Portugal. Several of these serve jurisdictions that never reach the relevant
+latitudes. Others, notably France, Russia and Turkey, already carry lowered
+angles that may themselves be the adaptation, which is a question about the
+angle rather than about the never-reached case and was not investigated here.
+
+### Independent support for the shape
+
+The most widely used implementation of these methods, `adhan-js`, reached the
+same conclusion independently. Its `METHODS.md` lists a high-latitude rule for
+exactly one method, Moonsighting, and marks every other method as not
+specifying one. It keeps `HighLatitudeRule` and `PolarCircleResolution` as
+caller-set options rather than method defaults.
+
+That library also separates the two axes the same way this note does. A
+high-latitude rule answers what to do when the angle is not reached but a night
+still exists. A polar circle resolution answers what to do when there is no
+sunrise or sunset at all. They are different questions and one does not imply
+the other, which is why the one-seventh rule and the angle-based rule are both
+insufficient on their own. Both are defined in terms of sunset to sunrise, so
+both are undefined inside the polar circle. Moonsighting is the only researched
+authority that patches this, and it does so with a nearest-latitude fallback
+anchored at 60 degrees.
+
+### The reference latitude is contested
+
+Three researched sources pick three different anchors for the same
+nearest-locality idea.
+
+```
+source                          anchor latitude
+Islamic Fiqh Council decree     45
+Al-Hilal paper, Reykjavik       London, about 51.5
+Moonsighting Committee          60
+```
+
+No source settles this for the others. A per-method field therefore needs to
+carry the anchor as well as the rule, or the same nominal rule will mean three
+different things.
+
 ## What remains a decision
 
 The sources settle less than they appear to.
 
-1. Whether to adopt the Fiqh Council rule, aqrab al-ayyam, or to keep the
-   angle-based rule and document it as undefined above 66 degrees. Only the
-   first is total.
-2. If the Council rule is adopted, which reference latitude. The decree
-   proposes 45 degrees. The Al-Hilal paper uses London at about 51.5 degrees.
-   The sources do not agree, so the library must choose and say so.
-3. What sunrise, sunset, maghrib and dhuha should be when they do not occur.
+1. Whether `MethodParams` gains a `HighLatMethod` field plus a reference
+   latitude, so the rule follows the authority. The enum already exists and is
+   unused, so this is wiring rather than new API surface. Two of the researched
+   authorities have a position, MWL and Moonsighting. The rest do not, and
+   `HIGHLAT_NONE` is the honest entry for them.
+2. What `HIGHLAT_NONE` should then do, since it will be the value on most of
+   the table. Returning a documented not-available signal is defensible.
+   Silently applying the angle-based rule, which is what happens today, is the
+   one option this note argues against, because it attributes a rule to an
+   authority that never published it.
+3. A separate axis for the polar case, since no researched rule except
+   Moonsighting's is defined there, and Moonsighting's answer is a
+   nearest-latitude anchor rather than a rule of the same kind.
+4. What sunrise, sunset, maghrib and dhuha should be when they do not occur.
    The decree's third zone speaks to the prescribed prayers. Dhuha is not among
    them, and no source retrieved here addresses it. A documented signal that
    the event does not occur is the honest option for dhuha, and inventing a
@@ -272,6 +375,9 @@ The sources settle less than they appear to.
 - <https://birka.nur.nu/prayertimes/prayertimes-references/quoted/Rabita1406-transl.html>
 - <https://journal.walisongo.ac.id/index.php/al-hilal/article/view/29337>
 - <https://www.e-cfr.org/>
+- <https://www.moonsighting.com/how-we.html>
+- <https://fiqhcouncil.org/the-suggested-calculation-method-for-fajr-and-isha/>
+- <https://github.com/batoulapps/adhan-js/blob/master/METHODS.md>
 
 Reproduction programs for every measured table in this note are local and not
 committed. Each is a few dozen lines against the public API plus the two
