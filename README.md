@@ -242,6 +242,23 @@ imply precision the underlying accuracy does not support.
 Sources, conventions, and fixture admission decisions are recorded in
 [`docs/research/`](docs/research/).
 
+## Bindings
+
+Language bindings maintained alongside this repository. Each vendors the C
+headers directly and pins the ABI in its own test suite, so a changed struct or
+signature fails there rather than diverging silently.
+
+| Language | Repository | Vendors |
+|---|---|---|
+| Rust | [libmuslim-rs](https://github.com/muslimtify-org/libmuslim-rs) | `prayertimes.h`, `timezone.h` |
+| Dart | [libmuslim-dart](https://github.com/muslimtify-org/libmuslim-dart) | `prayertimes.h` |
+
+## Built with libmuslim
+
+| Project | What it is |
+|---|---|
+| [muslimtify](https://github.com/muslimtify-org/muslimtify) | Prayer time CLI and notification daemon for Linux and Windows |
+
 ## Documentation
 
 - [`docs/KEMENAG_METHOD.md`](docs/KEMENAG_METHOD.md) — prayer-time mathematics (Indonesian)
