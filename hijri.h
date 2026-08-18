@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-/* hijri.h -- v1.0.0-rc1 -- stb-style single-file astronomical Hijri calendar library
+/* hijri.h -- v0.1.0 -- stb-style single-file astronomical Hijri calendar library
  *
  * Do this:
  *      #define HIJRI_IMPLEMENTATION

@@ -23,7 +23,7 @@
  */
 
 /*
- * timezone.h — optional DST-aware timezone helper for libmuslim
+ * timezone.h -- v0.1.0 -- optional DST-aware timezone helper for libmuslim
  *
  * `prayertimes.h` is pure astronomy: it takes a numeric UTC offset and does
  * math. It does NOT know about DST, because DST is a political rule, not an
