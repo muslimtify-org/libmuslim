@@ -4,6 +4,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static const MethodParams *kemenag_params;
 
@@ -24,8 +25,13 @@ static int time_to_minutes(const char *hhmm) {
 }
 
 // Convert double hours to total minutes using the same ceil rounding as
-// format_time_hm (Kemenag method)
+// format_time_hm (Kemenag method). The fmod reduction mirrors
+// normalize_clock_hours in the header. Without it this helper and the
+// formatter disagree for any hour value outside 0 to 24, which the
+// high-latitude fallback can produce (see issue #56).
 static int double_to_minutes(double hours) {
+  hours = fmod(hours, 24.0);
+  if (hours < 0.0) hours += 24.0;
   int h = (int)hours;
   double fraction = hours - h;
   int m = (int)ceil(fraction * 60.0);
@@ -1909,6 +1915,16 @@ static void test_midnight_wrap_reykjavik_jun(void) {
 }
 
 // Check a single long value against an expected one
+static void check_str(const char *got, const char *want, const char *label) {
+  total++;
+  if (strcmp(got, want) == 0) {
+    printf("  PASS  %-28s  got=\"%s\"\n", label, got);
+  } else {
+    printf("  FAIL  %-28s  got=\"%s\"  expected=\"%s\"\n", label, got, want);
+    failures++;
+  }
+}
+
 static void check_long(long got, long want, const char *label) {
   total++;
   if (got == want) {
@@ -1921,6 +1937,76 @@ static void check_long(long got, long want, const char *label) {
 
 // clock_diff_minutes: pure arithmetic checks, not prayer times. These do not
 // call the library at all; they pin the circular-distance helper itself.
+// format_time_hm and format_time_hms: rendering only, not prayer times. These
+// carry no residual, like the clock_diff_minutes group above.
+//
+// The formatters are reached with values outside 0 to 24 because the
+// high-latitude fallback produces them, and with non-finite values because
+// the unguarded hour_angle call sites produce those. Both were defects.
+//
+// Mutation record: removing the "if (t < 0.0) t += 24.0;" line from
+// normalize_clock_hours in the header and running `make test` produced this
+// FAIL line, pasted verbatim from the terminal:
+//   FAIL  hm, just before midnight       got="00:-6"  expected="23:54"
+// Removing the !isfinite guard from format_time_hm produced:
+//   FAIL  hm, NaN is not a time          got="-8:-2147483648"  expected="--:--"
+// Both fixes were then restored.
+static void test_format_time(void) {
+  char b[32];
+  printf("Test group: time formatting\n");
+
+  format_time_hm(12.5, b, sizeof b);
+  check_str(b, "12:30", "hm, midday");
+  format_time_hm(0.0, b, sizeof b);
+  check_str(b, "00:00", "hm, midnight");
+
+  // Past the end of the day. The fallback returns these at Reykjavik.
+  format_time_hm(24.0, b, sizeof b);
+  check_str(b, "00:00", "hm, exactly 24");
+  format_time_hm(25.075, b, sizeof b);
+  check_str(b, "01:05", "hm, past midnight");
+  format_time_hm(48.25, b, sizeof b);
+  check_str(b, "00:15", "hm, two days past");
+
+  // Before the start of the day. The fallback returns these at Tromso.
+  format_time_hm(-0.104, b, sizeof b);
+  check_str(b, "23:54", "hm, just before midnight");
+  format_time_hm(-24.5, b, sizeof b);
+  check_str(b, "23:30", "hm, a day and a half before");
+
+  // Non-finite. The unguarded hour_angle call sites return these above 66N.
+  format_time_hm(NAN, b, sizeof b);
+  check_str(b, "--:--", "hm, NaN is not a time");
+  format_time_hm(INFINITY, b, sizeof b);
+  check_str(b, "--:--", "hm, infinity is not a time");
+
+  format_time_hms(12.5, b, sizeof b);
+  check_str(b, "12:30:00", "hms, midday");
+  format_time_hms(24.0, b, sizeof b);
+  check_str(b, "00:00:00", "hms, exactly 24");
+  format_time_hms(-0.100, b, sizeof b);
+  check_str(b, "23:54:00", "hms, just before midnight");
+  format_time_hms(NAN, b, sizeof b);
+  check_str(b, "--:--:--", "hms, NaN is not a time");
+  format_time_hms(-INFINITY, b, sizeof b);
+  check_str(b, "--:--:--", "hms, negative infinity");
+
+  // A formatter must never emit a field the parser cannot read back. This
+  // asserts the property rather than one value, over the whole range the
+  // fallback can produce.
+  int malformed = 0;
+  for (int i = -2400; i <= 4800; i++) {
+    double t = i / 100.0;
+    int h = -1, m = -1;
+    format_time_hm(t, b, sizeof b);
+    if (PARSE_TIME(h, m, b) != 2) { malformed++; continue; }
+    if (h < 0 || h > 23 || m < 0 || m > 59) malformed++;
+  }
+  check_long(malformed, 0, "hm, no malformed field");
+
+  printf("\n");
+}
+
 static void test_clock_diff_minutes(void) {
   printf("Test group: clock_diff_minutes arithmetic\n");
 
@@ -2174,6 +2260,8 @@ int main(void) {
   test_midnight_wrap_reykjavik_jun();
 
   test_clock_diff_minutes();
+
+  test_format_time();
 
   test_civil_date_helpers();
 
