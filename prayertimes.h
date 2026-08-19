@@ -77,15 +77,17 @@
  * during this work and made results worse, so it was deliberately left
  * alone.
  *
- * The published-table suite tests/test_prayertimes.c reports 748 checks.
+ * The published-table suite tests/test_prayertimes.c reports 753 checks.
  * 702 of those compare a computed time against a published table at a
  * uniform tolerance of 2 minutes, with a residual distribution of 369
  * checks at 0 minutes, 326 at 1 and 7 at 2, which sums to the 702. The
- * remaining 46 carry no residual because they are not time comparisons:
+ * remaining 51 carry no residual because they are not time comparisons:
  * 7 assert the test's own clock_diff_minutes helper, 8 assert the
- * civil-day converters, 15 assert the time formatters and 16 pin the
+ * civil-day converters, 15 assert the time formatters, 16 pin the
  * struct PrayerTimes field contract, including the per-method
- * high-latitude behaviour and the caller override for it.
+ * high-latitude behaviour and the caller override for it, and 5 assert
+ * that the five prescribed times stay in order at five locations across
+ * every method.
  *
  * These counts fell from 940 and 895 when sunrise and dhuha were removed
  * from the struct in v0.2.0. The fixtures behind them were the sunrise
@@ -789,12 +791,24 @@ calculate_prayer_times(int year, int month, int day, double latitude,
      sunrise or sunset to refine and no night to measure a substitution
      against. A method whose authority names a reference latitude borrows that
      latitude's day. One that does not leaves these NaN, which is the honest
-     answer when nothing has been published for the case. */
+     answer when nothing has been published for the case.
+
+     When the reference latitude is used it has to solve the whole day, not
+     just sunrise and sunset. Borrowing those two while leaving fajr, isha and
+     asr at the true latitude puts two different places in one schedule, and
+     the result is not ordered: at 78.22 N the Sun can fail to reach -0.833
+     while still crossing -17, so maghrib comes from 45 N and isha from 78 N
+     and isha lands first. solve_lat carries that choice to every hour angle
+     below. */
+  int polar = 0;
+  double solve_lat = latitude;
   if (isnan(ha_sunrise)) {
     if (params->high_lat_ref > 0.0) {
-      sunrise = reference_event(params->high_lat_ref, decl, noon,
+      polar = 1;
+      solve_lat = params->high_lat_ref;
+      sunrise = reference_event(solve_lat, decl, noon,
                                 REFRACTION_CORRECTION, -1.0);
-      sunset = reference_event(params->high_lat_ref, decl, noon,
+      sunset = reference_event(solve_lat, decl, noon,
                                REFRACTION_CORRECTION, 1.0);
     }
   } else {
@@ -810,12 +824,14 @@ calculate_prayer_times(int year, int month, int day, double latitude,
   /* Fajr */
   bool fajr_failed = false;
   double ha_fajr =
-      hour_angle_safe(latitude, decl, params->fajr_angle, &fajr_failed);
+      hour_angle_safe(solve_lat, decl, params->fajr_angle, &fajr_failed);
   double fajr = noon - ha_fajr;
   if (fajr_failed) {
     fajr = high_lat_substitute(params, decl, noon, sunrise, sunset, night,
                                params->fajr_angle, -1.0);
-  } else {
+  } else if (!polar) {
+    /* refine_event re-solves at the true location, which would undo the
+       transplant, so a borrowed day is left unrefined. */
     fajr = refine_event(jd, latitude, longitude, timezone, params->fajr_angle,
                         -1.0, fajr);
   }
@@ -831,12 +847,12 @@ calculate_prayer_times(int year, int month, int day, double latitude,
   if (params->isha_angle > 0.0) {
     bool isha_failed = false;
     double ha_isha =
-        hour_angle_safe(latitude, decl, params->isha_angle, &isha_failed);
+        hour_angle_safe(solve_lat, decl, params->isha_angle, &isha_failed);
     isha = noon + ha_isha;
     if (isha_failed) {
       isha = high_lat_substitute(params, decl, noon, sunrise, sunset, night,
                                  params->isha_angle, 1.0);
-    } else {
+    } else if (!polar) {
       isha = refine_event(jd, latitude, longitude, timezone, params->isha_angle,
                           +1.0, isha);
     }
@@ -845,11 +861,17 @@ calculate_prayer_times(int year, int month, int day, double latitude,
     isha = maghrib + (double)params->isha_interval / 60.0;
   }
 
-  /* Asr */
+  /* Asr. Also solved at solve_lat, and not only for consistency: asr is
+     defined by the length of a shadow, so it needs the Sun above the horizon.
+     Inside the polar circle fabs(latitude - decl) exceeds 90 degrees, the
+     tangent turns negative and the formula returns a negative shadow
+     altitude, which is an artifact rather than a time. At 78.22 N on
+     2026-01-01 that is -13.922 degrees against a peak Sun altitude of
+     -11.235. The reference latitude has a real shadow. */
   double asr_angle = atan(1.0 / ((double)params->asr_shadow +
-                                 tan(fabs(latitude - decl) * DEG_TO_RAD))) *
+                                 tan(fabs(solve_lat - decl) * DEG_TO_RAD))) *
                      RAD_TO_DEG;
-  double ha_asr = hour_angle(latitude, decl, -asr_angle);
+  double ha_asr = hour_angle(solve_lat, decl, -asr_angle);
   double asr = noon + ha_asr;
 
   /* Apply ihtiyat (precautionary) adjustments */

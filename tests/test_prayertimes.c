@@ -1851,6 +1851,77 @@ static int count_field_nan(double lat, double lon, double tz,
   return days;
 }
 
+/* Days in 2026 where any adjacent pair of the five prescribed times is out of
+   order, counting only days where both members of the pair are finite. The
+   five are defined by successive positions of the same Sun, so a schedule that
+   reports them out of order is wrong under every calculation method and every
+   high-latitude convention. */
+static int count_disordered_days(double lat, double lon, double tz,
+                                 const MethodParams *m) {
+  static const int month_len[12] = {31, 28, 31, 30, 31, 30,
+                                    31, 31, 30, 31, 30, 31};
+  int days = 0;
+  for (int doy = 1; doy <= 365; doy++) {
+    int mo = 1, dy = doy;
+    while (dy > month_len[mo - 1]) {
+      dy -= month_len[mo - 1];
+      mo++;
+    }
+    struct PrayerTimes t = calculate_prayer_times(2026, mo, dy, lat, lon, tz, m);
+    const double v[5] = {t.fajr, t.dhuhr, t.asr, t.maghrib, t.isha};
+    for (int i = 1; i < 5; i++) {
+      if (isfinite(v[i]) && isfinite(v[i - 1]) && v[i] < v[i - 1]) {
+        days++;
+        break;
+      }
+    }
+  }
+  return days;
+}
+
+/* Before the polar case solved the whole day at one latitude, MWL reported
+   isha before maghrib on 41 days of 2026 at Longyearbyen, all in the polar
+   night. The cause was a schedule spliced from two places: maghrib borrowed
+   from 45 N, isha solved at 78.22 N, where the Sun fails to reach -0.833 but
+   still crosses -17. Every method is checked here, not only the two that
+   carry a reference latitude today, so that giving another method one cannot
+   reintroduce this unnoticed. */
+static void test_ordering(void) {
+  static const struct {
+    const char *name;
+    double lat, lon, tz;
+  } places[] = {
+      {"Longyearbyen", 78.22, 15.65, 1.0}, {"Tromso", 69.65, 18.96, 1.0},
+      {"Murmansk", 68.97, 33.08, 3.0},     {"Reykjavik", 64.15, -21.94, 0.0},
+      {"Jakarta", -6.2088, 106.8456, 7.0},
+  };
+  /* Zero everywhere except one known case, pinned rather than hidden.
+     Moonsighting at Tromso on 2026-05-18 reports maghrib 23.590332 against
+     isha 23.586724, a gap of 13.0 seconds, and both render as "23:36". The
+     cause is unrelated to the polar splice this test was written for: that
+     method sets maghrib 3 minutes after sunset and takes isha as one seventh
+     of the night, and on a bright night of 19.5 minutes one seventh is 2.8
+     minutes, so the fixed offset overtakes the fraction. Tracked separately.
+     Any change to this number, at any place, is a regression to investigate. */
+  static const int expected[] = {0, 1, 0, 0, 0};
+  char label[128];
+  printf("Test group: the five stay in order\n");
+  for (size_t p = 0; p < sizeof places / sizeof *places; p++) {
+    int worst = 0;
+    for (int i = 0; i < CALC_COUNT; i++) {
+      const MethodParams *m = method_params_get((CalcMethod)i);
+      if (!m) continue;
+      int bad = count_disordered_days(places[p].lat, places[p].lon,
+                                      places[p].tz, m);
+      if (bad > worst) worst = bad;
+    }
+    snprintf(label, sizeof label, "%s, all %d methods", places[p].name,
+             (int)CALC_COUNT);
+    check_long(worst, expected[p], label);
+  }
+  printf("\n");
+}
+
 static void test_field_contract(void) {
   const MethodParams *mwl = method_params_get(CALC_MWL);
   int nan_days, out_days;
@@ -2252,6 +2323,7 @@ int main(void) {
   test_format_time();
 
   test_field_contract();
+  test_ordering();
 
   test_civil_date_helpers();
 
