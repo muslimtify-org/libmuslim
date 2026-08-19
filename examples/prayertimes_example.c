@@ -17,10 +17,6 @@ int main(void) {
   char buf[16];
   format_time_hm(t.fajr, buf, sizeof buf);
   printf("Fajr     %s\n", buf);
-  format_time_hm(t.sunrise, buf, sizeof buf);
-  printf("Sunrise  %s\n", buf);
-  format_time_hm(t.dhuha, buf, sizeof buf);
-  printf("Dhuha    %s\n", buf);
   format_time_hm(t.dhuhr, buf, sizeof buf);
   printf("Dhuhr    %s\n", buf);
   format_time_hm(t.asr, buf, sizeof buf);
