@@ -77,15 +77,15 @@
  * during this work and made results worse, so it was deliberately left
  * alone.
  *
- * The published-table suite tests/test_prayertimes.c reports 745 checks.
+ * The published-table suite tests/test_prayertimes.c reports 748 checks.
  * 702 of those compare a computed time against a published table at a
  * uniform tolerance of 2 minutes, with a residual distribution of 369
  * checks at 0 minutes, 326 at 1 and 7 at 2, which sums to the 702. The
- * remaining 43 carry no residual because they are not time comparisons:
+ * remaining 46 carry no residual because they are not time comparisons:
  * 7 assert the test's own clock_diff_minutes helper, 8 assert the
- * civil-day converters, 15 assert the time formatters and 13 pin the
+ * civil-day converters, 15 assert the time formatters and 16 pin the
  * struct PrayerTimes field contract, including the per-method
- * high-latitude behaviour.
+ * high-latitude behaviour and the caller override for it.
  *
  * These counts fell from 940 and 895 when sunrise and dhuha were removed
  * from the struct in v0.2.0. The fixtures behind them were the sunrise
@@ -226,7 +226,20 @@ typedef struct {
      is the case inside the polar circle. Every rule above is measured in
      units of the night, so without a reference there is nothing to measure
      and the affected times are NaN. Set to 0 when the authority publishes no
-     rule for this case, which is most of them. */
+     rule for this case, which is most of them.
+
+     A caller who needs a time anyway can copy the table entry and set this
+     themselves. That is a deliberate escape hatch: the library will not put
+     a ruling in an authority's mouth, but it will not stand between a user
+     and a prayer time either. The choice is then the caller's, and it is
+     recorded in their code rather than misattributed to the authority.
+
+         MethodParams mine = *method_params_get(CALC_RUSSIA);
+         mine.high_lat_method = HIGHLAT_ANGLE_BASED;
+         mine.high_lat_ref = 45.0;
+
+     At Murmansk, 68.97 N, that takes 2025 from 102 days with a non-finite
+     prescribed time to none. tests/test_prayertimes.c pins both numbers. */
   double high_lat_ref;
 } MethodParams;
 

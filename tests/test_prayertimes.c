@@ -1892,6 +1892,28 @@ static void test_field_contract(void) {
   // the method: the library does not attribute a ruling to an authority that
   // never issued one, so these stay non-finite and the caller is told rather
   // than guessed at.
+  // A caller can lift the polar restriction for a method whose authority
+  // publishes no rule, by copying the table entry and setting the reference
+  // latitude themselves. The library declines to make that choice on the
+  // authority's behalf, but it does not prevent the caller from making it.
+  // Murmansk is the case that matters: a real city of roughly 270000 people
+  // inside the polar circle, served by an authority that is silent here.
+  const MethodParams *russia = method_params_get(CALC_RUSSIA);
+  count_field_anomalies(68.97, 33.08, 3.0, russia, &nan_days, &out_days);
+  check_long(nan_days, 102, "Murmansk Russia as published, NaN days");
+
+  MethodParams russia_with_ref = *russia;
+  russia_with_ref.high_lat_method = HIGHLAT_ANGLE_BASED;
+  russia_with_ref.high_lat_ref = 45.0;
+  count_field_anomalies(68.97, 33.08, 3.0, &russia_with_ref, &nan_days,
+                        &out_days);
+  check_long(nan_days, 0, "Murmansk Russia with a caller reference, NaN days");
+
+  // The copy must not disturb the table entry it came from.
+  count_field_anomalies(68.97, 33.08, 3.0, method_params_get(CALC_RUSSIA),
+                        &nan_days, &out_days);
+  check_long(nan_days, 102, "Murmansk Russia unchanged after the copy");
+
   const MethodParams *kemenag = method_params_get(CALC_KEMENAG);
   count_field_anomalies(78.22, 15.65, 1.0, kemenag, &nan_days, &out_days);
   check_long(nan_days, 240, "Longyearbyen Kemenag, NaN days");
