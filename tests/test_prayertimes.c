@@ -1892,35 +1892,40 @@ static void test_field_contract(void) {
   // the method: the library does not attribute a ruling to an authority that
   // never issued one, so these stay non-finite and the caller is told rather
   // than guessed at.
-  // A caller can lift the polar restriction for a method whose authority
-  // publishes no rule, by copying the table entry and setting the reference
-  // latitude themselves. The library declines to make that choice on the
-  // authority's behalf, but it does not prevent the caller from making it.
-  // Murmansk is the case that matters: a real city of roughly 270000 people
-  // inside the polar circle, served by an authority that is silent here.
+  // Every method now resolves inside the polar circle. The 20 whose authority
+  // publishes no rule for that case fall back to POLAR_FALLBACK_REF, which is
+  // the library's own convention rather than anyone's ruling. Murmansk is the
+  // case that matters: a real city of roughly 270000 people inside the polar
+  // circle, served by an authority that is silent here.
   const MethodParams *russia = method_params_get(CALC_RUSSIA);
   count_field_anomalies(68.97, 33.08, 3.0, russia, &nan_days, &out_days);
-  check_long(nan_days, 102, "Murmansk Russia as published, NaN days");
-
-  MethodParams russia_with_ref = *russia;
-  russia_with_ref.high_lat_method = HIGHLAT_ANGLE_BASED;
-  russia_with_ref.high_lat_ref = 45.0;
-  count_field_anomalies(68.97, 33.08, 3.0, &russia_with_ref, &nan_days,
-                        &out_days);
-  check_long(nan_days, 0, "Murmansk Russia with a caller reference, NaN days");
-
-  // The copy must not disturb the table entry it came from.
-  count_field_anomalies(68.97, 33.08, 3.0, method_params_get(CALC_RUSSIA),
-                        &nan_days, &out_days);
-  check_long(nan_days, 102, "Murmansk Russia unchanged after the copy");
+  check_long(nan_days, 0, "Murmansk Russia, no NaN day");
 
   const MethodParams *kemenag = method_params_get(CALC_KEMENAG);
   count_field_anomalies(78.22, 15.65, 1.0, kemenag, &nan_days, &out_days);
-  check_long(nan_days, 240, "Longyearbyen Kemenag, NaN days");
-  check_long(count_field_nan(78.22, 15.65, 1.0, kemenag, 0), 128,
-             "Longyearbyen Kemenag, fajr");
-  check_long(count_field_nan(78.22, 15.65, 1.0, kemenag, 3), 240,
-             "Longyearbyen Kemenag, maghrib");
+  check_long(nan_days, 0, "Longyearbyen Kemenag, no NaN day");
+
+  // A caller who would rather be told the event does not occur turns the
+  // fallback off on their own copy, and the old behaviour returns. This is
+  // the same escape hatch in the other direction, and it is why the fallback
+  // being a convention rather than a ruling is expressible in the API.
+  MethodParams russia_strict = *russia;
+  russia_strict.high_lat_ref = 0.0;
+  count_field_anomalies(68.97, 33.08, 3.0, &russia_strict, &nan_days,
+                        &out_days);
+  check_long(nan_days, 102, "Murmansk Russia with the fallback off, NaN days");
+
+  MethodParams kemenag_strict = *kemenag;
+  kemenag_strict.high_lat_ref = 0.0;
+  check_long(count_field_nan(78.22, 15.65, 1.0, &kemenag_strict, 0), 128,
+             "Longyearbyen Kemenag with the fallback off, fajr");
+  check_long(count_field_nan(78.22, 15.65, 1.0, &kemenag_strict, 3), 240,
+             "Longyearbyen Kemenag with the fallback off, maghrib");
+
+  // The copies must not disturb the table entries they came from.
+  count_field_anomalies(68.97, 33.08, 3.0, method_params_get(CALC_RUSSIA),
+                        &nan_days, &out_days);
+  check_long(nan_days, 0, "Murmansk Russia unchanged after the copy");
 
   printf("\n");
 }
