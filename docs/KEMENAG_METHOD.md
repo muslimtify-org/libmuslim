@@ -2,18 +2,9 @@
 
 Dokumen ini menjelaskan metode perhitungan waktu shalat yang digunakan oleh Kementerian Agama Republik Indonesia (Kemenag RI) secara lengkap dan detail.
 
-> **Catatan, prayertimes.h v0.2.0.** Sejak v0.2.0 `struct PrayerTimes` hanya
-> mengembalikan lima waktu shalat wajib: Subuh, Dzuhur, Ashar, Maghrib, Isya.
-> Terbit dan Dhuha dihapus dari API. Terbit bukan waktu shalat melainkan batas
-> akhir waktu Subuh, dan Dhuha adalah shalat sunnah yang hanya dicantumkan pada
-> jadwal terbitan Indonesia. Keduanya masih dihitung di dalam library, karena
-> Maghrib adalah saat terbenam dan setiap substitusi lintang tinggi mengukur
-> panjang malam antara terbenam dan terbit, tetapi tidak lagi menjadi bagian
-> dari kontrak API.
+> **Catatan, prayertimes.h v0.2.0.** Sejak v0.2.0 `struct PrayerTimes` hanya mengembalikan lima waktu shalat wajib: Subuh, Dzuhur, Ashar, Maghrib, Isya. Terbit dan Dhuha dihapus dari API. Terbit bukan waktu shalat melainkan batas akhir waktu Subuh, dan Dhuha adalah shalat sunnah yang hanya dicantumkan pada jadwal terbitan Indonesia. Keduanya masih dihitung di dalam library, karena Maghrib adalah saat terbenam dan setiap substitusi lintang tinggi mengukur panjang malam antara terbenam dan terbit, tetapi tidak lagi menjadi bagian dari kontrak API.
 >
-> Bagian di bawah yang menjelaskan Terbit dan Dhuha tetap dipertahankan sebagai
-> catatan metode Kemenag itu sendiri, yang memang menerbitkan keduanya. Bagian
-> tersebut bukan lagi deskripsi API.
+> Bagian di bawah yang menjelaskan Terbit dan Dhuha tetap dipertahankan sebagai catatan metode Kemenag itu sendiri, yang memang menerbitkan keduanya. Bagian tersebut bukan lagi deskripsi API.
 
 
 ## Daftar Isi
