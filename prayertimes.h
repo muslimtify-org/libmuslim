@@ -77,17 +77,17 @@
  * during this work and made results worse, so it was deliberately left
  * alone.
  *
- * The published-table suite tests/test_prayertimes.c reports 753 checks.
+ * The published-table suite tests/test_prayertimes.c reports 756 checks.
  * 702 of those compare a computed time against a published table at a
  * uniform tolerance of 2 minutes, with a residual distribution of 369
  * checks at 0 minutes, 326 at 1 and 7 at 2, which sums to the 702. The
- * remaining 51 carry no residual because they are not time comparisons:
+ * remaining 54 carry no residual because they are not time comparisons:
  * 7 assert the test's own clock_diff_minutes helper, 8 assert the
- * civil-day converters, 15 assert the time formatters, 16 pin the
+ * civil-day converters, 15 assert the time formatters, 19 pin the
  * struct PrayerTimes field contract, including the per-method
- * high-latitude behaviour and the caller override for it, and 5 assert
- * that the five prescribed times stay in order at five locations across
- * every method.
+ * high-latitude behaviour, the caller override for it and the asr
+ * domain guard, and 5 assert that the five prescribed times stay in
+ * order at five locations across every method.
  *
  * These counts fell from 940 and 895 when sunrise and dhuha were removed
  * from the struct in v0.2.0. The fixtures behind them were the sunrise
@@ -861,18 +861,31 @@ calculate_prayer_times(int year, int month, int day, double latitude,
     isha = maghrib + (double)params->isha_interval / 60.0;
   }
 
-  /* Asr. Also solved at solve_lat, and not only for consistency: asr is
-     defined by the length of a shadow, so it needs the Sun above the horizon.
-     Inside the polar circle fabs(latitude - decl) exceeds 90 degrees, the
-     tangent turns negative and the formula returns a negative shadow
-     altitude, which is an artifact rather than a time. At 78.22 N on
-     2026-01-01 that is -13.922 degrees against a peak Sun altitude of
-     -11.235. The reference latitude has a real shadow. */
-  double asr_angle = atan(1.0 / ((double)params->asr_shadow +
-                                 tan(fabs(solve_lat - decl) * DEG_TO_RAD))) *
-                     RAD_TO_DEG;
-  double ha_asr = hour_angle(solve_lat, decl, -asr_angle);
-  double asr = noon + ha_asr;
+  /* Asr. Solved at solve_lat, and not only for consistency: asr is defined by
+     the length of a shadow, so it needs the Sun above the horizon.
+
+     The Sun's greatest altitude on a day is 90 - fabs(lat - decl), so a
+     separation of 90 degrees or more means it never rises and no shadow of
+     any ratio is cast. The formula does not say so. Its tangent turns
+     negative past 90 and it returns a negative shadow altitude, which
+     hour_angle then solves into a plausible looking time. At 78.22 N on
+     2026-01-01 that altitude is -13.922 degrees against a peak Sun altitude
+     of -11.235, and the result was reported as 14:47.
+
+     That is the one field that used to survive an isfinite() check on a day
+     where fajr, maghrib and isha were all correctly unavailable, so a caller
+     filtering per field would show it. A wrong time is worse than no time.
+     Where a reference latitude is in use solve_lat is that latitude, its
+     separation is always under 90, and a real shadow exists. */
+  double asr;
+  if (fabs(solve_lat - decl) >= 90.0) {
+    asr = NAN;
+  } else {
+    double asr_angle = atan(1.0 / ((double)params->asr_shadow +
+                                   tan(fabs(solve_lat - decl) * DEG_TO_RAD))) *
+                       RAD_TO_DEG;
+    asr = noon + hour_angle(solve_lat, decl, -asr_angle);
+  }
 
   /* Apply ihtiyat (precautionary) adjustments */
   double iht = (double)params->ihtiyat / 60.0;
