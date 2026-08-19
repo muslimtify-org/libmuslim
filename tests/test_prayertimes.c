@@ -1895,15 +1895,12 @@ static void test_ordering(void) {
       {"Murmansk", 68.97, 33.08, 3.0},     {"Reykjavik", 64.15, -21.94, 0.0},
       {"Jakarta", -6.2088, 106.8456, 7.0},
   };
-  /* Zero everywhere except one known case, pinned rather than hidden.
-     Moonsighting at Tromso on 2026-05-18 reports maghrib 23.590332 against
-     isha 23.586724, a gap of 13.0 seconds, and both render as "23:36". The
-     cause is unrelated to the polar splice this test was written for: that
-     method sets maghrib 3 minutes after sunset and takes isha as one seventh
-     of the night, and on a bright night of 19.5 minutes one seventh is 2.8
-     minutes, so the fixed offset overtakes the fraction. Tracked separately.
-     Any change to this number, at any place, is a regression to investigate. */
-  static const int expected[] = {0, 1, 0, 0, 0};
+  /* Zero everywhere. This was 1 at Tromso until the substituted isha was
+     anchored on maghrib rather than on sunset: Moonsighting sets maghrib 3
+     minutes after sunset and takes isha as one seventh of the night, and on a
+     bright night of 19.5 minutes one seventh is 2.8 minutes, so the fixed
+     offset overtook the fraction and isha landed 13 seconds early. Any
+     non-zero here, at any place, is a regression to investigate. */
   char label[128];
   printf("Test group: the five stay in order\n");
   for (size_t p = 0; p < sizeof places / sizeof *places; p++) {
@@ -1917,7 +1914,7 @@ static void test_ordering(void) {
     }
     snprintf(label, sizeof label, "%s, all %d methods", places[p].name,
              (int)CALC_COUNT);
-    check_long(worst, expected[p], label);
+    check_long(worst, 0, label);
   }
   printf("\n");
 }

@@ -733,7 +733,7 @@ static double reference_event(double ref_lat, double decl, double noon,
    sunset or sunrise at all, every such rule is undefined, because the unit it
    measures in does not exist, and only a reference latitude can answer. */
 static double high_lat_substitute(const MethodParams *params, double decl,
-                                  double noon, double sunrise, double sunset,
+                                  double noon, double sunrise, double evening,
                                   double night, double angle, double sign) {
   if (isnan(night)) {
     if (params->high_lat_ref <= 0.0)
@@ -743,12 +743,12 @@ static double high_lat_substitute(const MethodParams *params, double decl,
 
   switch (params->high_lat_method) {
   case HIGHLAT_MIDDLE_OF_NIGHT:
-    return sign < 0 ? sunrise - night / 2.0 : sunset + night / 2.0;
+    return sign < 0 ? sunrise - night / 2.0 : evening + night / 2.0;
   case HIGHLAT_ONE_SEVENTH:
-    return sign < 0 ? sunrise - night / 7.0 : sunset + night / 7.0;
+    return sign < 0 ? sunrise - night / 7.0 : evening + night / 7.0;
   case HIGHLAT_ANGLE_BASED:
     return sign < 0 ? sunrise - (angle / 60.0) * night
-                    : sunset + (angle / 60.0) * night;
+                    : evening + (angle / 60.0) * night;
   case HIGHLAT_NEAREST_LATITUDE: {
     /* Proportional measurement: the event takes the same share of this night
        that it takes of the night at the reference latitude. */
@@ -764,7 +764,7 @@ static double high_lat_substitute(const MethodParams *params, double decl,
       return NAN;
     double frac = sign < 0 ? ((r_event + 24.0) - r_set) / r_night
                            : (r_event - r_set) / r_night;
-    return fmod(sunset + frac * night + 48.0, 24.0);
+    return fmod(evening + frac * night + 48.0, 24.0);
   }
   case HIGHLAT_NONE:
   default:
@@ -850,7 +850,7 @@ calculate_prayer_times(int year, int month, int day, double latitude,
         hour_angle_safe(solve_lat, decl, params->isha_angle, &isha_failed);
     isha = noon + ha_isha;
     if (isha_failed) {
-      isha = high_lat_substitute(params, decl, noon, sunrise, sunset, night,
+      isha = high_lat_substitute(params, decl, noon, sunrise, maghrib, night,
                                  params->isha_angle, 1.0);
     } else if (!polar) {
       isha = refine_event(jd, latitude, longitude, timezone, params->isha_angle,
