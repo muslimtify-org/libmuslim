@@ -1950,7 +1950,17 @@ static void test_field_contract(void) {
   // reference latitude for the polar case. Before dhuha was dropped this
   // location still reported NaN days, and all of them were dhuha.
   count_field_anomalies(78.22, 15.65, 1.0, mwl, &nan_days, &out_days);
-  check_long(nan_days, 0, "Longyearbyen MWL, NaN days");
+  check_long(nan_days, 4, "Longyearbyen MWL, NaN days");
+  // Those 4 are asr alone, and they are not the polar case. On them the
+  // separation from the declination is between 90 and 90.833 degrees, so the
+  // Sun's true altitude never exceeds 0 and it is visible only by refraction.
+  // Sunrise therefore exists and fajr, maghrib and isha all resolve, but no
+  // shadow is cast, so asr does not exist. Reporting it as unavailable is the
+  // point of the domain guard.
+  check_long(count_field_nan(78.22, 15.65, 1.0, mwl, 2), 4,
+             "Longyearbyen MWL, the 4 are asr");
+  check_long(count_field_nan(78.22, 15.65, 1.0, mwl, 0), 0,
+             "Longyearbyen MWL, fajr always resolves");
   check_long(count_field_nan(78.22, 15.65, 1.0, mwl, 0), 0,
              "Longyearbyen MWL, fajr");
   check_long(count_field_nan(78.22, 15.65, 1.0, mwl, 3), 0,
@@ -1971,23 +1981,30 @@ static void test_field_contract(void) {
   // inside the polar circle, served by an authority that is silent here.
   const MethodParams *russia = method_params_get(CALC_RUSSIA);
   count_field_anomalies(68.97, 33.08, 3.0, russia, &nan_days, &out_days);
-  check_long(nan_days, 102, "Murmansk Russia as published, NaN days");
+  check_long(nan_days, 112, "Murmansk Russia as published, NaN days");
 
   MethodParams russia_with_ref = *russia;
   russia_with_ref.high_lat_method = HIGHLAT_ANGLE_BASED;
   russia_with_ref.high_lat_ref = 45.0;
   count_field_anomalies(68.97, 33.08, 3.0, &russia_with_ref, &nan_days,
                         &out_days);
-  check_long(nan_days, 0, "Murmansk Russia with a caller reference, NaN days");
+  check_long(nan_days, 10, "Murmansk Russia with a caller reference, NaN days");
+  // Not zero, and the 10 are asr alone. On those days the separation from the
+  // declination sits between 90 and 90.833 degrees, so the Sun is visible only
+  // by refraction and casts no shadow. Sunrise exists, so this is not the polar
+  // case and the reference latitude is not consulted. asr genuinely does not
+  // occur, and saying so is the domain guard working rather than failing.
+  check_long(count_field_nan(68.97, 33.08, 3.0, &russia_with_ref, 2), 10,
+             "Murmansk Russia with a caller reference, the 10 are asr");
 
   // The copy must not disturb the table entry it came from.
   count_field_anomalies(68.97, 33.08, 3.0, method_params_get(CALC_RUSSIA),
                         &nan_days, &out_days);
-  check_long(nan_days, 102, "Murmansk Russia unchanged after the copy");
+  check_long(nan_days, 112, "Murmansk Russia unchanged after the copy");
 
   const MethodParams *kemenag = method_params_get(CALC_KEMENAG);
   count_field_anomalies(78.22, 15.65, 1.0, kemenag, &nan_days, &out_days);
-  check_long(nan_days, 240, "Longyearbyen Kemenag, NaN days");
+  check_long(nan_days, 244, "Longyearbyen Kemenag, NaN days");
   check_long(count_field_nan(78.22, 15.65, 1.0, kemenag, 0), 128,
              "Longyearbyen Kemenag, fajr");
   check_long(count_field_nan(78.22, 15.65, 1.0, kemenag, 3), 240,
