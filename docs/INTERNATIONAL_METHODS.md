@@ -77,9 +77,9 @@ used.
 
 ### Kemenag (Indonesia)
 
-- Ihtiyat: +2 minutes on all prayer times (Sunrise gets -2 minutes).
+- Ihtiyat: +2 minutes on all prayer times.
 - Ceiling rounding: always rounds up to the next minute.
-- Includes Dhuha calculation at sun altitude $+4.3^\circ$.
+- Kemenag also publishes Terbit and Dhuha, the latter at sun altitude $+4.3^\circ$. Neither is returned by `struct PrayerTimes` as of prayertimes.h v0.2.0, which carries the five prescribed prayers only.
 - Transitioning to 16-second ihtiyat based on modern ephemeris data (VSOP, ELP, DE, INPOP).
 
 ### Morocco
