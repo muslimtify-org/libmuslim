@@ -648,8 +648,7 @@ static BOOL CALLBACK muslim_tz_table_init(PINIT_ONCE once, PVOID param,
   return TRUE;
 }
 
-/* Index into MUSLIM_IANA_TO_WIN, or -1. The pointer-returning variant above is
-   kept because get_system_timezone uses the reverse direction. */
+/* Index into MUSLIM_IANA_TO_WIN, or -1. */
 static int muslim_iana_zone_index(const char *tz_name) {
   if (!tz_name)
     return -1;
@@ -660,6 +659,27 @@ static int muslim_iana_zone_index(const char *tz_name) {
       return (int)i;
   }
   return -1;
+}
+
+/* The Windows key for an IANA name, or NULL.
+ *
+ * parse_timezone_offset no longer needs this, since it works from the index,
+ * but it is part of what this header offers a consumer that includes it: this
+ * is a single-header library, so a caller's translation unit sees these
+ * helpers and libmuslim-rs uses this one in its own timezone shim. Removing it
+ * broke that build with an unresolved symbol at link time, which neither this
+ * repository's Linux tests nor its Windows job caught, because nothing here
+ * calls it.
+ *
+ * The unused marker is what keeps -Wall -Wextra quiet about a function this
+ * repository does not itself call. */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((unused))
+#endif
+static const wchar_t *
+muslim_iana_to_windows_zone(const char *tz_name) {
+  int index = muslim_iana_zone_index(tz_name);
+  return index < 0 ? NULL : MUSLIM_IANA_TO_WIN[index].win;
 }
 
 int parse_timezone_offset(const char *tz_name, time_t when, double *out) {
