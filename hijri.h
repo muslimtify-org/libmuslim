@@ -60,6 +60,67 @@
  * included too, as a fast dependency-free fallback.
  *
  * -----------------------------------------------------------------------
+ * SUPPORTED RANGE
+ *
+ * Issue #27 asked for this as a contract rather than a description of
+ * whatever the oracle happened to cover. Four things bound it, and they
+ * bind at different places.
+ *
+ * VALIDATED, 1900-2100. The ephemeris oracle compares this header against
+ * 24 JPL Horizons epochs across that span, worst case 0.0051 deg of lunar
+ * longitude. Outside it nothing here has been checked against an
+ * independent ephemeris, so the error bar below is measured only inside
+ * these two dates.
+ *
+ * TABLE-BOUND, 1882-11-12 to 2174-11-25. hijri_umm_al_qura_from_gregorian
+ * answers from the published table only inside that window and falls back
+ * to reconstruction outside it. hijri_umm_al_qura_covers is how a caller
+ * tells the two apart. This is a hard edge, not a gradual one.
+ *
+ * DELTA T, adequate 1600-2200 and not the binding constraint. The model is
+ * a 1986-2050 polynomial with a long-term parabola outside it. Measured
+ * against the standard historical determinations:
+ *
+ *     year   error      lunar displacement
+ *     1600   +14.1 s    7.75 arcsec
+ *     1800   -32.5 s    17.84 arcsec     (worst)
+ *     2000    -0.7 s     0.39 arcsec
+ *     2100   +29.9 s    16.39 arcsec
+ *     2200    +1.4 s     0.77 arcsec
+ *
+ * Worst case 0.005 deg of lunar longitude, below the 0.0051 deg the series
+ * itself carries, so improving Delta T alone would change nothing.
+ *
+ * THE REAL LIMIT IS NOT THE DATE, IT IS THE MARGIN. Every criterion here
+ * thresholds a continuous quantity, so an evening whose value sits within
+ * the error bar of the threshold has an answer this library cannot stand
+ * behind. Counting evenings where |altitude - 3| or |elongation - 6.4| is
+ * under 0.0070 deg, the worst topocentric elongation error measured
+ * against DE440, at Mecca under MABIMS 2021:
+ *
+ *     century   evenings   inside the error bar
+ *     1600s        33600       4
+ *     1700s        33600       7
+ *     1800s        33600       5
+ *     1900s        33600      10
+ *     2000s        33600       6
+ *     2100s        33600       5
+ *     2300s        33600       4
+ *
+ * Between 4 and 10 per century, and flat: 1600 and 2300 both show 4. There
+ * is no sign of the calculation degrading with distance from J2000 across
+ * this span, which is the useful part of the answer. What degrades is
+ * confidence in the error bar itself, because it stops being measured
+ * outside 1900-2100.
+ *
+ * So: use this header freely from 1600 to 2200. Expect a handful of
+ * evenings per century where the verdict is a coin toss the arithmetic
+ * cannot settle, at any epoch including the present. Treat 1882-2174 as
+ * the range where Umm al-Qura is a published table rather than a
+ * reconstruction. Outside 1600-2200 nothing here fails loudly, and nothing
+ * here has been checked either.
+ *
+ * -----------------------------------------------------------------------
  * ACCURACY CAVEAT -- PLEASE READ
  *
  * hijri_moon_position() implements the full Meeus ch. 47 lunar series --
