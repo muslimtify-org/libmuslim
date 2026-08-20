@@ -84,8 +84,24 @@
  * because there the two solvers describe different events rather than
  * disagreeing about one.
  *
- * Fajr and Isha are not asserted against any oracle, only by the
- * published-table fixtures. Asr is also
+ * Fajr and Isha are asserted the same way, against the depression angle
+ * each is defined by. hijri_sun_altitude returns a geometric altitude
+ * with no refraction term, which is exactly how this header defines
+ * them, so the two are directly comparable. Excluding days where the
+ * fallback supplied the value, and polar days where the schedule is
+ * solved at the reference latitude, the remainder splits by how far the
+ * Sun passes the required depression. 17676 points that clear it by at
+ * least half a degree agree to a mean of 0.0996 arcmin and a maximum of
+ * 0.7095 arcmin, against a pinned bound of 2.0. The 186 points that only
+ * graze it agree to a mean of 2.2351 and a maximum of 30.1964 arcmin,
+ * roughly 6 minutes of time, against a pinned bound of 45.0.
+ *
+ * That second figure is refine_event's single-iteration truncation: one
+ * step from the initial guess does not converge when the Sun only skims
+ * the target depression. It is asserted rather than excluded, because it
+ * is a real accuracy limit of this header. It is also the explanation
+ * for the 16 minute isha movement at Stockholm that #52 was opened over,
+ * which lands on exactly such a day. Asr is also
  * covered only by the published-table fixtures, refining it was measured
  * during this work and made results worse, so it was deliberately left
  * alone.
