@@ -1,0 +1,126 @@
+name: Discord Notifications
+
+# Posts repository events to a Discord webhook.
+#
+# muslimtify does this with sarisia/actions-status-discord. This is the same
+# thing with curl, because that repository's own auto-assign workflow argues
+# against third-party actions in a library "whose whole point is having no
+# dependencies", and a Discord action running on pull_request_target holds the
+# webhook secret in scope. A compromised release of it would leak that secret.
+# Discord's webhook API is a single JSON POST, so the action buys nothing here.
+#
+# Needs a DISCORD_WEBHOOK secret. Without one every step is skipped rather than
+# failing, so a fork or a repository that has not set it stays green.
+
+on:
+  issues:
+    types: [opened, closed, reopened]
+  # pull_request_target rather than pull_request so PRs from forks can read the
+  # secret. Safe only because nothing here checks out or runs code from the
+  # pull request. Do not add a checkout step.
+  pull_request_target:
+    types: [opened, closed, reopened]
+  release:
+    types: [published]
+  watch:
+    types: [started]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: post to discord
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          MERGED: ${{ github.event.pull_request.merged }}
+          REPO: ${{ github.repository }}
+          SENDER: ${{ github.event.sender.login }}
+          # Every field the payload needs, passed through the environment
+          # rather than interpolated into the script, so a title containing
+          # quotes or a backtick cannot break out into the shell.
+          ISSUE_NUM: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          IS_PR_COMMENT: ${{ github.event.issue.pull_request != null }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          COMMENT_URL: ${{ github.event.comment.html_url }}
+          COMMENT_USER: ${{ github.event.comment.user.login }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_NAME: ${{ github.event.release.name }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          RELEASE_BY: ${{ github.event.release.author.login }}
+          STARS: ${{ github.event.repository.stargazers_count }}
+          SENDER_URL: ${{ github.event.sender.html_url }}
+        run: |
+          set -euo pipefail
+
+          # The secrets context is not dependable in a step-level `if`, so the
+          # guard lives here. A repository without the secret stays green and
+          # silent rather than failing every issue that is opened.
+          if [ -z "${WEBHOOK:-}" ]; then
+            echo "DISCORD_WEBHOOK is not set, nothing to post"
+            exit 0
+          fi
+
+          case "$EVENT" in
+            issues)
+              verb="$ACTION"
+              title="Issue #${ISSUE_NUM} ${verb}: ${ISSUE_TITLE}"
+              url="$ISSUE_URL"
+              desc="${verb} by ${SENDER}"
+              [ "$ACTION" = closed ] && color=8540894 || color=2066493
+              ;;
+            pull_request_target)
+              if [ "$MERGED" = true ]; then verb=merged; color=8540894
+              elif [ "$ACTION" = closed ]; then verb=closed; color=13574191
+              else verb="$ACTION"; color=2066493
+              fi
+              title="PR #${PR_NUM} ${verb}: ${PR_TITLE}"
+              url="$PR_URL"
+              desc="${verb} by ${SENDER}"
+              ;;
+            issue_comment)
+              [ "$IS_PR_COMMENT" = true ] && kind=PR || kind=issue
+              title="New comment on ${kind} #${ISSUE_NUM}: ${ISSUE_TITLE}"
+              url="$COMMENT_URL"
+              desc="Comment by ${COMMENT_USER}"
+              color=5726250
+              ;;
+            release)
+              title="Released ${RELEASE_TAG}: ${RELEASE_NAME}"
+              url="$RELEASE_URL"
+              desc="Published by ${RELEASE_BY}"
+              color=13936940
+              ;;
+            watch)
+              title="New star from ${SENDER}"
+              url="$SENDER_URL"
+              desc="${REPO} now has ${STARS} stars"
+              color=15389263
+              ;;
+            *)
+              echo "no rule for event $EVENT, nothing to post"
+              exit 0
+              ;;
+          esac
+
+          # jq builds the JSON so that titles containing quotes, newlines or
+          # backslashes are escaped properly instead of producing invalid JSON.
+          jq -n --arg t "$title" --arg u "$url" --arg d "$desc" \
+                --argjson c "$color" \
+                '{username:"GitHub",embeds:[{title:$t,url:$u,description:$d,color:$c}]}' \
+            > payload.json
+
+          curl --fail --silent --show-error \
+               -H "Content-Type: application/json" \
+               -X POST -d @payload.json "$WEBHOOK"
+          echo "posted: $title"
