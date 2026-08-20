@@ -347,6 +347,128 @@ static void check_polar_angle_agreement(const MethodParams *params,
                      (double)(comparable - 7000));
 }
 
+/* ---------------------------------------------------------------------------
+ * TWILIGHT ORACLE, ANGLE DOMAIN
+ *
+ * Closes #52. Sunset has been validated against hijri.h since this file was
+ * written, but fajr and isha had no oracle of any kind, and #49 moved isha by
+ * up to 16 minutes at Stockholm on the strength of a sunset measurement that
+ * does not transfer to them.
+ *
+ * hijri.h exposes no twilight solver, which is why #52 records this as needing
+ * either a published schedule or a new implementation. It turns out neither is
+ * needed. hijri_sun_altitude() returns a geometric altitude with no refraction
+ * term, which is exactly how prayertimes.h defines fajr and isha, so the two
+ * are directly comparable: at the instant this header reports for fajr, ask
+ * the DE440-validated solver where the Sun is, and compare against the
+ * depression angle the event is defined by.
+ *
+ * Days where the fallback supplied the value are excluded, because on those
+ * the Sun never reaches the angle and there is no crossing to check. So are
+ * polar days, where the whole schedule is solved at the reference latitude
+ * rather than at the location.
+ *
+ * TWO POPULATIONS, BOTH PINNED. The remainder splits cleanly by how far the
+ * Sun goes past the required depression.
+ *
+ *   comfortably solved, deepest >= angle + 0.5 deg
+ *     17676 points, mean 0.0996 arcmin, max 0.7095 arcmin at lat -70.0 on
+ *     2025-09-29. Pinned at 2.0, a margin of about 2.8x.
+ *
+ *   grazing band, deepest within 0.5 deg of the angle
+ *     186 points, mean 2.2351 arcmin, max 30.1964 arcmin at lat 70.0 on
+ *     2025-03-27, roughly 6 minutes of time. Pinned at 45.0.
+ *
+ * The grazing band is asserted rather than excluded. It is refine_event()'s
+ * single-iteration truncation: one step from the initial guess does not
+ * converge when the Sun only skims the target depression, and the residual
+ * grows as the crossing flattens. That is a real accuracy limit of this
+ * header and hiding it behind an exclusion would misrepresent the coverage.
+ *
+ * This also explains the observation that opened #52. Stockholm on 2026-08-17
+ * is a grazing day, the one where the fallback engages, so the 16 minute
+ * movement #49 introduced is this band rather than an unexplained defect. It
+ * is now measured instead of merely suspected, which is what that issue asked
+ * for.
+ *
+ * Grid: |lat| in {70, 66, 60, 50, 30, 0}, both hemispheres, longitudes -120,
+ * 0 and 120, every day of 2025.
+ * ------------------------------------------------------------------------ */
+#define TOL_TWILIGHT_ARCMIN 2.0
+#define TOL_TWILIGHT_GRAZING_ARCMIN 45.0
+#define GRAZING_MARGIN_DEG 0.5
+
+static void check_twilight_angle_agreement(const MethodParams *params,
+                                           double iht_hours) {
+  static const double TW_LATS[] = {-70.0, -66.0, -60.0, -50.0, -30.0, 0.0,
+                                   30.0,  50.0,  60.0,  66.0,  70.0};
+  static const double TW_LONS[] = {-120.0, 0.0, 120.0};
+  long solved = 0, grazing = 0;
+  double max_solved = 0.0, max_grazing = 0.0;
+
+  for (size_t i = 0; i < sizeof TW_LATS / sizeof *TW_LATS; i++) {
+    for (size_t j = 0; j < sizeof TW_LONS / sizeof *TW_LONS; j++) {
+      double lat = TW_LATS[i], lon = TW_LONS[j], timezone = lon / 15.0;
+      HijriLocation loc = {lat, lon, 0.0, "twilight oracle"};
+
+      for (int month = 1; month <= 12; month++) {
+        for (int day = 1; day <= DAYS_IN_MONTH[month - 1]; day++) {
+          struct PrayerTimes pt = calculate_prayer_times(
+              2025, month, day, lat, lon, timezone, params);
+          double decl, eqt;
+          sun_position(julian_day(2025, month, day), &decl, &eqt);
+
+          /* Polar days are solved at the reference latitude, not this one. */
+          if (isnan(hour_angle(lat, decl, REFRACTION_CORRECTION))) continue;
+
+          double jd_midnight =
+              hijri_jd_from_gregorian(2025, month, (double)day) - lon / 360.0;
+          double deepest = 90.0 - fabs(lat + decl);
+
+          struct {
+            double hours, angle;
+          } events[2] = {{pt.fajr - iht_hours, params->fajr_angle},
+                         {pt.isha - iht_hours, params->isha_angle}};
+
+          for (int k = 0; k < 2; k++) {
+            bool failed = false;
+            hour_angle_safe(lat, decl, events[k].angle, &failed);
+            if (failed || !isfinite(events[k].hours)) continue;
+
+            double alt =
+                hijri_sun_altitude(jd_midnight + events[k].hours / 24.0, &loc);
+            double arcmin = fabs(alt + events[k].angle) * 60.0;
+
+            if (deepest >= events[k].angle + GRAZING_MARGIN_DEG) {
+              solved++;
+              if (arcmin > max_solved) max_solved = arcmin;
+              check_within("prayertimes_oracle_twilight_arcmin", jd_midnight,
+                           arcmin, 0.0, TOL_TWILIGHT_ARCMIN);
+            } else {
+              grazing++;
+              if (arcmin > max_grazing) max_grazing = arcmin;
+              check_within("prayertimes_oracle_twilight_grazing_arcmin",
+                           jd_midnight, arcmin, 0.0,
+                           TOL_TWILIGHT_GRAZING_ARCMIN);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  printf("prayertimes_oracle twilight: %ld solved (max %.4f arcmin), "
+         "%ld grazing (max %.4f arcmin)\n",
+         solved, max_solved, grazing, max_grazing);
+
+  /* Vacuous-pass guards. Both populations must keep producing points, or the
+     assertions above would pass by never running. */
+  check_true_nonzero("prayertimes_oracle_twilight_solved_nonvacuous",
+                     (double)(solved - 17000));
+  check_true_nonzero("prayertimes_oracle_twilight_grazing_nonvacuous",
+                     (double)(grazing - 150));
+}
+
 int main(void) {
   const MethodParams *params = method_params_get(CALC_MWL);
   double iht_hours = (double)params->ihtiyat / 60.0;
@@ -426,6 +548,7 @@ int main(void) {
          max_diff_s, max_lat, max_lon, max_y, max_m, max_d);
 
   check_polar_angle_agreement(params, iht_hours);
+  check_twilight_angle_agreement(params, iht_hours);
 
   printf("prayertimes_oracle checks: %d checks, %d failures\n", checks,
          failures);
