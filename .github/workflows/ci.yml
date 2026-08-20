@@ -47,3 +47,59 @@ jobs:
       - name: research baseline (glibc only -- see comment)
         if: matrix.os == 'ubuntu-latest'
         run: make baseline CC=${{ matrix.cc }} CXX=${{ matrix.cxx }}
+
+  # The _WIN32 branch of timezone.h is roughly 160 lines, including the whole
+  # EnumDynamicTimeZoneInformation lookup, and until this job existed nothing
+  # in this repository ever compiled it. Not CI, which ran only Linux and
+  # macOS, and not the author, who is on Linux. A syntax error in that branch
+  # could have sat undetected indefinitely, and issue #64 proposes rewriting
+  # exactly that code.
+  #
+  # MSYS2's mingw-w64 gcc is used rather than MSVC because it defines _WIN32,
+  # links winpthreads for the concurrency guard in test_timezone.c, and runs
+  # the existing Makefile unchanged. MSVC coverage would need a separate build
+  # path and is worth its own change rather than riding along here.
+  #
+  # `make baseline` is deliberately not run, for the same libm-rounding reason
+  # the macOS jobs skip it.
+  windows:
+    runs-on: windows-latest
+    name: windows-latest / mingw-w64
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            make
+            mingw-w64-x86_64-gcc
+
+      # Without this the job could pass while compiling the POSIX branch, which
+      # would make it worse than no job at all: a green tick over nothing.
+      - name: confirm the Windows branch is the one being compiled
+        run: |
+          cat > /tmp/which_branch.c <<'EOF'
+          #define MUSLIM_TIMEZONE_IMPLEMENTATION
+          #include "timezone.h"
+          #include <stdio.h>
+          #if !defined(_WIN32)
+          #error "compiled the POSIX branch, so this job proves nothing"
+          #endif
+          int main(void) {
+            char zone[64];
+            int rc = get_system_timezone(zone, sizeof zone);
+            printf("_WIN32 branch active, get_system_timezone rc=%d zone=%s\n",
+                   rc, rc == 0 ? zone : "(unavailable)");
+            return 0;
+          }
+          EOF
+          gcc -std=c11 -Wall -Wextra -I. /tmp/which_branch.c -o /tmp/which_branch
+          /tmp/which_branch
+
+      - name: build and test
+        run: make test cxx examples CC=gcc CXX=g++
