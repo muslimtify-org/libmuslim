@@ -59,17 +59,30 @@
  * longitude -120, on 2025-12-17, against a pinned bound of 15.0 seconds
  * at tests/test_prayertimes_oracle.c:195.
  *
- * That 6.5966 second figure is not a global accuracy claim. The oracle
- * covers |latitude| <= 60 only. Beyond that the two solvers diverge
- * sharply, because near the polar circle the Sun crosses the horizon at
- * grazing incidence and a small altitude difference becomes a large time
- * difference. Measured with the current code, maximum absolute
- * difference by latitude:
+ * That 6.5966 second figure is not a global accuracy claim. The seconds
+ * grid covers |latitude| <= 60 only. Beyond that the two solvers diverge
+ * sharply in the time domain, because near the polar circle the Sun
+ * crosses the horizon at grazing incidence and a small altitude
+ * difference becomes a large time difference. Measured with the current
+ * code, maximum absolute difference by latitude:
  *
  *   lat +60   2.39 s     lat -60    6.60 s
  *   lat +66   9.58 s     lat -66  123.65 s
  *   lat +68  29.55 s     lat -68  104.44 s
  *   lat +70  33.37 s     lat -70   77.99 s
+ *
+ * Above 60 degrees the same oracle is applied in the angle domain
+ * instead, which does not amplify at grazing incidence because nothing
+ * is converted back into a time. At the instant this header reports for
+ * maghrib, the DE440-validated solver is asked where the Sun is, and
+ * that is compared against where the same solver puts the Sun at its own
+ * sunset. Over |latitude| in {62, 66, 70, 75, 78}, longitudes -120, 0
+ * and 120, every day of 2025 and both hemispheres, 7448 comparable
+ * points agree to a mean of 0.1769 arcmin and a maximum of 0.7511
+ * arcmin, against a pinned bound of 2.0 arcmin. Not one point exceeded
+ * 1 arcmin. The 30 first and last days of the polar period are excluded,
+ * because there the two solvers describe different events rather than
+ * disagreeing about one.
  *
  * Fajr and Isha are not asserted against any oracle, only by the
  * published-table fixtures. Asr is also

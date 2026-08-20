@@ -231,6 +231,122 @@ static void check_true_nonzero(const char *name, double value) {
   }
 }
 
+/* ---------------------------------------------------------------------------
+ * POLAR EXTENSION, ANGLE DOMAIN
+ *
+ * The grid above stops at +-60 deg because it compares two solvers in the TIME
+ * domain, and near the polar circle the Sun crosses the horizon so shallowly
+ * that a sub-arcminute angle disagreement becomes tens of seconds. That is a
+ * property of the comparison, not of the astronomy, and it left everything
+ * above 60 deg unvalidated even though that is exactly where this library's
+ * high-latitude behaviour lives.
+ *
+ * This check asks the question the other way round and does not convert an
+ * angle back into a time. It takes the instant prayertimes.h reports for
+ * maghrib, asks the DE440-validated solver where the Sun is at that instant,
+ * and compares that against where the same solver puts the Sun at its own
+ * sunset. Grazing incidence does not amplify anything here: both quantities
+ * are altitudes, and no refraction or semidiameter constant enters, because
+ * the two are differenced against each other rather than against a target.
+ *
+ * MEASURED BOUND. |lat| in {62, 66, 70, 75, 78}, longitudes -120, 0, 120,
+ * every day of 2025, both hemispheres. 7448 comparable points, mean
+ * 0.1769 arcmin, max 0.7511 arcmin at lat -75.0 lon 0.0 on 2025-10-30. Not
+ * one point exceeded 1 arcmin. TOL_POLAR_ARCMIN is pinned at 2.0, a margin of
+ * about 2.7x, matching the ratio the seconds-domain tolerance above uses.
+ *
+ * EXCLUDED, AND WHY. On the first and last day of the polar period the two
+ * solvers are not describing the same event. prayertimes.h substitutes from
+ * its reference latitude as soon as its own sunrise hour angle stops solving,
+ * while hijri_find_sunset can still find a grazing sunset minutes before
+ * midnight. At lat 66 on 2025-06-29 that is a 4.1 hour difference between two
+ * individually correct answers. Those days are skipped by testing the same
+ * condition prayertimes.h itself branches on, rather than by widening the
+ * tolerance until they pass. 30 of 7478 points are excluded this way.
+ *
+ * Latitudes beyond 78 are deliberately not covered. At 88 deg the seasonal
+ * boundary lasts longer than a day and the two solvers pick different
+ * crossings, which produced a 13.63 arcmin outlier at lat -88 on 2025-03-27.
+ * That is the same class of disagreement as the excluded boundary days rather
+ * than a new one, and no inhabited location sits there.
+ * ------------------------------------------------------------------------ */
+#define TOL_POLAR_ARCMIN 2.0
+
+static void check_polar_angle_agreement(const MethodParams *params,
+                                        double iht_hours) {
+  static const double POLAR_LATS[] = {-78.0, -75.0, -70.0, -66.0, -62.0,
+                                      62.0,  66.0,  70.0,  75.0,  78.0};
+  static const double POLAR_LONS[] = {-120.0, 0.0, 120.0};
+  long comparable = 0, excluded = 0;
+  double sum = 0.0, max_arcmin = 0.0;
+  double worst_lat = 0.0, worst_lon = 0.0;
+  int worst_m = 0, worst_d = 0;
+
+  for (size_t i = 0; i < sizeof POLAR_LATS / sizeof *POLAR_LATS; i++) {
+    for (size_t j = 0; j < sizeof POLAR_LONS / sizeof *POLAR_LONS; j++) {
+      double lat = POLAR_LATS[i], lon = POLAR_LONS[j];
+      double timezone = lon / 15.0; /* mean solar time, as above */
+      HijriLocation loc = {lat, lon, 0.0, "polar oracle"};
+
+      for (int month = 1; month <= 12; month++) {
+        for (int day = 1; day <= DAYS_IN_MONTH[month - 1]; day++) {
+          struct PrayerTimes pt = calculate_prayer_times(
+              2025, month, day, lat, lon, timezone, params);
+          double maghrib_raw = pt.maghrib - iht_hours;
+          if (!isfinite(maghrib_raw)) continue;
+
+          double jd_midnight =
+              hijri_jd_from_gregorian(2025, month, (double)day) - lon / 360.0;
+          double jd_sunset;
+          if (hijri_find_sunset(jd_midnight, &loc,
+                                &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL,
+                                &jd_sunset) != HIJRI_EVENT_OK) {
+            continue;
+          }
+
+          /* The boundary-day exclusion, testing the same condition
+             prayertimes.h branches on rather than a tolerance. */
+          double decl, eqt;
+          sun_position(julian_day(2025, month, day), &decl, &eqt);
+          if (isnan(hour_angle(lat, decl, REFRACTION_CORRECTION))) {
+            excluded++;
+            continue;
+          }
+
+          double alt_pt =
+              hijri_sun_altitude(jd_midnight + maghrib_raw / 24.0, &loc);
+          double alt_hijri = hijri_sun_altitude(jd_sunset, &loc);
+          double arcmin = fabs(alt_pt - alt_hijri) * 60.0;
+
+          comparable++;
+          sum += arcmin;
+          if (arcmin > max_arcmin) {
+            max_arcmin = arcmin;
+            worst_lat = lat;
+            worst_lon = lon;
+            worst_m = month;
+            worst_d = day;
+          }
+          check_within("prayertimes_oracle_polar_angle_arcmin", jd_midnight,
+                       arcmin, 0.0, TOL_POLAR_ARCMIN);
+        }
+      }
+    }
+  }
+
+  printf("prayertimes_oracle polar: %ld comparable, %ld boundary excluded\n",
+         comparable, excluded);
+  printf("prayertimes_oracle polar max = %.4f arcmin at lat=%.1f lon=%.1f "
+         "2025-%02d-%02d (mean %.4f)\n",
+         max_arcmin, worst_lat, worst_lon, worst_m, worst_d,
+         comparable ? sum / (double)comparable : 0.0);
+
+  /* A vacuous pass guard of the same kind the seconds grid uses: if the grid
+     ever stops producing comparable points, the check above passes silently. */
+  check_true_nonzero("prayertimes_oracle_polar_nonvacuous",
+                     (double)(comparable - 7000));
+}
+
 int main(void) {
   const MethodParams *params = method_params_get(CALC_MWL);
   double iht_hours = (double)params->ihtiyat / 60.0;
@@ -308,6 +424,8 @@ int main(void) {
   printf("prayertimes_oracle max diff = %.4f s at lat=%.1f lon=%.1f "
          "%04d-%02d-%02d\n",
          max_diff_s, max_lat, max_lon, max_y, max_m, max_d);
+
+  check_polar_angle_agreement(params, iht_hours);
 
   printf("prayertimes_oracle checks: %d checks, %d failures\n", checks,
          failures);
