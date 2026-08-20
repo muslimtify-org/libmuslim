@@ -71,6 +71,14 @@
  *   lat +68  29.55 s     lat -68  104.44 s
  *   lat +70  33.37 s     lat -70   77.99 s
  *
+ * refine_event iterates to convergence rather than taking one step, which
+ * tightened both figures: the twilight solved population went from a mean
+ * of 0.0996 arcmin and a max of 0.7095 to 0.0426 and 0.2312, and the polar
+ * check from 0.7511 to 0.4680. No published-table comparison moved, all 702
+ * lines byte-identical. The grazing band did not move either, to the last
+ * digit, because its limit is a nearly tangent crossing rather than an
+ * early stop, see issue #79.
+ *
  * Above 60 degrees the same oracle is applied in the angle domain
  * instead, which does not amplify at grazing incidence because nothing
  * is converted back into a time. At the instant this header reports for
@@ -660,13 +668,24 @@ static double hour_angle_safe(double lat, double decl, double angle,
 static double refine_event(double jd, double latitude, double longitude,
                            double timezone, double altitude, double sign,
                            double guess) {
-  double d2, e2, n2, ha;
-  sun_position(jd + (guess - timezone) / 24.0, &d2, &e2);
-  n2 = 12.0 + timezone - (longitude / 15.0) - e2;
-  ha = hour_angle(latitude, d2, altitude);
-  if (isnan(ha))
-    return guess;
-  return n2 + sign * ha;
+  double t = guess;
+  for (int iter = 0; iter < 8; iter++) {
+    double d2, e2, n2, ha;
+    sun_position(jd + (t - timezone) / 24.0, &d2, &e2);
+    n2 = 12.0 + timezone - (longitude / 15.0) - e2;
+    ha = hour_angle(latitude, d2, altitude);
+    /* The event can stop existing part way through. Near a tangent crossing
+       one step can move the estimate far enough that the declination there no
+       longer reaches the target altitude at all, and the last value that did
+       is the best answer available. See issue #79. */
+    if (isnan(ha))
+      return t;
+    double next = n2 + sign * ha;
+    if (fabs(next - t) < 1.0e-7) /* 0.36 ms, far inside any reported minute */
+      return next;
+    t = next;
+  }
+  return t;
 }
 
 /* Reduce an hour value onto the 24-hour clock face before it is decomposed

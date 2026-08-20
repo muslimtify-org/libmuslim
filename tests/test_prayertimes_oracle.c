@@ -270,7 +270,7 @@ static void check_true_nonzero(const char *name, double value) {
  * That is the same class of disagreement as the excluded boundary days rather
  * than a new one, and no inhabited location sits there.
  * ------------------------------------------------------------------------ */
-#define TOL_POLAR_ARCMIN 2.0
+#define TOL_POLAR_ARCMIN 1.5
 
 static void check_polar_angle_agreement(const MethodParams *params,
                                         double iht_hours) {
@@ -372,17 +372,24 @@ static void check_polar_angle_agreement(const MethodParams *params,
  * Sun goes past the required depression.
  *
  *   comfortably solved, deepest >= angle + 0.5 deg
- *     17676 points, mean 0.0996 arcmin, max 0.7095 arcmin at lat -70.0 on
- *     2025-09-29. Pinned at 2.0, a margin of about 2.8x.
+ *     17676 points, mean 0.0426 arcmin, max 0.2312 arcmin. Pinned at 1.0, a
+ *     margin of about 4.3x. Both figures improved when refine_event was
+ *     iterated to convergence rather than taking a single step, from a mean
+ *     of 0.0996 and a max of 0.7095.
  *
  *   grazing band, deepest within 0.5 deg of the angle
  *     186 points, mean 2.2351 arcmin, max 30.1964 arcmin at lat 70.0 on
- *     2025-03-27, roughly 6 minutes of time. Pinned at 45.0.
+ *     2025-03-27, roughly 6 minutes of time. Pinned at 45.0. Unchanged to
+ *     the last digit by iterating refine_event, because the limit there is
+ *     not convergence, see below.
  *
- * The grazing band is asserted rather than excluded. It is refine_event()'s
- * single-iteration truncation: one step from the initial guess does not
- * converge when the Sun only skims the target depression, and the residual
- * grows as the crossing flattens. That is a real accuracy limit of this
+ * The grazing band is asserted rather than excluded, and it is not a
+ * convergence failure. At lat 70 on 2025-03-27 the Sun clears 17 degrees by
+ * 0.39, one step moves the estimate 38 minutes, and at that new instant the
+ * declination has shifted just enough that the Sun no longer reaches 17
+ * degrees at all. hour_angle returns NaN and the previous value stands.
+ * Iterating changes this band by nothing at all, which is measured rather
+ * than assumed. The limit is a nearly tangent crossing, not an early stop. That is a real accuracy limit of this
  * header and hiding it behind an exclusion would misrepresent the coverage.
  *
  * This also explains the observation that opened #52. Stockholm on 2026-08-17
@@ -394,7 +401,7 @@ static void check_polar_angle_agreement(const MethodParams *params,
  * Grid: |lat| in {70, 66, 60, 50, 30, 0}, both hemispheres, longitudes -120,
  * 0 and 120, every day of 2025.
  * ------------------------------------------------------------------------ */
-#define TOL_TWILIGHT_ARCMIN 2.0
+#define TOL_TWILIGHT_ARCMIN 1.0
 #define TOL_TWILIGHT_GRAZING_ARCMIN 45.0
 #define GRAZING_MARGIN_DEG 0.5
 
