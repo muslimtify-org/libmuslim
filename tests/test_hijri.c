@@ -2081,6 +2081,85 @@ static int recombine_margins(HijriLocalPredicate predicate,
  *      Hijri tests: 2499 checks, 4 failures
  *    Reverted after recording.
  */
+/* A circumpolar status is a claim about the whole window, so it has to be
+ * checkable against the window. Before issue #82 both finders classified a
+ * failed search from one sample at jd + 0.5, treating it as the extremum.
+ * That is local noon for the Sun and an arbitrary lunar phase for the Moon,
+ * which inverted 820 of 3162 moonset failures across latitude -89 to 89.
+ *
+ * This walks a small high-latitude grid and, whenever a finder claims
+ * NEVER_RISES or NEVER_SETS, verifies the claim against a one-minute scan of
+ * the same window. The grid is deliberately small so make test stays quick;
+ * the full sweep lives in docs/research. */
+static void test_setting_status_matches_the_window(void) {
+  static const int lats[] = {-85, -81, -67, 63, 71, 78};
+  static const int days[] = {18, 60, 102, 188, 252, 281, 318};
+  size_t li, di;
+  int checked_never_rises = 0, checked_never_sets = 0, checked_not_found = 0;
+
+  for (li = 0; li < sizeof(lats) / sizeof(lats[0]); li++) {
+    for (di = 0; di < sizeof(days) / sizeof(days[0]); di++) {
+      HijriLocation loc = {(double)lats[li], 0.0, 0.0, "status_grid"};
+      double jd0 = hijri_jd_from_gregorian(2026, 1, 1.0) + days[di];
+      int moon;
+
+      for (moon = 0; moon < 2; moon++) {
+        double result = 0.0;
+        HijriEventStatus st =
+            moon ? hijri_find_moonset(jd0, &loc,
+                                      &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL,
+                                      &result)
+                 : hijri_find_sunset(jd0, &loc,
+                                     &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL,
+                                     &result);
+        double lowest = 1.0e9, highest = -1.0e9;
+        int i;
+        char name[96];
+
+        if (st == HIJRI_EVENT_OK)
+          continue;
+
+        for (i = 0; i <= 1440; i++) {
+          double jd = jd0 + (double)i / 1440.0;
+          double alt =
+              moon ? hijri__moon_upper_limb_altitude(
+                         jd, &loc, &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL)
+                   : hijri__sun_upper_limb_altitude(
+                         jd, &loc, &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL);
+          if (alt < lowest)
+            lowest = alt;
+          if (alt > highest)
+            highest = alt;
+        }
+
+        snprintf(name, sizeof(name), "status_window_%s_lat%+d_doy%d",
+                 moon ? "moon" : "sun", lats[li], days[di]);
+
+        if (st == HIJRI_EVENT_NEVER_RISES) {
+          check_true(name, highest <= 0.0);
+          checked_never_rises++;
+        } else if (st == HIJRI_EVENT_NEVER_SETS) {
+          check_true(name, lowest > 0.0);
+          checked_never_sets++;
+        } else {
+          /* NOT_FOUND claims only that no setting was bracketed, so the
+           * check is that it is not hiding a case one of the two above
+           * would have described correctly. */
+          check_true(name, !(highest <= 0.0) && !(lowest > 0.0));
+          checked_not_found++;
+        }
+      }
+    }
+  }
+
+  /* Without these the loop above could silently stop exercising the branches
+   * it exists to cover, and pass by checking nothing. The counts are the
+   * ones this grid produces today. */
+  check_true("status_window_saw_never_rises", checked_never_rises > 0);
+  check_true("status_window_saw_never_sets", checked_never_sets > 0);
+  check_true("status_window_saw_not_found", checked_not_found > 0);
+}
+
 static void test_decision_margins(void) {
   static const struct {
     HijriLocalPredicate predicate;
@@ -2371,6 +2450,7 @@ int main(void) {
   test_kemenag_published_quantities();
   test_muhammadiyah_official_calendar();
   test_conjunction_status_returns();
+  test_setting_status_matches_the_window();
   test_decision_margins();
   check_true("all_predicate_enums_represented",
              HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET -

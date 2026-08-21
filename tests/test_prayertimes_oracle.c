@@ -250,10 +250,25 @@ static void check_true_nonzero(const char *name, double value) {
  * the two are differenced against each other rather than against a target.
  *
  * MEASURED BOUND. |lat| in {62, 66, 70, 75, 78}, longitudes -120, 0, 120,
- * every day of 2025, both hemispheres. 7448 comparable points, mean
- * 0.1769 arcmin, max 0.7511 arcmin at lat -75.0 lon 0.0 on 2025-10-30. Not
- * one point exceeded 1 arcmin. TOL_POLAR_ARCMIN is pinned at 2.0, a margin of
- * about 2.7x, matching the ratio the seconds-domain tolerance above uses.
+ * every day of 2025, both hemispheres. 7278 solved points, mean 0.1632
+ * arcmin, max 0.4680 arcmin at lat -62.0 lon -120.0 on 2025-12-13. Not one
+ * solved point exceeded 1 arcmin. TOL_POLAR_ARCMIN is pinned at 1.5, a
+ * margin of about 3.2x.
+ *
+ * GRAZING, SEPARATED. 172 points sit within GRAZING_MARGIN_DEG of the
+ * altitude that defines sunset, meaning the Sun's whole daily arc passes
+ * within half a degree of it. There the crossing instant is extremely
+ * sensitive and the two solvers land far apart in time while both stay
+ * correct in angle. Max 9.3160 arcmin at lat 75.0 lon 0.0 on 2025-11-05,
+ * where the Sun peaks at -0.6837 deg, 0.1493 deg above the -0.833 deg that
+ * defines sunset. TOL_POLAR_GRAZING_ARCMIN is pinned at 15.0.
+ *
+ * These points were not visible when this check was written. hijri.h's
+ * finder scanned hourly and stepped straight over such short excursions, so
+ * the day returned no sunset and the comparison skipped it. Issue #82 gave
+ * the finder a four minute rescan, which found them, which is what surfaced
+ * this band. The count moved from 7448 comparable to 7278 solved plus 172
+ * grazing.
  *
  * EXCLUDED, AND WHY. On the first and last day of the polar period the two
  * solvers are not describing the same event. prayertimes.h substitutes from
@@ -270,17 +285,24 @@ static void check_true_nonzero(const char *name, double value) {
  * That is the same class of disagreement as the excluded boundary days rather
  * than a new one, and no inhabited location sits there.
  * ------------------------------------------------------------------------ */
+/* How far the Sun's arc must clear the altitude a check is about before
+   that check treats the crossing as decisively solved. Shared by the polar
+   and twilight grids, which meet the same band at different altitudes. */
+#define GRAZING_MARGIN_DEG 0.5
+
 #define TOL_POLAR_ARCMIN 1.5
+#define TOL_POLAR_GRAZING_ARCMIN 15.0
 
 static void check_polar_angle_agreement(const MethodParams *params,
                                         double iht_hours) {
   static const double POLAR_LATS[] = {-78.0, -75.0, -70.0, -66.0, -62.0,
                                       62.0,  66.0,  70.0,  75.0,  78.0};
   static const double POLAR_LONS[] = {-120.0, 0.0, 120.0};
-  long comparable = 0, excluded = 0;
-  double sum = 0.0, max_arcmin = 0.0;
+  long comparable = 0, excluded = 0, grazing = 0;
+  double sum = 0.0, max_arcmin = 0.0, max_grazing = 0.0;
   double worst_lat = 0.0, worst_lon = 0.0;
-  int worst_m = 0, worst_d = 0;
+  double graze_lat = 0.0, graze_lon = 0.0;
+  int worst_m = 0, worst_d = 0, graze_m = 0, graze_d = 0;
 
   for (size_t i = 0; i < sizeof POLAR_LATS / sizeof *POLAR_LATS; i++) {
     for (size_t j = 0; j < sizeof POLAR_LONS / sizeof *POLAR_LONS; j++) {
@@ -318,6 +340,34 @@ static void check_polar_angle_agreement(const MethodParams *params,
           double alt_hijri = hijri_sun_altitude(jd_sunset, &loc);
           double arcmin = fabs(alt_pt - alt_hijri) * 60.0;
 
+          /* How decisively the Sun crosses the altitude that defines
+             sunset. On a day where its whole arc sits within a fraction of
+             a degree of that altitude, the crossing instant is extremely
+             sensitive and the two solvers can land far apart in time while
+             both remain correct. That is the same grazing band the twilight
+             check below separates, reaching sunset rather than a twilight
+             angle, and it is separated here for the same reason. */
+          double event_alt = -REFRACTION_CORRECTION;
+          double max_alt = 90.0 - fabs(lat - decl);
+          double min_alt = fabs(lat + decl) - 90.0;
+          double clearance = max_alt - event_alt;
+          if (event_alt - min_alt < clearance)
+            clearance = event_alt - min_alt;
+
+          if (clearance < GRAZING_MARGIN_DEG) {
+            grazing++;
+            if (arcmin > max_grazing) {
+              max_grazing = arcmin;
+              graze_lat = lat;
+              graze_lon = lon;
+              graze_m = month;
+              graze_d = day;
+            }
+            check_within("prayertimes_oracle_polar_grazing_arcmin",
+                         jd_midnight, arcmin, 0.0, TOL_POLAR_GRAZING_ARCMIN);
+            continue;
+          }
+
           comparable++;
           sum += arcmin;
           if (arcmin > max_arcmin) {
@@ -334,8 +384,12 @@ static void check_polar_angle_agreement(const MethodParams *params,
     }
   }
 
-  printf("prayertimes_oracle polar: %ld comparable, %ld boundary excluded\n",
-         comparable, excluded);
+  printf("prayertimes_oracle polar: %ld comparable, %ld boundary excluded, "
+         "%ld grazing\n",
+         comparable, excluded, grazing);
+  printf("prayertimes_oracle polar grazing max = %.4f arcmin at lat=%.1f "
+         "lon=%.1f 2025-%02d-%02d\n",
+         max_grazing, graze_lat, graze_lon, graze_m, graze_d);
   printf("prayertimes_oracle polar max = %.4f arcmin at lat=%.1f lon=%.1f "
          "2025-%02d-%02d (mean %.4f)\n",
          max_arcmin, worst_lat, worst_lon, worst_m, worst_d,
@@ -345,6 +399,11 @@ static void check_polar_angle_agreement(const MethodParams *params,
      ever stops producing comparable points, the check above passes silently. */
   check_true_nonzero("prayertimes_oracle_polar_nonvacuous",
                      (double)(comparable - 7000));
+  /* The grazing branch needs its own guard for the same reason: if the band
+     ever empties, its tolerance stops being exercised and its check passes
+     without comparing anything. */
+  check_true_nonzero("prayertimes_oracle_polar_grazing_nonvacuous",
+                     (double)(grazing - 100));
 }
 
 /* ---------------------------------------------------------------------------
@@ -403,7 +462,6 @@ static void check_polar_angle_agreement(const MethodParams *params,
  * ------------------------------------------------------------------------ */
 #define TOL_TWILIGHT_ARCMIN 1.0
 #define TOL_TWILIGHT_GRAZING_ARCMIN 45.0
-#define GRAZING_MARGIN_DEG 0.5
 
 static void check_twilight_angle_agreement(const MethodParams *params,
                                            double iht_hours) {
