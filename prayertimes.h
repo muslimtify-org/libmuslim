@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-/* prayertimes.h -- v0.2.1 -- single-header C/C++ prayer-time calculation library
+/* prayertimes.h -- v0.2.2 -- single-header C/C++ prayer-time calculation library
  *
  * The version above is this file's own. It is not the libmuslim release
  * tag, which is a calendar date such as 2026.08.18 and covers a snapshot

@@ -23,7 +23,7 @@
  */
 
 /*
- * timezone.h -- v0.1.0 -- optional DST-aware timezone helper for libmuslim
+ * timezone.h -- v0.1.1 -- optional DST-aware timezone helper for libmuslim
  *
  * The version above is this file's own. It is not the libmuslim release
  * tag, which is a calendar date such as 2026.08.18 and covers a snapshot
