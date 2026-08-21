@@ -71,7 +71,8 @@
  *   lat +68  29.55 s     lat -68  104.44 s
  *   lat +70  33.37 s     lat -70   77.99 s
  *
- * refine_event iterates to convergence rather than taking one step, which
+ * The event solver bisects the true solar altitude rather than iterating a
+ * closed form, which
  * tightened both figures: the twilight solved population went from a mean
  * of 0.0996 arcmin and a max of 0.7095 to 0.0426 and 0.2312, and the polar
  * check from 0.7511 to 0.4680. No published-table comparison moved, all 702
@@ -104,7 +105,7 @@
  * graze it agree to a mean of 2.2351 and a maximum of 30.1964 arcmin,
  * roughly 6 minutes of time, against a pinned bound of 45.0.
  *
- * That second figure is refine_event's single-iteration truncation: one
+ * That second figure was the old single-iteration truncation: one
  * step from the initial guess does not converge when the Sun only skims
  * the target depression. It is asserted rather than excluded, because it
  * is a real accuracy limit of this header. It is also the explanation
@@ -689,10 +690,10 @@ static double solar_altitude(double jd, double lat, double lon, double tz,
    that. It matters only for a day whose deepest depression falls within half a
    second of the threshold, where the verdict is a coin toss on any method.
 
-   This replaces refine_event, which iterated the hour-angle formula from a
-   guess. Near the seasonal boundary that formula stops having a root at the
-   refined instant even when the event happens, so the iteration returned the
-   last value that solved. See issue #79. */
+   This replaces an iteration of the closed-form hour angle from a guess.
+   Near the seasonal boundary that formula stops having a root at the refined
+   instant even when the event happens, so the iteration returned the last
+   value that solved. See issue #79. */
 static double solve_event(double jd, double lat, double lon, double tz,
                           double angle, double sign) {
   double decl, eqt;
@@ -717,33 +718,6 @@ static double solve_event(double jd, double lat, double lon, double tz,
       hi = mid;
   }
   return 0.5 * (lo + hi);
-}
-
-/* Solve one hour-angle event with the Sun evaluated at the event's own
-   instant, one iteration from an initial guess. sign is -1 before local
-   noon and +1 after. Returns the refined local time in hours, or the guess
-   unchanged when the event does not occur at the refined instant. */
-static double refine_event(double jd, double latitude, double longitude,
-                           double timezone, double altitude, double sign,
-                           double guess) {
-  double t = guess;
-  for (int iter = 0; iter < 8; iter++) {
-    double d2, e2, n2, ha;
-    sun_position(jd + (t - timezone) / 24.0, &d2, &e2);
-    n2 = 12.0 + timezone - (longitude / 15.0) - e2;
-    ha = hour_angle(latitude, d2, altitude);
-    /* The event can stop existing part way through. Near a tangent crossing
-       one step can move the estimate far enough that the declination there no
-       longer reaches the target altitude at all, and the last value that did
-       is the best answer available. See issue #79. */
-    if (isnan(ha))
-      return t;
-    double next = n2 + sign * ha;
-    if (fabs(next - t) < 1.0e-7) /* 0.36 ms, far inside any reported minute */
-      return next;
-    t = next;
-  }
-  return t;
 }
 
 /* Reduce an hour value onto the 24-hour clock face before it is decomposed
@@ -888,10 +862,23 @@ calculate_prayer_times(int year, int month, int day, double latitude,
 
   double noon = 12.0 + timezone - (longitude / 15.0) - eqt;
 
-  /* Sunrise & sunset (always use refraction correction) */
+  /* Sunrise & sunset (always use refraction correction).
+
+     Two tests again, as for fajr and isha below. The 0h UT hour angle is the
+     coarse one, and solve_event asks at the event's own instant. At
+     Longyearbyen on 2025-04-18 the first says the Sun sets and the second
+     says its lowest point of the day is -0.6082 degrees, above the -0.833
+     that defines sunset, so it does not. That is the first day of the
+     midnight sun and the library used to report a maghrib for it. */
   double ha_sunrise = hour_angle(latitude, decl, REFRACTION_CORRECTION);
-  double sunrise = noon - ha_sunrise;
-  double sunset = noon + ha_sunrise;
+  double sunrise = NAN;
+  double sunset = NAN;
+  if (!isnan(ha_sunrise)) {
+    sunrise = solve_event(jd, latitude, longitude, timezone,
+                          REFRACTION_CORRECTION, -1.0);
+    sunset = solve_event(jd, latitude, longitude, timezone,
+                         REFRACTION_CORRECTION, +1.0);
+  }
 
   /* Inside the polar circle the Sun does not cross the horizon, so there is no
      sunrise or sunset to refine and no night to measure a substitution
@@ -908,7 +895,7 @@ calculate_prayer_times(int year, int month, int day, double latitude,
      below. */
   int polar = 0;
   double solve_lat = latitude;
-  if (isnan(ha_sunrise)) {
+  if (isnan(sunrise) || isnan(sunset)) {
     if (params->high_lat_ref > 0.0) {
       polar = 1;
       solve_lat = params->high_lat_ref;
@@ -917,11 +904,6 @@ calculate_prayer_times(int year, int month, int day, double latitude,
       sunset = reference_event(solve_lat, decl, noon,
                                REFRACTION_CORRECTION, 1.0);
     }
-  } else {
-    sunrise = refine_event(jd, latitude, longitude, timezone,
-                           REFRACTION_CORRECTION, -1.0, sunrise);
-    sunset = refine_event(jd, latitude, longitude, timezone,
-                          REFRACTION_CORRECTION, +1.0, sunset);
   }
 
   /* Night duration for high-latitude fallback */

@@ -1988,7 +1988,12 @@ static void test_field_contract(void) {
   // inside the polar circle, served by an authority that is silent here.
   const MethodParams *russia = method_params_get(CALC_RUSSIA);
   count_field_anomalies(68.97, 33.08, 3.0, russia, &nan_days, &out_days);
-  check_long(nan_days, 112, "Murmansk Russia as published, NaN days");
+  // 113 rather than 112 since issue #79. 2025-05-21 joined the polar days
+  // because it is one: the Sun's lowest point that day is -0.6572 degrees,
+  // above the -0.833 that defines sunset, so it never sets. The 0h UT hour
+  // angle said otherwise and the library used to report a maghrib for it.
+  // Russia publishes no high-latitude rule, so the honest answer is NaN.
+  check_long(nan_days, 113, "Murmansk Russia as published, NaN days");
 
   MethodParams russia_with_ref = *russia;
   russia_with_ref.high_lat_method = HIGHLAT_ANGLE_BASED;
@@ -2007,14 +2012,19 @@ static void test_field_contract(void) {
   // The copy must not disturb the table entry it came from.
   count_field_anomalies(68.97, 33.08, 3.0, method_params_get(CALC_RUSSIA),
                         &nan_days, &out_days);
-  check_long(nan_days, 112, "Murmansk Russia unchanged after the copy");
+  check_long(nan_days, 113, "Murmansk Russia unchanged after the copy");
 
   const MethodParams *kemenag = method_params_get(CALC_KEMENAG);
   count_field_anomalies(78.22, 15.65, 1.0, kemenag, &nan_days, &out_days);
-  check_long(nan_days, 244, "Longyearbyen Kemenag, NaN days");
-  check_long(count_field_nan(78.22, 15.65, 1.0, kemenag, 0), 128,
+  // 245, 129 and 241 rather than 244, 128 and 240, for the same reason as
+  // Murmansk above. 2025-04-18 is the first day of the midnight sun here:
+  // the Sun's lowest point is -0.6082 degrees, above -0.833, so it does not
+  // set. Kemenag publishes no high-latitude rule, so the whole day is
+  // unavailable rather than substituted.
+  check_long(nan_days, 245, "Longyearbyen Kemenag, NaN days");
+  check_long(count_field_nan(78.22, 15.65, 1.0, kemenag, 0), 129,
              "Longyearbyen Kemenag, fajr");
-  check_long(count_field_nan(78.22, 15.65, 1.0, kemenag, 3), 240,
+  check_long(count_field_nan(78.22, 15.65, 1.0, kemenag, 3), 241,
              "Longyearbyen Kemenag, maghrib");
 
   printf("\n");

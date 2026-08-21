@@ -255,20 +255,24 @@ static void check_true_nonzero(const char *name, double value) {
  * solved point exceeded 1 arcmin. TOL_POLAR_ARCMIN is pinned at 1.5, a
  * margin of about 3.2x.
  *
- * GRAZING, SEPARATED. 172 points sit within GRAZING_MARGIN_DEG of the
+ * GRAZING, SEPARATED. 169 points sit within GRAZING_MARGIN_DEG of the
  * altitude that defines sunset, meaning the Sun's whole daily arc passes
- * within half a degree of it. There the crossing instant is extremely
- * sensitive and the two solvers land far apart in time while both stay
- * correct in angle. Max 9.3160 arcmin at lat 75.0 lon 0.0 on 2025-11-05,
- * where the Sun peaks at -0.6837 deg, 0.1493 deg above the -0.833 deg that
- * defines sunset. TOL_POLAR_GRAZING_ARCMIN is pinned at 15.0.
+ * within half a degree of it. Max 0.4556 arcmin at lat -66.0 lon 120.0 on
+ * 2025-12-08. TOL_POLAR_GRAZING_ARCMIN is pinned at 1.5, the same 3.2x
+ * margin the solved population uses, and by coincidence the same number,
+ * because the two no longer measure differently.
  *
  * These points were not visible when this check was written. hijri.h's
  * finder scanned hourly and stepped straight over such short excursions, so
  * the day returned no sunset and the comparison skipped it. Issue #82 gave
- * the finder a four minute rescan, which found them, which is what surfaced
- * this band. The count moved from 7448 comparable to 7278 solved plus 172
- * grazing.
+ * the finder a four minute rescan, which found them, and the band appeared
+ * at 9.3160 arcmin worst.
+ *
+ * Issue #79 then removed it. That maximum was prayertimes.h deciding a
+ * sunset exists from the declination at 0h UT and locating it by iterating a
+ * closed form, two questions answered from two instants. Bisecting the true
+ * altitude between noon and solar midnight answers both at once, and the
+ * band fell to 0.4556, below the solved population's own 0.4680.
  *
  * EXCLUDED, AND WHY. On the first and last day of the polar period the two
  * solvers are not describing the same event. prayertimes.h substitutes from
@@ -291,7 +295,20 @@ static void check_true_nonzero(const char *name, double value) {
 #define GRAZING_MARGIN_DEG 0.5
 
 #define TOL_POLAR_ARCMIN 1.5
-#define TOL_POLAR_GRAZING_ARCMIN 15.0
+#define TOL_POLAR_GRAZING_ARCMIN 1.5
+
+/* Mirrors the polar branch prayertimes.h takes: the day is polar when the 0h
+   UT hour angle finds no horizon crossing, and since issue #79 also when the
+   solve at the event's own instant finds none. On such a day the whole
+   schedule is borrowed from the reference latitude, so comparing it against
+   this location's angles measures nothing. */
+static bool oracle_day_is_polar(double jd, double lat, double lon, double tz,
+                                double decl) {
+  if (isnan(hour_angle(lat, decl, REFRACTION_CORRECTION)))
+    return true;
+  return isnan(solve_event(jd, lat, lon, tz, REFRACTION_CORRECTION, -1.0)) ||
+         isnan(solve_event(jd, lat, lon, tz, REFRACTION_CORRECTION, +1.0));
+}
 
 static void check_polar_angle_agreement(const MethodParams *params,
                                         double iht_hours) {
@@ -330,7 +347,8 @@ static void check_polar_angle_agreement(const MethodParams *params,
              prayertimes.h branches on rather than a tolerance. */
           double decl, eqt;
           sun_position(julian_day(2025, month, day), &decl, &eqt);
-          if (isnan(hour_angle(lat, decl, REFRACTION_CORRECTION))) {
+          if (oracle_day_is_polar(julian_day(2025, month, day), lat, lon,
+                                  timezone, decl)) {
             excluded++;
             continue;
           }
@@ -493,7 +511,9 @@ static void check_twilight_angle_agreement(const MethodParams *params,
           sun_position(julian_day(2025, month, day), &decl, &eqt);
 
           /* Polar days are solved at the reference latitude, not this one. */
-          if (isnan(hour_angle(lat, decl, REFRACTION_CORRECTION))) continue;
+          if (oracle_day_is_polar(julian_day(2025, month, day), lat, lon,
+                                  timezone, decl))
+            continue;
 
           double jd_midnight =
               hijri_jd_from_gregorian(2025, month, (double)day) - lon / 360.0;
