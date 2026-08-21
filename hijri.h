@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-/* hijri.h -- v0.1.0 -- stb-style single-file astronomical Hijri calendar library
+/* hijri.h -- v0.1.1 -- stb-style single-file astronomical Hijri calendar library
  *
  * The version above is this file's own. It is not the libmuslim release
  * tag, which is a calendar date such as 2026.08.18 and covers a snapshot
@@ -528,11 +528,21 @@ HIJRIDEF void hijri_moon_topocentric(const HijriMoonPosition *geo, double jd_ut,
 
 typedef enum {
   HIJRI_EVENT_OK = 0,
+  /* The body stayed below the horizon for the whole search window, or above
+   * it for the whole window. These are claims about what happened, so the
+   * rise/set solvers only return them when the samples support the claim. */
   HIJRI_EVENT_NEVER_RISES,
   HIJRI_EVENT_NEVER_SETS,
-  /* Search failure: non-finite input or no event in the search window.
-   * Returned by the conjunction finders; the circumpolar statuses above
-   * remain specific to the rise/set solvers. */
+  /* No event in the search window, and the two above would both be false.
+   * Returned by the conjunction finders on non-finite input or an empty
+   * window, and by the rise/set solvers whenever the body was seen on both
+   * sides of the horizon without a setting the scan could bracket.
+   *
+   * That is not only a polar case. hijri_find_moonset scans 24 hours and
+   * the Moon sets once per 24h 50m, so roughly one evening in thirty holds
+   * no moonset at any latitude. Until issue #82 the solvers had to answer
+   * such a window with NEVER_RISES or NEVER_SETS, one of which was always
+   * untrue. */
   HIJRI_EVENT_NOT_FOUND
 } HijriEventStatus;
 
@@ -1416,28 +1426,103 @@ static int hijri__bisect_crossing(double (*altitude_fn)(
   return 1;
 }
 
-HIJRIDEF HijriEventStatus hijri_find_sunset(double jd_local_midnight_ut,
-                                            const HijriLocation *loc,
-                                            const HijriSunsetConvention *conv,
-                                            double *result_jd) {
-  double step = 1.0 / 24.0;
-  double prev_jd = jd_local_midnight_ut;
-  double prev_alt = hijri__sun_upper_limb_altitude(prev_jd, loc, conv);
-  for (int h = 1; h <= 24; h++) {
-    double jd = jd_local_midnight_ut + h * step;
-    double alt = hijri__sun_upper_limb_altitude(jd, loc, conv);
+/* One forward sweep of the 24 hour window at a given resolution, reporting
+ * the first descending crossing of the horizon and the extremes it saw. */
+static HijriEventStatus
+hijri__scan_setting(double (*altitude_fn)(double, const HijriLocation *,
+                                          const HijriSunsetConvention *),
+                    double jd_start, const HijriLocation *loc,
+                    const HijriSunsetConvention *conv, int steps,
+                    double *result_jd, double *lowest, double *highest) {
+  double step = 1.0 / (double)steps;
+  double prev_jd = jd_start;
+  double prev_alt = altitude_fn(prev_jd, loc, conv);
+  int i;
+
+  *lowest = prev_alt;
+  *highest = prev_alt;
+  for (i = 1; i <= steps; i++) {
+    double jd = jd_start + (double)i * step;
+    double alt = altitude_fn(jd, loc, conv);
+    if (alt < *lowest)
+      *lowest = alt;
+    if (alt > *highest)
+      *highest = alt;
     if (prev_alt > 0 && alt <= 0) {
-      if (hijri__bisect_crossing(hijri__sun_upper_limb_altitude, loc, conv,
-                                 prev_jd, jd, 0.0, result_jd)) {
+      if (hijri__bisect_crossing(altitude_fn, loc, conv, prev_jd, jd, 0.0,
+                                 result_jd)) {
         return HIJRI_EVENT_OK;
       }
     }
     prev_jd = jd;
     prev_alt = alt;
   }
-  double mean_alt =
-      hijri__sun_upper_limb_altitude(jd_local_midnight_ut + 0.5, loc, conv);
-  return (mean_alt > 0.0) ? HIJRI_EVENT_NEVER_SETS : HIJRI_EVENT_NEVER_RISES;
+  return HIJRI_EVENT_NOT_FOUND;
+}
+
+/* Find the first setting in the 24 hours from jd_start, and classify
+ * honestly when there is none. Issue #82.
+ *
+ * Two things were wrong before, and they compounded.
+ *
+ * The classification took one extra sample at jd_start + 0.5 and treated it
+ * as the extremum of the window. That holds for the Sun, whose finder is
+ * handed local midnight so the sample lands on local noon, and not for the
+ * Moon, whose finder is handed sunset and whose own day is 24h 50m, so the
+ * sample lands at an arbitrary phase. Measured over latitude -89 to 89 in
+ * steps of 2, every day of 2026, it inverted 820 of the 3162 moonset
+ * failures: NEVER_RISES for a Moon reaching +4 degrees, NEVER_SETS for one
+ * going 15 degrees under.
+ *
+ * The hourly step also stepped over short excursions. A body above the
+ * horizon for only tens of minutes, or below it for only tens of minutes,
+ * can sit entirely between two samples. At latitude -81 on 2026-04-13 the
+ * Moon is above the horizon for 1424 of 1440 minutes, and the hourly scan
+ * saw none of the 16 minute gap, so it reported a setting that does not
+ * happen as no setting at all.
+ *
+ * So: sweep hourly first, which answers almost every call, and only when
+ * that finds nothing sweep again at four minutes. The second sweep costs 360
+ * evaluations and runs on windows that genuinely hold no setting, polar day
+ * and polar night for the Sun, and for the Moon the roughly one evening in
+ * thirty where a 24 hour window misses a 24h 50m period. Four minutes
+ * resolves every excursion measured on that grid, the shortest being the
+ * 10.6 minutes the Sun spends up at latitude 71 on 2026-01-21.
+ *
+ * What survives is a band where the body grazes the horizon, peaking under
+ * 0.1 degrees. Refraction at the horizon varies by more than that with
+ * temperature and pressure, so no sampling rate settles those, and the
+ * classification says NOT_FOUND rather than guessing. */
+static HijriEventStatus
+hijri__find_setting(double (*altitude_fn)(double, const HijriLocation *,
+                                          const HijriSunsetConvention *),
+                    double jd_start, const HijriLocation *loc,
+                    const HijriSunsetConvention *conv, double *result_jd) {
+  double lowest, highest;
+
+  if (hijri__scan_setting(altitude_fn, jd_start, loc, conv, 24, result_jd,
+                          &lowest, &highest) == HIJRI_EVENT_OK) {
+    return HIJRI_EVENT_OK;
+  }
+  if (hijri__scan_setting(altitude_fn, jd_start, loc, conv, 360, result_jd,
+                          &lowest, &highest) == HIJRI_EVENT_OK) {
+    return HIJRI_EVENT_OK;
+  }
+  /* Non-finite input leaves both extremes NaN, every comparison false, and
+   * the answer NOT_FOUND, which is the honest one. */
+  if (lowest > 0.0)
+    return HIJRI_EVENT_NEVER_SETS;
+  if (highest <= 0.0)
+    return HIJRI_EVENT_NEVER_RISES;
+  return HIJRI_EVENT_NOT_FOUND;
+}
+
+HIJRIDEF HijriEventStatus hijri_find_sunset(double jd_local_midnight_ut,
+                                            const HijriLocation *loc,
+                                            const HijriSunsetConvention *conv,
+                                            double *result_jd) {
+  return hijri__find_setting(hijri__sun_upper_limb_altitude,
+                             jd_local_midnight_ut, loc, conv, result_jd);
 }
 
 /* Apparent altitude of the Moon's UPPER LIMB: topocentric centre altitude
@@ -1466,23 +1551,8 @@ HIJRIDEF HijriEventStatus hijri_find_moonset(double jd_after,
                                              const HijriLocation *loc,
                                              const HijriSunsetConvention *conv,
                                              double *result_jd) {
-  double step = 1.0 / 24.0;
-  double prev_jd = jd_after;
-  double prev_alt = hijri__moon_upper_limb_altitude(prev_jd, loc, conv);
-  for (int h = 1; h <= 24; h++) {
-    double jd = jd_after + h * step;
-    double alt = hijri__moon_upper_limb_altitude(jd, loc, conv);
-    if (prev_alt > 0 && alt <= 0) {
-      if (hijri__bisect_crossing(hijri__moon_upper_limb_altitude, loc, conv,
-                                 prev_jd, jd, 0.0, result_jd)) {
-        return HIJRI_EVENT_OK;
-      }
-    }
-    prev_jd = jd;
-    prev_alt = alt;
-  }
-  double mean_alt = hijri__moon_upper_limb_altitude(jd_after + 0.5, loc, conv);
-  return (mean_alt > 0.0) ? HIJRI_EVENT_NEVER_SETS : HIJRI_EVENT_NEVER_RISES;
+  return hijri__find_setting(hijri__moon_upper_limb_altitude, jd_after, loc,
+                             conv, result_jd);
 }
 
 /* ---- Conjunction finder
