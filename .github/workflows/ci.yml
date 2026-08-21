@@ -145,3 +145,24 @@ jobs:
           EOF
           gcc -std=c11 -Wall -Wextra -O2 -I. /tmp/tzbench.c -o /tmp/tzbench
           /tmp/tzbench
+
+  # A released version number must never name two different files. This has
+  # gone wrong three times: prayertimes.h shipped as v0.2.0 twice with
+  # different behaviour, then as v0.2.1 twice, and timezone.h carried the
+  # whole Windows rewrite from #76 and #77 while still calling itself v0.1.0.
+  # Every one of those was caught by a person happening to look, which is not
+  # a control.
+  #
+  # tools/check-header-versions.sh compares each header against the published
+  # release assets with comments stripped, so documentation changes stay free
+  # and only a code change with a stale version number fails.
+  version-drift:
+    runs-on: ubuntu-latest
+    name: header versions
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: released version numbers name exactly one file
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./tools/check-header-versions.sh
