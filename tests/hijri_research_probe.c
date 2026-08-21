@@ -133,6 +133,8 @@ static const char *event_status_name(HijriEventStatus status) {
     return "NEVER_RISES";
   case HIJRI_EVENT_NEVER_SETS:
     return "NEVER_SETS";
+  case HIJRI_EVENT_NOT_FOUND:
+    return "NOT_FOUND";
   default:
     return "UNKNOWN";
   }
