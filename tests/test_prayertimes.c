@@ -1933,15 +1933,25 @@ static void test_field_contract(void) {
   // Reykjavik, which really does keep UTC year round. Only the out-of-range
   // anomaly occurs now. Its 44 NaN days were all dhuha, so dropping dhuha
   // removed them without touching the five prescribed times.
+  //
+  // 106 rather than 107 since issue #79. 2025-04-12 left this population
+  // because it never belonged to it: the Sun's deepest altitude that night is
+  // -16.7675 degrees against MWL's 17, so there is no isha to report, and the
+  // 01:03 the library used to return was a time for an event that does not
+  // occur. It now takes the substitution, which lands inside the day.
   count_field_anomalies(64.15, -21.94, 0.0, mwl, &nan_days, &out_days);
   check_long(nan_days, 0, "Reykjavik, no NaN day");
-  check_long(out_days, 107, "Reykjavik, out-of-range days");
+  check_long(out_days, 106, "Reykjavik, out-of-range days");
 
   // Anchorage is the case that shows the two are independent. It never
   // produces a NaN, yet it still returns hours outside the day.
+  //
+  // 22 rather than 23 for the same reason as Reykjavik above. On 2025-04-20
+  // the Sun reaches -16.7669 degrees, short of MWL's 17, and the 00:28 the
+  // library used to return was not an isha.
   count_field_anomalies(61.22, -149.90, -9.0, mwl, &nan_days, &out_days);
   check_long(nan_days, 0, "Anchorage, no NaN day");
-  check_long(out_days, 23, "Anchorage, out-of-range days");
+  check_long(out_days, 22, "Anchorage, out-of-range days");
 
   // Longyearbyen. Every one of the five now resolves, because MWL carries a
   // reference latitude for the polar case. Before dhuha was dropped this

@@ -661,6 +661,64 @@ static double hour_angle_safe(double lat, double decl, double angle,
   return ha * RAD_TO_DEG / 15.0;
 }
 
+/* True altitude of the Sun at local time t, with the Sun's position taken at
+   t rather than at 0h UT. This is the quantity every depression-angle event
+   is actually defined by. */
+static double solar_altitude(double jd, double lat, double lon, double tz,
+                             double t) {
+  double decl, eqt;
+  sun_position(jd + (t - tz) / 24.0, &decl, &eqt);
+  double noon = 12.0 + tz - (lon / 15.0) - eqt;
+  double H = 15.0 * (t - noon) * DEG_TO_RAD;
+  double phi = lat * DEG_TO_RAD;
+  double dec = decl * DEG_TO_RAD;
+  return asin(sin(phi) * sin(dec) + cos(phi) * cos(dec) * cos(H)) * RAD_TO_DEG;
+}
+
+/* Solve solar_altitude(t) = -angle on the morning branch (sign -1) or the
+   evening branch (sign +1). Returns NAN when the Sun never reaches that
+   depression, which is the honest answer and the signal the high-latitude
+   fallback already reads.
+
+   Altitude falls monotonically from its maximum at local noon to its minimum
+   at solar midnight, so one sign change across the bracket means exactly one
+   root and bisection cannot pick the wrong one.
+
+   Solar midnight is taken as noon + 12. The equation of time drifts under a
+   second across a day, so the true minimum sits within about half a second of
+   that. It matters only for a day whose deepest depression falls within half a
+   second of the threshold, where the verdict is a coin toss on any method.
+
+   This replaces refine_event, which iterated the hour-angle formula from a
+   guess. Near the seasonal boundary that formula stops having a root at the
+   refined instant even when the event happens, so the iteration returned the
+   last value that solved. See issue #79. */
+static double solve_event(double jd, double lat, double lon, double tz,
+                          double angle, double sign) {
+  double decl, eqt;
+  sun_position(jd, &decl, &eqt);
+  double noon = 12.0 + tz - (lon / 15.0) - eqt;
+  double midnight = noon + sign * 12.0;
+  double target = -angle;
+
+  if (solar_altitude(jd, lat, lon, tz, midnight) > target)
+    return NAN;
+  if (solar_altitude(jd, lat, lon, tz, noon) <= target)
+    return NAN;
+
+  double lo = noon, hi = midnight;
+  for (int i = 0; i < 60; i++) {
+    double mid = 0.5 * (lo + hi);
+    if (fabs(hi - lo) < 1.0e-7) /* 0.36 ms, far inside any reported minute */
+      break;
+    if (solar_altitude(jd, lat, lon, tz, mid) > target)
+      lo = mid;
+    else
+      hi = mid;
+  }
+  return 0.5 * (lo + hi);
+}
+
 /* Solve one hour-angle event with the Sun evaluated at the event's own
    instant, one iteration from an initial guess. sign is -1 before local
    noon and +1 after. Returns the refined local time in hours, or the guess
@@ -869,19 +927,39 @@ calculate_prayer_times(int year, int month, int day, double latitude,
   /* Night duration for high-latitude fallback */
   double night = (24.0 - sunset) + sunrise;
 
-  /* Fajr */
-  bool fajr_failed = false;
-  double ha_fajr =
-      hour_angle_safe(solve_lat, decl, params->fajr_angle, &fajr_failed);
-  double fajr = noon - ha_fajr;
-  if (fajr_failed) {
+  /* Fajr. Two tests must agree that the event happens before a time is
+     reported for it.
+
+     hour_angle_safe asks at 0h UT, which is the test the published sources
+     this library reproduces also use. solve_event asks at the event's own
+     instant. Near the seasonal boundary they disagree, and either saying no
+     sends the day to the substitution.
+
+     Trusting only the 0h UT test reported an isha that does not occur: at
+     latitude 70 on 2025-03-27 the Sun reaches 16.9965 degrees of depression
+     against MWL's 17. Trusting only the instant test broke published-table
+     agreement the other way: at London on 2026-07-15 the Sun does reach 17
+     degrees, at 00:49, while the published table gives the angle-based
+     substitution at 23:25. Deferring to whichever test declines is what keeps
+     both right. See issue #79. */
+  double fajr;
+  if (polar) {
+    /* A borrowed day is solved at the reference latitude and left alone,
+       because re-solving at the true location would undo the transplant. */
+    bool fajr_failed = false;
+    double ha_fajr =
+        hour_angle_safe(solve_lat, decl, params->fajr_angle, &fajr_failed);
+    fajr = fajr_failed ? NAN : noon - ha_fajr;
+  } else {
+    bool fajr_failed = false;
+    hour_angle_safe(latitude, decl, params->fajr_angle, &fajr_failed);
+    fajr = fajr_failed ? NAN
+                       : solve_event(jd, latitude, longitude, timezone,
+                                     params->fajr_angle, -1.0);
+  }
+  if (isnan(fajr)) {
     fajr = high_lat_substitute(params, decl, noon, sunrise, sunset, night,
                                params->fajr_angle, -1.0);
-  } else if (!polar) {
-    /* refine_event re-solves at the true location, which would undo the
-       transplant, so a borrowed day is left unrefined. */
-    fajr = refine_event(jd, latitude, longitude, timezone, params->fajr_angle,
-                        -1.0, fajr);
   }
 
   /* Maghrib */
@@ -893,16 +971,21 @@ calculate_prayer_times(int year, int month, int day, double latitude,
   /* Isha */
   double isha;
   if (params->isha_angle > 0.0) {
-    bool isha_failed = false;
-    double ha_isha =
-        hour_angle_safe(solve_lat, decl, params->isha_angle, &isha_failed);
-    isha = noon + ha_isha;
-    if (isha_failed) {
+    if (polar) {
+      bool isha_failed = false;
+      double ha_isha =
+          hour_angle_safe(solve_lat, decl, params->isha_angle, &isha_failed);
+      isha = isha_failed ? NAN : noon + ha_isha;
+    } else {
+      bool isha_failed = false;
+      hour_angle_safe(latitude, decl, params->isha_angle, &isha_failed);
+      isha = isha_failed ? NAN
+                         : solve_event(jd, latitude, longitude, timezone,
+                                       params->isha_angle, +1.0);
+    }
+    if (isnan(isha)) {
       isha = high_lat_substitute(params, decl, noon, sunrise, maghrib, night,
                                  params->isha_angle, 1.0);
-    } else if (!polar) {
-      isha = refine_event(jd, latitude, longitude, timezone, params->isha_angle,
-                          +1.0, isha);
     }
   } else {
     /* Interval-based (e.g. Makkah 90 min after maghrib) */

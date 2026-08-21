@@ -437,31 +437,40 @@ static void check_polar_angle_agreement(const MethodParams *params,
  *     of 0.0996 and a max of 0.7095.
  *
  *   grazing band, deepest within 0.5 deg of the angle
- *     186 points, mean 2.2351 arcmin, max 30.1964 arcmin at lat 70.0 on
- *     2025-03-27, roughly 6 minutes of time. Pinned at 45.0. Unchanged to
- *     the last digit by iterating refine_event, because the limit there is
- *     not convergence, see below.
+ *     160 points, max 0.1970 arcmin. Pinned at 0.9, the same 4.3x margin.
  *
- * The grazing band is asserted rather than excluded, and it is not a
- * convergence failure. At lat 70 on 2025-03-27 the Sun clears 17 degrees by
- * 0.39, one step moves the estimate 38 minutes, and at that new instant the
- * declination has shifted just enough that the Sun no longer reaches 17
- * degrees at all. hour_angle returns NaN and the previous value stands.
- * Iterating changes this band by nothing at all, which is measured rather
- * than assumed. The limit is a nearly tangent crossing, not an early stop. That is a real accuracy limit of this
- * header and hiding it behind an exclusion would misrepresent the coverage.
+ * THE GRAZING BAND USED TO BE THE HEADLINE AND IS NOW UNREMARKABLE. Before
+ * issue #79 it held 186 points with a maximum of 30.1964 arcmin, roughly 6
+ * minutes of time, and the block here argued at length that the limit was a
+ * nearly tangent crossing rather than an early stop. That argument was right
+ * about iterating and wrong about the cause.
+ *
+ * 45 of those 186 points were days the Sun never reached the angle at all.
+ * The library decided existence from the declination at 0h UT and the
+ * instant from a refinement at the event, two questions answered from two
+ * instants, and near the seasonal boundary they disagreed. At lat 70 on
+ * 2025-03-27 the Sun reaches 16.9965 degrees against MWL's 17, so the 30
+ * arcmin was not imprecision, it was the distance to an event that was not
+ * there. Those days now take the substitution and leave this population,
+ * which is why the count fell to 160.
+ *
+ * The remaining 141 were real crossings the hour-angle iteration solved
+ * badly. solve_event brackets noon to solar midnight and bisects the true
+ * altitude, so they land at 0.1970 arcmin worst, below the comfortably
+ * solved maximum. A tolerance tighter than the solved population's reads
+ * oddly, and it is what the band measures: past the fix there is nothing
+ * special about grazing, and the split is kept because the physics is still
+ * real, not because the numbers still differ.
  *
  * This also explains the observation that opened #52. Stockholm on 2026-08-17
  * is a grazing day, the one where the fallback engages, so the 16 minute
- * movement #49 introduced is this band rather than an unexplained defect. It
- * is now measured instead of merely suspected, which is what that issue asked
- * for.
+ * movement #49 introduced is this band rather than an unexplained defect.
  *
  * Grid: |lat| in {70, 66, 60, 50, 30, 0}, both hemispheres, longitudes -120,
  * 0 and 120, every day of 2025.
  * ------------------------------------------------------------------------ */
 #define TOL_TWILIGHT_ARCMIN 1.0
-#define TOL_TWILIGHT_GRAZING_ARCMIN 45.0
+#define TOL_TWILIGHT_GRAZING_ARCMIN 0.9
 
 static void check_twilight_angle_agreement(const MethodParams *params,
                                            double iht_hours) {
@@ -499,6 +508,16 @@ static void check_twilight_angle_agreement(const MethodParams *params,
             bool failed = false;
             hour_angle_safe(lat, decl, events[k].angle, &failed);
             if (failed || !isfinite(events[k].hours)) continue;
+            /* Since issue #79 the library requires both its existence tests
+               to agree before it reports a crossing, so a day the instant
+               test declines carries a substitution rather than a time at the
+               depression angle. Comparing that against the angle measures
+               nothing. Skipping it tests the same condition prayertimes.h
+               branches on, which is what the polar block above does too. */
+            if (isnan(solve_event(julian_day(2025, month, day), lat, lon,
+                                  timezone, events[k].angle,
+                                  k == 0 ? -1.0 : +1.0)))
+              continue;
 
             double alt =
                 hijri_sun_altitude(jd_midnight + events[k].hours / 24.0, &loc);
