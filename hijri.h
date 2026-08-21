@@ -121,6 +121,82 @@
  * here has been checked either.
  *
  * -----------------------------------------------------------------------
+ * SUPPORTED GEOGRAPHIC RANGE
+ *
+ * The other half of what issue #27 asked for. Everything measured above is
+ * at Mecca, so it says nothing about latitude, and the answer here turns
+ * out to have a different shape.
+ *
+ * LATITUDE: NOTHING BREAKS, THINGS STOP EXISTING. Ten years of evenings,
+ * 2020-2029, longitude 0, MABIMS 2021, counting what a caller actually
+ * gets back:
+ *
+ *     lat   verdict   no sunset   no moonset
+ *       0    96.58%       0.00%        3.42%
+ *      20    96.63%       0.00%        3.37%
+ *      40    96.69%       0.00%        3.31%
+ *      60    96.82%       0.00%        3.18%
+ *      63    88.20%       0.00%       11.80%
+ *      66    67.12%       4.76%       28.11%
+ *      70    34.08%      33.97%       31.95%
+ *      75    16.18%      54.91%       28.91%
+ *      80     6.71%      71.20%       22.09%
+ *      85     1.51%      85.93%       12.57%
+ *      89     0.05%      97.24%        2.71%
+ *
+ * Flat to 60, then the verdict rate collapses. Nothing is wrong in that
+ * collapse: above the Arctic and Antarctic circles the Sun genuinely does
+ * not set for part of the year, and a criterion thresholding the Moon's
+ * altitude at sunset has nothing to threshold. The statuses say so, and
+ * since issue #82 they say so correctly rather than picking whichever of
+ * NEVER_RISES or NEVER_SETS a single sample suggested.
+ *
+ * THE 3.4% AT THE EQUATOR IS NOT A LATITUDE EFFECT. It is the Moon's own
+ * period. hijri_find_moonset scans 24 hours from sunset and the Moon sets
+ * once per 24h 50m, so roughly one evening in thirty holds no moonset
+ * anywhere on Earth, Jakarta and Mecca included. That is reported as
+ * HIJRI_EVENT_NOT_FOUND.
+ *
+ * MARGIN DOES NOT VARY WITH LATITUDE. Counting evenings where a MABIMS
+ * 2021 term sits within 0.0070 deg of its threshold, the error bar the
+ * date section above uses: between 0 and 2 per 3653 evenings at every
+ * latitude from 0 to 89, with no trend. So the coin-toss band that bounds
+ * the date range is a property of the criterion, not of where you stand.
+ * Unlike the date answer, the geographic limit is availability.
+ *
+ * LONGITUDE: SAFE, AND WHY IT IS ONLY ALMOST SAFE. This header carries no
+ * zone database and derives local midnight from longitude as mean solar
+ * time, so "the evening of date D" is the solar-day evening, not the
+ * civil-day one. At the zones furthest from their solar meridian, every
+ * evening of 2025:
+ *
+ *     zone        solar-civil gap   evenings   landing on another civil day
+ *     Kashgar          -2.93 h          365          0
+ *     Adak             -2.78 h          365          0
+ *     Vigo             -2.58 h          365          0
+ *     Urumqi           -2.16 h          365          0
+ *     Anchorage        -1.99 h          365          0
+ *
+ * Sunset sits far enough from midnight that a three hour offset never
+ * crosses a date boundary. A caller needing civil-day semantics should
+ * resolve the offset itself and use the JD-based entry points.
+ *
+ * ELEVATION: CARRIED, DELIBERATELY NEARLY INERT. loc->elevation_m does not
+ * lower the sunset target and does not correct parallax. Both omissions are
+ * deliberate, both have been measured, and both times the correction made
+ * agreement with published calendars worse. See HORIZON DIP IS OMITTED FROM
+ * THE SET SOLVERS below before changing either.
+ *
+ * SO: use this header freely to latitude 60, where better than 96 percent
+ * of evenings yield a verdict and the rest are the Moon's period rather
+ * than anything geographic. Between 60 and the polar circles expect a
+ * growing share of evenings with no answer. Above the polar circles expect
+ * most evenings to have none, check the status before the value, and decide
+ * at the application level what a calendar does when its criterion cannot
+ * be evaluated -- issue #51 is the same question for prayer times and is
+ * still open.
+ *
+ * -----------------------------------------------------------------------
  * ACCURACY CAVEAT -- PLEASE READ
  *
  * hijri_moon_position() implements the full Meeus ch. 47 lunar series --
