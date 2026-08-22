@@ -1886,6 +1886,84 @@ static int count_disordered_days(double lat, double lon, double tz,
    still crosses -17. Every method is checked here, not only the two that
    carry a reference latitude today, so that giving another method one cannot
    reintroduce this unnoticed. */
+// An event the Sun never reaches must not be reported as happening. This is
+// the case issue #79 turned out to be about: the library decided existence
+// from the declination at 0h UT and the instant from a refinement at the
+// event, two questions answered from two instants, and near the seasonal
+// boundary they disagreed.
+//
+// 2025-03-27 at latitude 70 under MWL is the worst case that measurement
+// found. The Sun's deepest point that night is 16.9965 degrees below the
+// horizon against the 17 the method asks for, so there is no isha, and the
+// library used to print 23:58 for it. The oracle read that as 30.1964 arcmin
+// of error, which was never a precision figure at all.
+//
+// The assertions are on the mechanism rather than on a clock value, so this
+// keeps holding if a fallback rule is ever retuned: no root exists, the Sun
+// really does fall short, and the reported time is therefore a substitution.
+static void test_event_that_never_happens(void) {
+  const MethodParams *mwl = method_params_get(CALC_MWL);
+  const double lat = 70.0, lon = 0.0, tz = 0.0;
+  const double jd = julian_day(2025, 3, 27);
+  double decl, eqt;
+  struct PrayerTimes t;
+  double noon, deepest;
+
+  printf("Test group: an event the Sun never reaches\n");
+
+  sun_position(jd, &decl, &eqt);
+  noon = 12.0 + tz - (lon / 15.0) - eqt;
+  deepest = solar_altitude(jd, lat, lon, tz, noon + 12.0);
+
+  // The Sun falls short of the angle, so no crossing exists to solve for.
+  check_long(deepest > -mwl->isha_angle, 1,
+             "lat70 Mar27, Sun falls short of isha angle");
+  // != 0 rather than the raw macro result: C7.12.3 says isnan and isfinite
+  // return "a nonzero value", not 1, and mingw-w64's returns -1. Comparing
+  // the macro against a literal 1 passes on glibc and Apple libm and fails
+  // on Windows, which is exactly what it did here.
+  check_long(isnan(solve_event(jd, lat, lon, tz, mwl->isha_angle, +1.0)) != 0,
+             1, "lat70 Mar27, no isha root exists");
+
+  // The 0h UT test is the one that used to disagree. Pinning it keeps the
+  // test honest about which of the two guards is doing the work here: remove
+  // the solve_event guard and this day starts reporting a crossing again.
+  {
+    bool failed = false;
+    hour_angle_safe(lat, decl, mwl->isha_angle, &failed);
+    check_long(failed, 0, "lat70 Mar27, the 0h UT test still accepts");
+  }
+
+  // MWL carries a high-latitude rule, so a time is still reported. It is a
+  // substitution, which is a different claim from a crossing.
+  t = calculate_prayer_times(2025, 3, 27, lat, lon, tz, mwl);
+  check_long(isfinite(t.isha) != 0, 1, "lat70 Mar27, isha still reported");
+  check_long(t.isha > t.maghrib, 1, "lat70 Mar27, and still after maghrib");
+
+  // The two checks above pass whether isha is the substitution or the value
+  // the closed form used to return, so on their own they pin nothing. These
+  // two do the work: the reported time must BE the substitution and must NOT
+  // be the crossing the 0h UT hour angle still offers. Verified by mutation,
+  // removing the solve_event guard alone leaves the two above green.
+  {
+    double sunrise = solve_event(jd, lat, lon, tz, REFRACTION_CORRECTION, -1.0);
+    double sunset = solve_event(jd, lat, lon, tz, REFRACTION_CORRECTION, +1.0);
+    double night = (24.0 - sunset) + sunrise;
+    double substituted =
+        high_lat_substitute(mwl, decl, noon, sunrise, sunset, night,
+                            mwl->isha_angle, 1.0);
+    bool failed = false;
+    double stale = noon + hour_angle_safe(lat, decl, mwl->isha_angle, &failed);
+
+    check_long(fabs(t.isha - mwl->ihtiyat / 60.0 - substituted) < 1.0e-9, 1,
+               "lat70 Mar27, isha IS the substitution");
+    check_long(fabs(t.isha - mwl->ihtiyat / 60.0 - stale) > 1.0 / 60.0, 1,
+               "lat70 Mar27, isha is NOT the stale crossing");
+  }
+
+  printf("\n");
+}
+
 static void test_ordering(void) {
   static const struct {
     const char *name;
@@ -1933,15 +2011,25 @@ static void test_field_contract(void) {
   // Reykjavik, which really does keep UTC year round. Only the out-of-range
   // anomaly occurs now. Its 44 NaN days were all dhuha, so dropping dhuha
   // removed them without touching the five prescribed times.
+  //
+  // 106 rather than 107 since issue #79. 2025-04-12 left this population
+  // because it never belonged to it: the Sun's deepest altitude that night is
+  // -16.7675 degrees against MWL's 17, so there is no isha to report, and the
+  // 01:03 the library used to return was a time for an event that does not
+  // occur. It now takes the substitution, which lands inside the day.
   count_field_anomalies(64.15, -21.94, 0.0, mwl, &nan_days, &out_days);
   check_long(nan_days, 0, "Reykjavik, no NaN day");
-  check_long(out_days, 107, "Reykjavik, out-of-range days");
+  check_long(out_days, 106, "Reykjavik, out-of-range days");
 
   // Anchorage is the case that shows the two are independent. It never
   // produces a NaN, yet it still returns hours outside the day.
+  //
+  // 22 rather than 23 for the same reason as Reykjavik above. On 2025-04-20
+  // the Sun reaches -16.7669 degrees, short of MWL's 17, and the 00:28 the
+  // library used to return was not an isha.
   count_field_anomalies(61.22, -149.90, -9.0, mwl, &nan_days, &out_days);
   check_long(nan_days, 0, "Anchorage, no NaN day");
-  check_long(out_days, 23, "Anchorage, out-of-range days");
+  check_long(out_days, 22, "Anchorage, out-of-range days");
 
   // Longyearbyen. Every one of the five now resolves, because MWL carries a
   // reference latitude for the polar case. Before dhuha was dropped this
@@ -1978,7 +2066,12 @@ static void test_field_contract(void) {
   // inside the polar circle, served by an authority that is silent here.
   const MethodParams *russia = method_params_get(CALC_RUSSIA);
   count_field_anomalies(68.97, 33.08, 3.0, russia, &nan_days, &out_days);
-  check_long(nan_days, 112, "Murmansk Russia as published, NaN days");
+  // 113 rather than 112 since issue #79. 2025-05-21 joined the polar days
+  // because it is one: the Sun's lowest point that day is -0.6572 degrees,
+  // above the -0.833 that defines sunset, so it never sets. The 0h UT hour
+  // angle said otherwise and the library used to report a maghrib for it.
+  // Russia publishes no high-latitude rule, so the honest answer is NaN.
+  check_long(nan_days, 113, "Murmansk Russia as published, NaN days");
 
   MethodParams russia_with_ref = *russia;
   russia_with_ref.high_lat_method = HIGHLAT_ANGLE_BASED;
@@ -1997,14 +2090,19 @@ static void test_field_contract(void) {
   // The copy must not disturb the table entry it came from.
   count_field_anomalies(68.97, 33.08, 3.0, method_params_get(CALC_RUSSIA),
                         &nan_days, &out_days);
-  check_long(nan_days, 112, "Murmansk Russia unchanged after the copy");
+  check_long(nan_days, 113, "Murmansk Russia unchanged after the copy");
 
   const MethodParams *kemenag = method_params_get(CALC_KEMENAG);
   count_field_anomalies(78.22, 15.65, 1.0, kemenag, &nan_days, &out_days);
-  check_long(nan_days, 244, "Longyearbyen Kemenag, NaN days");
-  check_long(count_field_nan(78.22, 15.65, 1.0, kemenag, 0), 128,
+  // 245, 129 and 241 rather than 244, 128 and 240, for the same reason as
+  // Murmansk above. 2025-04-18 is the first day of the midnight sun here:
+  // the Sun's lowest point is -0.6082 degrees, above -0.833, so it does not
+  // set. Kemenag publishes no high-latitude rule, so the whole day is
+  // unavailable rather than substituted.
+  check_long(nan_days, 245, "Longyearbyen Kemenag, NaN days");
+  check_long(count_field_nan(78.22, 15.65, 1.0, kemenag, 0), 129,
              "Longyearbyen Kemenag, fajr");
-  check_long(count_field_nan(78.22, 15.65, 1.0, kemenag, 3), 240,
+  check_long(count_field_nan(78.22, 15.65, 1.0, kemenag, 3), 241,
              "Longyearbyen Kemenag, maghrib");
 
   printf("\n");
@@ -2337,6 +2435,7 @@ int main(void) {
   test_format_time();
 
   test_field_contract();
+  test_event_that_never_happens();
   test_ordering();
 
   test_civil_date_helpers();
