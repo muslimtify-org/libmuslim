@@ -82,7 +82,9 @@ $(BUILD)/examples/%: examples/%.c $(HEADERS) | $(BUILD)/examples
 test: $(TEST_BINS)
 	@fail=0; for t in $(TEST_BINS); do \
 	  if $$t > /dev/null 2>&1; then echo "  PASS  $$t"; \
-	  else echo "  FAIL  $$t"; $$t 2>&1 | tail -20 | sed 's/^/        /'; fail=1; fi; \
+	  else echo "  FAIL  $$t"; \
+	    { $$t 2>&1 | grep -i fail | head -40; $$t 2>&1 | tail -3; } \
+	      | sed 's/^/        /'; fail=1; fi; \
 	done; \
 	if [ $$fail -ne 0 ]; then echo "FAIL  one or more tests failed"; exit 1; fi
 
