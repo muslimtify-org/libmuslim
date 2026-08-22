@@ -6,7 +6,7 @@ and you are done. C11 and C++17, no build system, no package manager.
 
 | Header | Version | Provides | Depends on |
 |---|---|---|---|
-| [`prayertimes.h`](prayertimes.h) | `v0.2.2` | Prayer times, 21 calculation methods | `<math.h>` |
+| [`prayertimes.h`](prayertimes.h) | `v0.2.3` | Prayer times, 21 calculation methods | `<math.h>` |
 | [`hijri.h`](hijri.h) | `v0.1.1` | Hijri calendar, crescent visibility models | `<math.h>` |
 | [`timezone.h`](timezone.h) | `v0.1.1` | IANA zone name → UTC offset, DST applied | OS timezone database |
 

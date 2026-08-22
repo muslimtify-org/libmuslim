@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-/* prayertimes.h -- v0.2.2 -- single-header C/C++ prayer-time calculation library
+/* prayertimes.h -- v0.2.3 -- single-header C/C++ prayer-time calculation library
  *
  * The version above is this file's own. It is not the libmuslim release
  * tag, which is a calendar date such as 2026.08.18 and covers a snapshot
@@ -71,14 +71,12 @@
  *   lat +68  29.55 s     lat -68  104.44 s
  *   lat +70  33.37 s     lat -70   77.99 s
  *
- * The event solver bisects the true solar altitude rather than iterating a
- * closed form, which
- * tightened both figures: the twilight solved population went from a mean
- * of 0.0996 arcmin and a max of 0.7095 to 0.0426 and 0.2312, and the polar
- * check from 0.7511 to 0.4680. No published-table comparison moved, all 702
- * lines byte-identical. The grazing band did not move either, to the last
- * digit, because its limit is a nearly tangent crossing rather than an
- * early stop, see issue #79.
+ * The event solver bisects the true solar altitude between local noon and
+ * solar midnight rather than iterating a closed form from a guess. That
+ * tightened the twilight solved population from a mean of 0.0996 arcmin and
+ * a max of 0.7095 to 0.0426 and 0.2312, and the polar check from 0.7511 to
+ * 0.4680. No published-table comparison moved across any of this work, all
+ * 702 lines byte-identical.
  *
  * Above 60 degrees the same oracle is applied in the angle domain
  * instead, which does not amplify at grazing incidence because nothing
@@ -86,11 +84,12 @@
  * maghrib, the DE440-validated solver is asked where the Sun is, and
  * that is compared against where the same solver puts the Sun at its own
  * sunset. Over |latitude| in {62, 66, 70, 75, 78}, longitudes -120, 0
- * and 120, every day of 2025 and both hemispheres, 7448 comparable
- * points agree to a mean of 0.1769 arcmin and a maximum of 0.7511
- * arcmin, against a pinned bound of 2.0 arcmin. Not one point exceeded
- * 1 arcmin. The 30 first and last days of the polar period are excluded,
- * because there the two solvers describe different events rather than
+ * and 120, every day of 2025 and both hemispheres, 7278 comparable
+ * points agree to a mean of 0.1632 arcmin and a maximum of 0.4680
+ * arcmin, against a pinned bound of 1.5 arcmin. A further 169 points
+ * graze the sunset altitude and agree to 0.4556 arcmin, pinned at 1.5.
+ * The 35 first and last days of the polar period are excluded, because
+ * there the two solvers describe different events rather than
  * disagreeing about one.
  *
  * Fajr and Isha are asserted the same way, against the depression angle
@@ -99,33 +98,47 @@
  * them, so the two are directly comparable. Excluding days where the
  * fallback supplied the value, and polar days where the schedule is
  * solved at the reference latitude, the remainder splits by how far the
- * Sun passes the required depression. 17676 points that clear it by at
- * least half a degree agree to a mean of 0.0996 arcmin and a maximum of
- * 0.7095 arcmin, against a pinned bound of 2.0. The 186 points that only
- * graze it agree to a mean of 2.2351 and a maximum of 30.1964 arcmin,
- * roughly 6 minutes of time, against a pinned bound of 45.0.
+ * Sun passes the required depression. 17668 points that clear it by at
+ * least half a degree agree to a mean of 0.0426 arcmin and a maximum of
+ * 0.2312 arcmin, against a pinned bound of 1.0. The 160 points that only
+ * graze it reach 0.1970 arcmin, pinned at 0.9.
  *
- * That second figure was the old single-iteration truncation: one
- * step from the initial guess does not converge when the Sun only skims
- * the target depression. It is asserted rather than excluded, because it
- * is a real accuracy limit of this header. It is also the explanation
- * for the 16 minute isha movement at Stockholm that #52 was opened over,
- * which lands on exactly such a day. Asr is also
- * covered only by the published-table fixtures, refining it was measured
- * during this work and made results worse, so it was deliberately left
- * alone.
+ * That grazing figure used to be 30.1964 arcmin, roughly 6 minutes, on
+ * 186 points. It was never a precision figure. This header decided
+ * whether an event exists from the declination at 0h UT and where it
+ * falls from a refinement at the event, two questions answered from two
+ * instants, and near the seasonal boundary they disagreed. 45 of those
+ * 186 points were days the Sun never reaches the angle at all: at
+ * latitude 70 on 2025-03-27 it reaches 16.9965 degrees against MWL's 17,
+ * so the 30 arcmin was the distance to an event that was not there.
+ * Those days now take the substitution. Issue #79.
  *
- * The published-table suite tests/test_prayertimes.c reports 756 checks.
+ * Existence is gated on both tests rather than on the solve alone,
+ * because the published tables this header reproduces were computed with
+ * the coarser one. At London on 2026-07-15 the Sun does reach 17 degrees,
+ * at 00:49, and the published table gives the substitution at 23:25.
+ * Whichever test declines wins. On grazing days that follows a published
+ * convention rather than the criterion's own definition, which is the
+ * right trade for this header and worth knowing about.
+ *
+ * Asr is covered only by the published-table fixtures. Refining it was
+ * measured during this work and made results worse, so it was
+ * deliberately left alone.
+ *
+ * The published-table suite tests/test_prayertimes.c reports 763 checks.
  * 702 of those compare a computed time against a published table at a
  * uniform tolerance of 2 minutes, with a residual distribution of 369
- * checks at 0 minutes, 326 at 1 and 7 at 2, which sums to the 702. The
- * remaining 54 carry no residual because they are not time comparisons:
+ * checks at 0 minutes, 326 at 1 and 7 at 2, which sums to the 702. That
+ * distribution is unchanged by issue #79. The remaining 61 carry no
+ * residual because they are not time comparisons:
  * 7 assert the test's own clock_diff_minutes helper, 8 assert the
  * civil-day converters, 15 assert the time formatters, 19 pin the
  * struct PrayerTimes field contract, including the per-method
  * high-latitude behaviour, the caller override for it and the asr
- * domain guard, and 5 assert that the five prescribed times stay in
- * order at five locations across every method.
+ * domain guard, 5 assert that the five prescribed times stay in order at
+ * five locations across every method, and 7 pin the day where the Sun
+ * never reaches the isha angle, so a time is reported as a substitution
+ * rather than as a crossing.
  *
  * These counts fell from 940 and 895 when sunrise and dhuha were removed
  * from the struct in v0.2.0. The fixtures behind them were the sunrise
