@@ -698,10 +698,14 @@ static double solar_altitude(double jd, double lat, double lon, double tz,
    at solar midnight, so one sign change across the bracket means exactly one
    root and bisection cannot pick the wrong one.
 
-   Solar midnight is taken as noon + 12. The equation of time drifts under a
-   second across a day, so the true minimum sits within about half a second of
-   that. It matters only for a day whose deepest depression falls within half a
-   second of the threshold, where the verdict is a coin toss on any method.
+   vibekit: solar midnight is taken as noon + 12 rather than solved. The
+   equation of time drifts under a second across a day, so the true minimum
+   sits within about half a second of that, and the bracket's far endpoint is
+   wrong by the same amount. The only day it can change is one whose deepest
+   depression falls within half a second of the threshold, where the verdict
+   is a coin toss on any method. Upgrade path: solve for the instant where the
+   hour angle reaches 180 degrees, which costs another bracketed search per
+   event and buys nothing measurable at the tolerances above.
 
    This replaces an iteration of the closed-form hour angle from a guess.
    Near the seasonal boundary that formula stops having a root at the refined
@@ -947,7 +951,9 @@ calculate_prayer_times(int year, int month, int day, double latitude,
     fajr = fajr_failed ? NAN : noon - ha_fajr;
   } else {
     bool fajr_failed = false;
-    hour_angle_safe(latitude, decl, params->fajr_angle, &fajr_failed);
+    /* Called for the flag, not the angle: solve_event supplies the
+       instant. */
+    (void)hour_angle_safe(latitude, decl, params->fajr_angle, &fajr_failed);
     fajr = fajr_failed ? NAN
                        : solve_event(jd, latitude, longitude, timezone,
                                      params->fajr_angle, -1.0);
@@ -973,7 +979,9 @@ calculate_prayer_times(int year, int month, int day, double latitude,
       isha = isha_failed ? NAN : noon + ha_isha;
     } else {
       bool isha_failed = false;
-      hour_angle_safe(latitude, decl, params->isha_angle, &isha_failed);
+      /* Called for the flag, not the angle: solve_event supplies the
+       instant. */
+    (void)hour_angle_safe(latitude, decl, params->isha_angle, &isha_failed);
       isha = isha_failed ? NAN
                          : solve_event(jd, latitude, longitude, timezone,
                                        params->isha_angle, +1.0);
