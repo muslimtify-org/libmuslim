@@ -1918,8 +1918,12 @@ static void test_event_that_never_happens(void) {
   // The Sun falls short of the angle, so no crossing exists to solve for.
   check_long(deepest > -mwl->isha_angle, 1,
              "lat70 Mar27, Sun falls short of isha angle");
-  check_long(isnan(solve_event(jd, lat, lon, tz, mwl->isha_angle, +1.0)), 1,
-             "lat70 Mar27, no isha root exists");
+  // != 0 rather than the raw macro result: C7.12.3 says isnan and isfinite
+  // return "a nonzero value", not 1, and mingw-w64's returns -1. Comparing
+  // the macro against a literal 1 passes on glibc and Apple libm and fails
+  // on Windows, which is exactly what it did here.
+  check_long(isnan(solve_event(jd, lat, lon, tz, mwl->isha_angle, +1.0)) != 0,
+             1, "lat70 Mar27, no isha root exists");
 
   // The 0h UT test is the one that used to disagree. Pinning it keeps the
   // test honest about which of the two guards is doing the work here: remove
@@ -1933,7 +1937,7 @@ static void test_event_that_never_happens(void) {
   // MWL carries a high-latitude rule, so a time is still reported. It is a
   // substitution, which is a different claim from a crossing.
   t = calculate_prayer_times(2025, 3, 27, lat, lon, tz, mwl);
-  check_long(isfinite(t.isha), 1, "lat70 Mar27, isha still reported");
+  check_long(isfinite(t.isha) != 0, 1, "lat70 Mar27, isha still reported");
   check_long(t.isha > t.maghrib, 1, "lat70 Mar27, and still after maghrib");
 
   // The two checks above pass whether isha is the substitution or the value
