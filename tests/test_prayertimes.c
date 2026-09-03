@@ -1964,6 +1964,89 @@ static void test_event_that_never_happens(void) {
   printf("\n");
 }
 
+/* The invariant the suite never had, and the reason issue #51 went unnoticed
+   for as long as it did. Every earlier polar check pinned a count at one named
+   city, so a method nobody had measured could return NaN anywhere else and
+   nothing would say so.
+
+   Three properties over a grid, not a list of expected values. The #82 work
+   recorded why: its first regression test asserted true facts about the day
+   and passed with the fix removed, which makes a test decoration.
+
+   1. fajr, dhuhr, maghrib and isha are finite everywhere, for every method.
+   2. asr is NaN only on a day that casts no shadow. asr is defined by the
+      length of one, and when |latitude - declination| reaches 90 the Sun's
+      true altitude never exceeds 0 and it is visible by refraction alone.
+      Sunrise still exists on such a day, so the polar branch never fires and
+      no reference latitude would help. An asr NaN anywhere else is a defect.
+   3. The finite times are in prayer order.
+
+   Goal 1 rests on a fact worth stating where it can be checked. Latitude 45
+   reaches about 90 - 45 - 23.44 = 21.56 degrees of depression at the solstice,
+   against a largest fajr angle in the table of 19.5 and a largest isha angle
+   of 18.0. A method added later with a fajr angle above roughly 21.5 would
+   fail this test rather than slip through, which is the point of walking the
+   table rather than naming methods.
+
+   Mutation record: setting the CALC_KEMENAG entry's high_lat_ref back to 0.0
+   and running `make test` produced these FAIL lines, pasted verbatim:
+     FAIL  grid, prescribed times finite  got=6279  expected=0
+     FAIL  grid, asr NaN only without a shadow  got=194  expected=0
+   The entry was then restored.
+
+   Two of the three fired, and the ordering check did not. That is recorded
+   rather than tidied away, because it says what this test does and does not
+   carry: removing a reference latitude takes times away, and the times that
+   remain stay ordered. Ordering is protected by test_ordering below and by
+   the polar branch solving the whole day at one latitude, which is what issue
+   #79 established. If a future change makes the grid the only ordering check,
+   this note is the warning that it was never exercised. */
+static void test_polar_field_invariant(void) {
+  static const int month_len[12] = {31, 28, 31, 30, 31, 30,
+                                    31, 31, 30, 31, 30, 31};
+  printf("Test group: polar field invariant over a grid\n");
+
+  int nonfinite = 0, unexplained_asr = 0, disordered = 0;
+
+  for (int mi = 0; mi < CALC_COUNT; mi++) {
+    const MethodParams *m = method_params_get((CalcMethod)mi);
+    if (m == NULL) continue;
+    for (double lat = -89.0; lat <= 89.0; lat += 4.0) {
+      for (int mo = 1; mo <= 12; mo++) {
+        for (int dy = 1; dy <= month_len[mo - 1]; dy++) {
+          struct PrayerTimes t =
+              calculate_prayer_times(2026, mo, dy, lat, 0.0, 0.0, m);
+          const double v[5] = {t.fajr, t.dhuhr, t.asr, t.maghrib, t.isha};
+
+          for (int i = 0; i < 5; i++) {
+            if (i == 2) continue;
+            if (!isfinite(v[i])) nonfinite++;
+          }
+
+          if (isnan(t.asr)) {
+            double decl, eqt;
+            sun_position(julian_day(2026, mo, dy), &decl, &eqt);
+            if (fabs(lat - decl) < 90.0) unexplained_asr++;
+          }
+
+          for (int i = 1; i < 5; i++) {
+            if (isfinite(v[i]) && isfinite(v[i - 1]) && v[i] < v[i - 1]) {
+              disordered++;
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  check_long(nonfinite, 0, "grid, prescribed times finite");
+  check_long(unexplained_asr, 0, "grid, asr NaN only without a shadow");
+  check_long(disordered, 0, "grid, prayers in order");
+
+  printf("\n");
+}
+
 static void test_ordering(void) {
   static const struct {
     const char *name;
@@ -2454,6 +2537,7 @@ int main(void) {
   test_field_contract();
   test_event_that_never_happens();
   test_ordering();
+  test_polar_field_invariant();
 
   test_civil_date_helpers();
 
