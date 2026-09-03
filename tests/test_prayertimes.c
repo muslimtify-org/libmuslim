@@ -1988,19 +1988,31 @@ static void test_event_that_never_happens(void) {
    fail this test rather than slip through, which is the point of walking the
    table rather than naming methods.
 
-   Mutation record: setting the CALC_KEMENAG entry's high_lat_ref back to 0.0
-   and running `make test` produced these FAIL lines, pasted verbatim:
+   Mutation record, two mutations, each applied on its own, run with
+   `make test`, and then reverted. The FAIL lines below are pasted verbatim.
+
+   First, setting the CALC_KEMENAG entry's high_lat_ref back to 0.0:
      FAIL  grid, prescribed times finite  got=6279  expected=0
      FAIL  grid, asr NaN only without a shadow  got=194  expected=0
-   The entry was then restored.
+   Taking a reference latitude away takes times away, and the times that
+   remain stay ordered, so this one leaves the ordering check green.
 
-   Two of the three fired, and the ordering check did not. That is recorded
-   rather than tidied away, because it says what this test does and does not
-   carry: removing a reference latitude takes times away, and the times that
-   remain stay ordered. Ordering is protected by test_ordering below and by
-   the polar branch solving the whole day at one latitude, which is what issue
-   #79 established. If a future change makes the grid the only ordering check,
-   this note is the warning that it was never exercised. */
+   Second, in calculate_prayer_times, dropping the `solve_lat =
+   params->high_lat_ref;` assignment inside the polar branch while leaving the
+   rest of the borrow in place, so sunrise and sunset come from the reference
+   latitude and fajr, isha and asr stay at the true one:
+     FAIL  grid, asr NaN only without a shadow  got=4268  expected=0
+     FAIL  grid, prayers in order        got=20414  expected=0
+   That is the two-places-in-one-schedule failure the comment above the polar
+   block in prayertimes.h describes, and it is what the ordering property is
+   for. Note that `prescribed times finite` stays green under it: the borrow
+   still fills every prescribed time, it just fills them from two latitudes.
+
+   So each of the three properties now has a mutation that makes it fail, and
+   no single mutation makes all three fail. Ordering here is not a substitute
+   for test_ordering below, which walks ordinary latitudes; what this one adds
+   is that the polar branch must solve the whole day at one latitude, which is
+   what issue #79 established. */
 static void test_polar_field_invariant(void) {
   static const int month_len[12] = {31, 28, 31, 30, 31, 30,
                                     31, 31, 30, 31, 30, 31};
