@@ -2192,6 +2192,36 @@ static void test_setting_status_matches_the_window(void) {
    docs/research/2026-08-01 and 2026-08-05, so these counts should not be
    sensitive to them.
 
+   All four sites run under HIJRI_SUNSET_CONVENTION_KEMENAG, and whether
+   Malaysia, Brunei and Singapore each use it was not researched. That
+   assumption was measured rather than left hanging, because if those states
+   set their horizon differently the counts above would understate the real
+   disagreement.
+
+   The library offers one alternative. KEMENAG and MUHAMMADIYAH are
+   numerically identical, both {0.575, 959.63}, so the only distinguishable
+   choice is ASTRONOMICAL at 0.5667 deg of refraction, a difference of 0.0083
+   deg. Running all four capitals both ways, every evening from 2000 to 2049
+   with a moonset after sunset, 70572 evenings:
+
+       sunset moves          at most 2.19 s
+       altitude moves        at most 0.008950 deg
+       elongation moves      at most 0.000470 deg
+       verdicts that flip    1, all four sites combined
+
+   The altitude figure exceeds the 0.0070 deg DE440 error bar, so the
+   convention is not inert the way elevation is. It is nearly inert in effect.
+   The single flip is Jakarta on 2043-02-23, altitude 3.004561 under Kemenag
+   against 2.996663 under astronomical, straddling the 3 deg threshold by less
+   than the error bar in both directions, so that evening is undecidable
+   regardless of convention. Its elongation is 174.19 deg, a full Moon, so it
+   is mid-month and not a month-start decision at all.
+
+   Zero month starts moved in fifty years across four capitals. Against three
+   to seven month starts in five years from location alone, the convention
+   assumption is two orders of magnitude below the effect being measured, and
+   the counts above stand whichever convention those three states use.
+
    Mutation record, two mutations, each applied alone and then reverted.
 
    Swapping topocentric_elongation_deg for geocentric_elongation_deg in the
