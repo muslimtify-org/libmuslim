@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-/* prayertimes.h -- v0.2.3 -- single-header C/C++ prayer-time calculation library
+/* prayertimes.h -- v0.2.4 -- single-header C/C++ prayer-time calculation library
  *
  * The version above is this file's own. It is not the libmuslim release
  * tag, which is a calendar date such as 2026.08.18 and covers a snapshot
@@ -247,7 +247,10 @@ typedef enum {
  * Every value except HIGHLAT_NEAREST_LATITUDE is defined in terms of the
  * interval between sunset and sunrise, so none of them can answer inside the
  * polar circle where that interval does not exist. MethodParams.high_lat_ref
- * covers that case separately.
+ * covers that case separately, and every table entry now carries one, so the
+ * polar case is answered even where the value here is a computational
+ * convention. What answers it is the library's own choice rather than the
+ * authority's, and high_lat_ref says which choice and why.
  */
 typedef enum {
   HIGHLAT_NONE,            /* no substitution, the time is NaN */
@@ -277,22 +280,51 @@ typedef struct {
 
   /* Reference latitude used when there is no sunset or sunrise at all, which
      is the case inside the polar circle. Every rule above is measured in
-     units of the night, so without a reference there is nothing to measure
-     and the affected times are NaN. Set to 0 when the authority publishes no
-     rule for this case, which is most of them.
+     units of the night, so without a reference there is nothing to measure.
 
-     A caller who needs a time anyway can copy the table entry and set this
-     themselves. That is a deliberate escape hatch: the library will not put
-     a ruling in an authority's mouth, but it will not stand between a user
-     and a prayer time either. The choice is then the caller's, and it is
-     recorded in their code rather than misattributed to the authority.
+     All 22 entries carry 45. That is a choice this library makes and not the
+     selected authority's, because most authorities publish nothing for this
+     case. Publishing nothing was a choice too, and until now the library made
+     it silently on the user's behalf: under CALC_RUSSIA a resident of
+     Murmansk, a city of roughly 270000 people, received no prayer time at all
+     on 113 days of 2025.
+
+     Two rules are documented for the case, both reasoning from the hadith of
+     al-Dajjal, where the instruction is to estimate and no reference is
+     named. Following the nearest land in which the prayer times are
+     distinguishable, ittiba' aqrab al-bilad, is the majority: Permanent
+     Committee fatwa 2769, Fatawa al-Lajnah al-Da'imah 6/130-136. Following
+     the timings of Makkah is the minority: Dar al-Ifta al-Misriyyah fatwa
+     2806 of 8 August 2010. Sources on both sides call the choice between them
+     ijtihad rather than a matter of one being correct, and AMJA fatwa 21730
+     assigns it to the local religious authorities.
+
+     The 45 specifically is the Islamic Fiqh Council of the Muslim World
+     League, ninth session, 12 to 19 Rajab 1406, which pins that latitude. The
+     Permanent Committee pins nothing: its wording is the nearest land, which
+     for Murmansk at 68.97 N is well north of 45. Fath al-Mulhim gives 48 and
+     the Iceland paper uses London at 51.5. So the reference latitude is a
+     live parameter, and the citation for this particular value is the Council
+     alone.
+
+     A header file is not a local religious authority, so the choice the
+     fatwas assign there stays the caller's to make.
 
          MethodParams mine = *method_params_get(CALC_RUSSIA);
          mine.high_lat_method = HIGHLAT_ANGLE_BASED;
-         mine.high_lat_ref = 45.0;
+         mine.high_lat_ref = 0.0;
 
-     At Murmansk, 68.97 N, that takes 2025 from 102 days with a non-finite
-     prescribed time to none. tests/test_prayertimes.c pins both numbers. */
+     restores what this method returned before, 113 non-finite days of 2025 at
+     Murmansk. HIGHLAT_NONE instead of HIGHLAT_ANGLE_BASED opts out of the
+     night-exists substitution as well and takes it to 210.
+
+     See docs/research/2026-09-03-polar-no-rule-fatwas.md for the sources, and
+     docs/research/2026-08-18-high-latitude-conventions.md for why this is
+     confined to the polar case. Between roughly 48 and 66 degrees the library
+     follows the published timetables instead, because the Council rule there
+     put London 2026-07-15 fajr 15 minutes and isha 17 minutes off its
+     published table where the angle-based rule lands within one. Faithful to
+     the decree inside the polar circle, and deliberately not outside it. */
   double high_lat_ref;
 } MethodParams;
 
@@ -310,11 +342,21 @@ typedef struct {
  * A field is normally in [0, 24), but it is not guaranteed to be, and callers
  * that do anything other than print it must handle two cases.
  *
- * Non-finite. Above roughly 66 degrees the Sun can fail to reach the altitude
- * an event is defined by, and the field is then NaN. Test with isfinite()
- * before use. This depends on the method: those carrying a high_lat_ref,
- * currently MWL and Moonsighting, resolve every field at every latitude,
- * and the other 20 do not.
+ * Non-finite. Test with isfinite() before use. Every entry in the method
+ * table now carries a reference latitude, so fajr, dhuhr, maghrib and isha
+ * resolve at every latitude on every date.
+ *
+ * asr alone can still be NaN, and that is not the polar case. asr is defined
+ * by the length of a shadow, so on a day when the separation from the
+ * declination sits between 90 and 90.833 degrees the Sun's true altitude
+ * never exceeds 0, it is visible only by refraction, and it casts no shadow.
+ * Sunrise exists on such a day, so the reference latitude is never consulted
+ * and no value of it would help. asr does not occur, and reporting that is
+ * the domain guard working. It happens on 10 days of 2025 at Murmansk and 4
+ * at Longyearbyen, and tests/test_prayertimes.c pins both.
+ *
+ * A caller who sets high_lat_ref to 0 on a copied entry gets the older
+ * behaviour back, where the other four can be NaN as well.
  *
  * Outside [0, 24). The high-latitude fallback for fajr and isha can return a
  * value below 0 or at or above 24, meaning the event falls on the previous or
@@ -459,48 +501,48 @@ static const MethodParams METHOD_TABLE[CALC_COUNT] = {
     [CALC_MWL] = {"Muslim World League", 18.0, 17.0, 0, 0, ASR_STANDARD,
                   MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 45.0},
     [CALC_MAKKAH] = {"Umm al-Qura, Makkah", 18.5, 0, 90, 0, ASR_STANDARD,
-                     MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 0.0},
+                     MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 45.0},
     [CALC_ISNA] = {"ISNA", 15.0, 15.0, 0, 0, ASR_STANDARD, MIDNIGHT_STANDARD, 0,
-                   HIGHLAT_ANGLE_BASED, 0.0},
+                   HIGHLAT_ANGLE_BASED, 45.0},
     [CALC_EGYPT] = {"Egyptian General Authority", 19.5, 17.5, 0, 0,
                     ASR_STANDARD, MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED,
-                    0.0},
+                    45.0},
     [CALC_KARACHI] = {"Univ. Islamic Sciences, Karachi", 18.0, 18.0, 0, 0,
                       ASR_STANDARD, MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED,
-                      0.0},
+                      45.0},
     [CALC_TURKEY] = {"Diyanet, Turkey", 18.0, 17.0, 0, 0, ASR_STANDARD,
-                     MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 0.0},
+                     MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 45.0},
     [CALC_SINGAPORE] = {"MUIS, Singapore", 20.0, 18.0, 0, 0, ASR_STANDARD,
-                        MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 0.0},
+                        MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 45.0},
     [CALC_JAKIM] = {"JAKIM, Malaysia", 20.0, 18.0, 0, 0, ASR_STANDARD,
-                    MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 0.0},
+                    MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 45.0},
     [CALC_KEMENAG] = {"KEMENAG, Indonesia", 20.0, 18.0, 0, 0, ASR_STANDARD,
-                      MIDNIGHT_STANDARD, 2, HIGHLAT_ANGLE_BASED, 0.0},
+                      MIDNIGHT_STANDARD, 2, HIGHLAT_ANGLE_BASED, 45.0},
     [CALC_FRANCE] = {"UOIF, France", 12.0, 12.0, 0, 0, ASR_STANDARD,
-                     MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 0.0},
+                     MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 45.0},
     [CALC_RUSSIA] = {"Spiritual Admin., Russia", 16.0, 15.0, 0, 0, ASR_STANDARD,
-                     MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 0.0},
+                     MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 45.0},
     [CALC_DUBAI] = {"GAIAE, Dubai", 18.2, 18.2, 0, 0, ASR_STANDARD,
-                    MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 0.0},
+                    MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 45.0},
     [CALC_QATAR] = {"Min. of Awqaf, Qatar", 18.0, 0, 90, 0, ASR_STANDARD,
-                    MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 0.0},
+                    MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 45.0},
     [CALC_KUWAIT] = {"Min. of Awqaf, Kuwait", 18.0, 17.5, 0, 0, ASR_STANDARD,
-                     MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 0.0},
+                     MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 45.0},
     [CALC_JORDAN] = {"Min. of Awqaf, Jordan", 18.0, 18.0, 0, 0, ASR_STANDARD,
-                     MIDNIGHT_STANDARD, 5, HIGHLAT_ANGLE_BASED, 0.0},
+                     MIDNIGHT_STANDARD, 5, HIGHLAT_ANGLE_BASED, 45.0},
     [CALC_GULF] = {"Gulf Region", 19.5, 0, 90, 0, ASR_STANDARD,
-                   MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 0.0},
+                   MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 45.0},
     [CALC_TUNISIA] = {"Min. of Religious Affairs, Tunisia", 18.0, 18.0, 0, 0,
                       ASR_STANDARD, MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED,
-                      0.0},
+                      45.0},
     [CALC_ALGERIA] = {"Min. of Religious Affairs, Algeria", 18.0, 17.0, 0, 0,
                       ASR_STANDARD, MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED,
-                      0.0},
+                      45.0},
     [CALC_MOROCCO] = {"Min. of Habous, Morocco", 19.0, 17.0, 0, 0, ASR_STANDARD,
-                      MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 0.0},
+                      MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 45.0},
     [CALC_PORTUGAL] = {"Comunidade Islamica de Lisboa", 18.0, 0, 77, 3,
                        ASR_STANDARD, MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED,
-                       0.0},
+                       45.0},
     /* moonsighting.com states its formulae are good to 55 degrees, applies the
        one-seventh rule between 55 and 60, and above 60 slides the calculation
        down to 60, which is the reference latitude here. */
@@ -508,7 +550,7 @@ static const MethodParams METHOD_TABLE[CALC_COUNT] = {
                            ASR_STANDARD, MIDNIGHT_STANDARD, 0,
                            HIGHLAT_ONE_SEVENTH, 60.0},
     [CALC_CUSTOM] = {"Custom", 18.0, 17.0, 0, 0, ASR_STANDARD,
-                     MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 0.0},
+                     MIDNIGHT_STANDARD, 0, HIGHLAT_ANGLE_BASED, 45.0},
 };
 
 PRAYERTIMESDEF const MethodParams *method_params_get(CalcMethod method) {
