@@ -370,9 +370,18 @@ typedef struct {
  * format_time_hms() handle both cases, but a clock string cannot express a
  * date, so they do not preserve the offset either.
  *
- * Whether this struct should carry the offset explicitly is open, see issue
- * #56. Until it is settled the raw value is the contract, and
+ * Whether this struct should carry the offset explicitly was asked in issue
+ * #56 and answered no. The raw double is the contract, and
  * tests/test_prayertimes.c pins it.
+ *
+ * The reason is that the consumers already depend on it. libmuslim-rs keeps
+ * the value and exposes decimal_hours() for it, reducing onto the clock face
+ * only in the component accessors. libmuslim_dart never reduces at all: it
+ * adds the value to midnight as a duration, so an hour at or above 24 rolls
+ * into the next day and one below 0 rolls back, which is what an instant
+ * should do. Both pin that behaviour in their own suites. Normalising here
+ * would discard an offset they preserve correctly today, and adding a field
+ * would duplicate something they already derive.
  */
 struct PrayerTimes {
   double fajr;
@@ -788,7 +797,7 @@ static double solve_event(double jd, double lat, double lon, double tz,
 
    This deliberately does not tell the caller that the day rolled over. The
    raw double in struct PrayerTimes still carries that, and a caller building
-   a date-time must read it there. See issue #56. */
+   a date-time must read it there rather than parsing a clock string. */
 static double normalize_clock_hours(double t) {
   t = fmod(t, 24.0);
   if (t < 0.0)
