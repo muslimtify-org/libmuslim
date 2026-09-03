@@ -2160,6 +2160,97 @@ static void test_setting_status_matches_the_window(void) {
   check_true("status_window_saw_not_found", checked_not_found > 0);
 }
 
+/* MABIMS 2021 is one criterion serving four states, and only Indonesia has an
+   official published calendar behind it. The obvious hope is that a fixture at
+   Jakarta therefore covers Malaysia, Brunei and Singapore, since it is the same
+   predicate through the same code path and all four sit inside the latitude
+   band #84 measured as flat.
+
+   It does not, because the predicate is not location-invariant. This pins the
+   divergence so the hope cannot quietly return, and so a change to the
+   criterion or to the sunset and moonset solvers moves a committed number
+   instead of passing unnoticed.
+
+   A differing verdict is a differing month start, so these counts are
+   disagreeing month starts rather than an abstract residual.
+
+   The window is 2022 to 2026 for two reasons. It lies wholly after the
+   February 2022 Kemenag circular that made 3 and 6.4 govern, so no evening
+   here is the criterion being applied to a period it did not rule. And the
+   calendar path costs enough per day that comparing full Hijri dates over ten
+   years took about 70 seconds, against roughly 8 for this. Comparing the
+   verdict measures the same phenomenon at the point the decision is made.
+
+   These numbers are a relationship between four coordinates, not a defect
+   rate. They show an Indonesian fixture cannot transfer. They do not show the
+   library is wrong at the other three, and nothing here could, because the
+   fixtures that would settle that are the ones issue #27 recorded as
+   unavailable for lack of a citable primary source.
+
+   Elevations are chosen rather than sourced. hijri.h documents elevation as
+   deliberately nearly inert, with the measurements behind that in
+   docs/research/2026-08-01 and 2026-08-05, so these counts should not be
+   sensitive to them.
+
+   Mutation record, two mutations, each applied alone and then reverted.
+
+   Swapping topocentric_elongation_deg for geocentric_elongation_deg in the
+   MABIMS 2021 case, which is the incoherent pairing hijri.h warns about
+   directly above that comparison, moved every count:
+     FAIL exact/mabims_divergence_singapore_differ actual=4 expected=3
+     FAIL exact/mabims_divergence_kuala_lumpur_differ actual=6 expected=5
+     FAIL exact/mabims_divergence_bandar_seri_begawan_differ actual=5 expected=7
+
+   Changing HIJRI_MABIMS_2021_ALTITUDE_DEG from 3.0 to 3.1 moved nothing here.
+   That is recorded because it says what this test does not catch: a uniform
+   shift of the threshold moves all four capitals together and leaves the
+   divergence between them untouched. This test guards location sensitivity,
+   not the threshold values, which the exact/mabims_2021_* checks above
+   already pin. */
+static void test_mabims_states_diverge(void) {
+  static const int month_len[12] = {31, 28, 31, 30, 31, 30,
+                                    31, 31, 30, 31, 30, 31};
+  const HijriLocation jakarta = {-6.2088, 106.8456, 8.0, "Jakarta"};
+  static const struct {
+    const char *name;
+    HijriLocation loc;
+    int expected_comparable;
+    int expected_differ;
+  } sites[] = {
+      {"singapore", {1.3521, 103.8198, 15.0, "Singapore"}, 1758, 3},
+      {"kuala_lumpur", {3.1390, 101.6869, 56.0, "Kuala Lumpur"}, 1757, 5},
+      {"bandar_seri_begawan", {4.9031, 114.9398, 10.0, "Bandar Seri"}, 1757, 7},
+  };
+
+  for (unsigned s = 0; s < sizeof sites / sizeof *sites; s++) {
+    int comparable = 0, differing = 0;
+    for (int y = 2022; y <= 2026; y++) {
+      int feb = ((y % 4 == 0 && y % 100 != 0) || y % 400 == 0) ? 29 : 28;
+      for (int m = 1; m <= 12; m++) {
+        int len = (m == 2) ? feb : month_len[m - 1];
+        for (int d = 1; d <= len; d++) {
+          HijriEveningParameters pj = hijri_compute_evening_parameters(
+              y, m, d, &jakarta, &HIJRI_SUNSET_CONVENTION_KEMENAG);
+          HijriEveningParameters po = hijri_compute_evening_parameters(
+              y, m, d, &sites[s].loc, &HIJRI_SUNSET_CONVENTION_KEMENAG);
+          if (!pj.moonset_after_sunset || !po.moonset_after_sunset) continue;
+          comparable++;
+          if (hijri_local_predicate_evaluate(HIJRI_PREDICATE_MABIMS_2021,
+                                             &pj) !=
+              hijri_local_predicate_evaluate(HIJRI_PREDICATE_MABIMS_2021, &po))
+            differing++;
+        }
+      }
+    }
+    char name[96];
+    snprintf(name, sizeof name, "mabims_divergence_%s_comparable",
+             sites[s].name);
+    check_int(name, comparable, sites[s].expected_comparable);
+    snprintf(name, sizeof name, "mabims_divergence_%s_differ", sites[s].name);
+    check_int(name, differing, sites[s].expected_differ);
+  }
+}
+
 static void test_decision_margins(void) {
   static const struct {
     HijriLocalPredicate predicate;
@@ -2452,6 +2543,7 @@ int main(void) {
   test_conjunction_status_returns();
   test_setting_status_matches_the_window();
   test_decision_margins();
+  test_mabims_states_diverge();
   check_true("all_predicate_enums_represented",
              HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET -
                          HIJRI_PREDICATE_MABIMS_1992 +

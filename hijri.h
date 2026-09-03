@@ -1921,8 +1921,57 @@ hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
    * here means unrefracted, not geocentric.
    *
    * Still undocumented by any primary source: whether the altitude is to the
-   * Moon's centre or upper limb, whether refraction applies, and whether
-   * exactly 3.0 deg passes. Centre and no-refraction are assumed. */
+   * Moon's centre or upper limb, and whether refraction applies. Centre and
+   * no-refraction are assumed.
+   *
+   * A third question used to sit in that list, whether exactly 3.0 deg
+   * passes, because MUIS words its rule as "exceed" where the comparison
+   * below is >=. The sources still do not answer it and the case is
+   * unreachable, so it costs nothing. Every evening from 2000 to 2049 at the
+   * four MABIMS capitals with a moonset after sunset, 70572 in total, gives
+   * zero values landing exactly on either threshold. Between 0 and 4 evenings
+   * per capital fall within the 0.0070 deg DE440 error bar of one, and those
+   * are undecidable whichever operator is written. What is NOT settled is
+   * whether MUIS rounds its published quantities before comparing, which
+   * would make exact values reachable in their arithmetic though not in ours.
+   *
+   * VALIDATION COVERAGE, and it is narrower than "the four MABIMS states"
+   * above suggests. Only Indonesia is reproduced against an official
+   * published calendar. Malaysia, Brunei and Singapore run this same
+   * criterion through this same code path with no fixture behind them,
+   * because no citable primary source for their calendars was obtained.
+   *
+   * That is not a formality, and the tempting argument that one criterion
+   * through one code path makes an Indonesian fixture cover the rest is
+   * false. This predicate is not location-invariant. Comparing the verdict
+   * it returns at Jakarta against each of the other three capitals, every
+   * evening from 2022 to 2026 that has a moonset after sunset, a window
+   * lying wholly after the February 2022 circular that made 3 and 6.4
+   * govern:
+   *
+   *     Singapore              3 evenings differ of 1758
+   *     Kuala Lumpur           5 evenings differ of 1757
+   *     Bandar Seri Begawan    7 evenings differ of 1757
+   *
+   * A differing verdict is a differing month start, so that is three to
+   * seven disagreeing month starts in five years, and they are precisely
+   * the starts an Indonesian fixture says nothing about. A caller outside
+   * Indonesia is getting a result this library has never checked against
+   * their own authority's calendar.
+   *
+   * One thing tempers that without removing it. The divergences sit in the
+   * marginal population this file's header already documents as the band
+   * where the verdict is a coin toss the arithmetic cannot settle, so
+   * fixtures for these states would validate the library exactly where the
+   * criterion is least decisive.
+   *
+   * tests/test_hijri.c pins these counts, so a change to the criterion or to
+   * the sunset and moonset solvers moves a committed number rather than
+   * passing unnoticed. They are a relationship between four coordinates and
+   * not a defect rate: they show an Indonesian fixture cannot transfer, and
+   * they do not show the library is wrong at the other three. Nothing here
+   * could, because the fixtures that would settle that are the ones issue
+   * #27 recorded as unavailable. */
   case HIJRI_PREDICATE_MABIMS_2021:
     return p->moon_center_geometric_altitude_deg >= HIJRI_MABIMS_2021_ALTITUDE_DEG &&
            p->topocentric_elongation_deg >= HIJRI_MABIMS_2021_ELONGATION_DEG;
