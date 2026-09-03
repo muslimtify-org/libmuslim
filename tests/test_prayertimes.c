@@ -1964,6 +1964,101 @@ static void test_event_that_never_happens(void) {
   printf("\n");
 }
 
+/* The invariant the suite never had, and the reason issue #51 went unnoticed
+   for as long as it did. Every earlier polar check pinned a count at one named
+   city, so a method nobody had measured could return NaN anywhere else and
+   nothing would say so.
+
+   Three properties over a grid, not a list of expected values. The #82 work
+   recorded why: its first regression test asserted true facts about the day
+   and passed with the fix removed, which makes a test decoration.
+
+   1. fajr, dhuhr, maghrib and isha are finite everywhere, for every method.
+   2. asr is NaN only on a day that casts no shadow. asr is defined by the
+      length of one, and when |latitude - declination| reaches 90 the Sun's
+      true altitude never exceeds 0 and it is visible by refraction alone.
+      Sunrise still exists on such a day, so the polar branch never fires and
+      no reference latitude would help. An asr NaN anywhere else is a defect.
+   3. The finite times are in prayer order.
+
+   Goal 1 rests on a fact worth stating where it can be checked. Latitude 45
+   reaches about 90 - 45 - 23.44 = 21.56 degrees of depression at the solstice,
+   against a largest fajr angle in the table of 19.5 and a largest isha angle
+   of 18.0. A method added later with a fajr angle above roughly 21.5 would
+   fail this test rather than slip through, which is the point of walking the
+   table rather than naming methods.
+
+   Mutation record, two mutations, each applied on its own, run with
+   `make test`, and then reverted. The FAIL lines below are pasted verbatim.
+
+   First, setting the CALC_KEMENAG entry's high_lat_ref back to 0.0:
+     FAIL  grid, prescribed times finite  got=6279  expected=0
+     FAIL  grid, asr NaN only without a shadow  got=194  expected=0
+   Taking a reference latitude away takes times away, and the times that
+   remain stay ordered, so this one leaves the ordering check green.
+
+   Second, in calculate_prayer_times, dropping the `solve_lat =
+   params->high_lat_ref;` assignment inside the polar branch while leaving the
+   rest of the borrow in place, so sunrise and sunset come from the reference
+   latitude and fajr, isha and asr stay at the true one:
+     FAIL  grid, asr NaN only without a shadow  got=4268  expected=0
+     FAIL  grid, prayers in order        got=20414  expected=0
+   That is the two-places-in-one-schedule failure the comment above the polar
+   block in prayertimes.h describes, and it is what the ordering property is
+   for. Note that `prescribed times finite` stays green under it: the borrow
+   still fills every prescribed time, it just fills them from two latitudes.
+
+   So each of the three properties now has a mutation that makes it fail, and
+   no single mutation makes all three fail. Ordering here is not a substitute
+   for test_ordering below, which walks ordinary latitudes; what this one adds
+   is that the polar branch must solve the whole day at one latitude, which is
+   what issue #79 established. */
+static void test_polar_field_invariant(void) {
+  static const int month_len[12] = {31, 28, 31, 30, 31, 30,
+                                    31, 31, 30, 31, 30, 31};
+  printf("Test group: polar field invariant over a grid\n");
+
+  int nonfinite = 0, unexplained_asr = 0, disordered = 0;
+
+  for (int mi = 0; mi < CALC_COUNT; mi++) {
+    const MethodParams *m = method_params_get((CalcMethod)mi);
+    if (m == NULL) continue;
+    for (double lat = -89.0; lat <= 89.0; lat += 4.0) {
+      for (int mo = 1; mo <= 12; mo++) {
+        for (int dy = 1; dy <= month_len[mo - 1]; dy++) {
+          struct PrayerTimes t =
+              calculate_prayer_times(2026, mo, dy, lat, 0.0, 0.0, m);
+          const double v[5] = {t.fajr, t.dhuhr, t.asr, t.maghrib, t.isha};
+
+          for (int i = 0; i < 5; i++) {
+            if (i == 2) continue;
+            if (!isfinite(v[i])) nonfinite++;
+          }
+
+          if (isnan(t.asr)) {
+            double decl, eqt;
+            sun_position(julian_day(2026, mo, dy), &decl, &eqt);
+            if (fabs(lat - decl) < 90.0) unexplained_asr++;
+          }
+
+          for (int i = 1; i < 5; i++) {
+            if (isfinite(v[i]) && isfinite(v[i - 1]) && v[i] < v[i - 1]) {
+              disordered++;
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  check_long(nonfinite, 0, "grid, prescribed times finite");
+  check_long(unexplained_asr, 0, "grid, asr NaN only without a shadow");
+  check_long(disordered, 0, "grid, prayers in order");
+
+  printf("\n");
+}
+
 static void test_ordering(void) {
   static const struct {
     const char *name;
@@ -2053,56 +2148,73 @@ static void test_field_contract(void) {
   check_long(count_field_nan(78.22, 15.65, 1.0, mwl, 4), 0,
              "Longyearbyen MWL, isha");
 
-  // The same place under Kemenag, which publishes no high-latitude rule and so
-  // carries no reference latitude. This is the point of putting the rule on
-  // the method: the library does not attribute a ruling to an authority that
-  // never issued one, so these stay non-finite and the caller is told rather
-  // than guessed at.
-  // A caller can lift the polar restriction for a method whose authority
-  // publishes no rule, by copying the table entry and setting the reference
-  // latitude themselves. The library declines to make that choice on the
-  // authority's behalf, but it does not prevent the caller from making it.
+  // The same place under Kemenag, whose authority publishes no high-latitude
+  // rule. It carries 45 anyway, and the header says plainly that the choice
+  // is the library's rather than Kemenag's. This used to be 245 NaN days with
+  // 129 fajr and 241 maghrib among them.
   // Murmansk is the case that matters: a real city of roughly 270000 people
   // inside the polar circle, served by an authority that is silent here.
+  // It used to return 113 non-finite days a year, which is what the opt-out
+  // below still produces. Every entry now carries a reference latitude of 45,
+  // so the prescribed times resolve.
   const MethodParams *russia = method_params_get(CALC_RUSSIA);
   count_field_anomalies(68.97, 33.08, 3.0, russia, &nan_days, &out_days);
-  // 113 rather than 112 since issue #79. 2025-05-21 joined the polar days
-  // because it is one: the Sun's lowest point that day is -0.6572 degrees,
-  // above the -0.833 that defines sunset, so it never sets. The 0h UT hour
-  // angle said otherwise and the library used to report a maghrib for it.
-  // Russia publishes no high-latitude rule, so the honest answer is NaN.
-  check_long(nan_days, 113, "Murmansk Russia as published, NaN days");
+  // 10 rather than 113, and the 10 are asr alone. Derived rather than read
+  // off the binary: the caller-supplied reference below already pinned 10 for
+  // exactly these parameters before the table carried them, so the table edit
+  // had to land on that number or something was wrong.
+  check_long(nan_days, 10, "Murmansk Russia, NaN days");
+  // Not zero, and not the polar case. On those days the separation from the
+  // declination sits between 90 and 90.833 degrees, so the Sun is visible
+  // only by refraction and casts no shadow. Sunrise exists, so the reference
+  // latitude is never consulted and no value of it would help. asr genuinely
+  // does not occur.
+  check_long(count_field_nan(68.97, 33.08, 3.0, russia, 2), 10,
+             "Murmansk Russia, the 10 are asr");
+  check_long(count_field_nan(68.97, 33.08, 3.0, russia, 0), 0,
+             "Murmansk Russia, fajr always resolves");
+  check_long(count_field_nan(68.97, 33.08, 3.0, russia, 4), 0,
+             "Murmansk Russia, isha always resolves");
 
-  MethodParams russia_with_ref = *russia;
-  russia_with_ref.high_lat_method = HIGHLAT_ANGLE_BASED;
-  russia_with_ref.high_lat_ref = 45.0;
-  count_field_anomalies(68.97, 33.08, 3.0, &russia_with_ref, &nan_days,
+  // The opt-out. AMJA fatwa 21730 assigns the choice between the two documented
+  // opinions to the local religious authorities, and a header file is not one,
+  // so a caller can decline the library's default. This is the escape hatch
+  // the header documents, and it is pinned because no table entry exercises it
+  // any more.
+  MethodParams russia_no_ref = *russia;
+  russia_no_ref.high_lat_method = HIGHLAT_ANGLE_BASED;
+  russia_no_ref.high_lat_ref = 0.0;
+  count_field_anomalies(68.97, 33.08, 3.0, &russia_no_ref, &nan_days,
                         &out_days);
-  check_long(nan_days, 10, "Murmansk Russia with a caller reference, NaN days");
-  // Not zero, and the 10 are asr alone. On those days the separation from the
-  // declination sits between 90 and 90.833 degrees, so the Sun is visible only
-  // by refraction and casts no shadow. Sunrise exists, so this is not the polar
-  // case and the reference latitude is not consulted. asr genuinely does not
-  // occur, and saying so is the domain guard working rather than failing.
-  check_long(count_field_nan(68.97, 33.08, 3.0, &russia_with_ref, 2), 10,
-             "Murmansk Russia with a caller reference, the 10 are asr");
+  // 113 is what CALC_RUSSIA returned before it carried a reference, so the
+  // opt-out restores the previous behaviour exactly rather than approximately.
+  check_long(nan_days, 113, "Murmansk Russia opted out, NaN days");
 
-  // The copy must not disturb the table entry it came from.
+  // HIGHLAT_NONE declines the night-exists substitution as well, which is a
+  // wider opt-out than setting the reference to 0 alone.
+  MethodParams russia_none = *russia;
+  russia_none.high_lat_method = HIGHLAT_NONE;
+  russia_none.high_lat_ref = 0.0;
+  count_field_anomalies(68.97, 33.08, 3.0, &russia_none, &nan_days, &out_days);
+  check_long(nan_days, 210, "Murmansk Russia fully opted out, NaN days");
+
+  // The copies must not disturb the table entry they came from.
   count_field_anomalies(68.97, 33.08, 3.0, method_params_get(CALC_RUSSIA),
                         &nan_days, &out_days);
-  check_long(nan_days, 113, "Murmansk Russia unchanged after the copy");
+  check_long(nan_days, 10, "Murmansk Russia unchanged after the copies");
 
   const MethodParams *kemenag = method_params_get(CALC_KEMENAG);
   count_field_anomalies(78.22, 15.65, 1.0, kemenag, &nan_days, &out_days);
-  // 245, 129 and 241 rather than 244, 128 and 240, for the same reason as
-  // Murmansk above. 2025-04-18 is the first day of the midnight sun here:
-  // the Sun's lowest point is -0.6082 degrees, above -0.833, so it does not
-  // set. Kemenag publishes no high-latitude rule, so the whole day is
-  // unavailable rather than substituted.
-  check_long(nan_days, 245, "Longyearbyen Kemenag, NaN days");
-  check_long(count_field_nan(78.22, 15.65, 1.0, kemenag, 0), 129,
+  // 4 rather than 245, and the 4 are asr, matching MWL at the same location
+  // exactly. That equality is the derivation rather than a coincidence: the
+  // shadow-less days depend on latitude and declination alone, so two methods
+  // differing only in their twilight angles must agree on them.
+  check_long(nan_days, 4, "Longyearbyen Kemenag, NaN days");
+  check_long(count_field_nan(78.22, 15.65, 1.0, kemenag, 2), 4,
+             "Longyearbyen Kemenag, the 4 are asr");
+  check_long(count_field_nan(78.22, 15.65, 1.0, kemenag, 0), 0,
              "Longyearbyen Kemenag, fajr");
-  check_long(count_field_nan(78.22, 15.65, 1.0, kemenag, 3), 241,
+  check_long(count_field_nan(78.22, 15.65, 1.0, kemenag, 3), 0,
              "Longyearbyen Kemenag, maghrib");
 
   printf("\n");
@@ -2437,6 +2549,7 @@ int main(void) {
   test_field_contract();
   test_event_that_never_happens();
   test_ordering();
+  test_polar_field_invariant();
 
   test_civil_date_helpers();
 
