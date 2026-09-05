@@ -50,6 +50,23 @@ R_T1_UNVERIFIED = {"T", "1"}
 
 # Relation 2's local solar time bands, observed on page 6 (2026-08-22
 # research). Widen only if adjudication confirms a legitimate reason.
+#
+# Measured over all 575 rows (2026-09-05, task 2b): 71 rows fail this
+# band. Most of them form a continuous spread that tracks latitude and
+# season, e.g. high-latitude June evenings run to 21.53h and December
+# evenings at similar latitudes run down to 16.52h, with no gap bigger
+# than 0.36h across that range, which is what a page-6-only band would
+# miss since page 6 (group D) is one narrow slice of the table. Two rows
+# (No. matching CSV rows 306 and 388, both E) sit apart from that spread
+# by more than 9 hours with nothing between, which looks like damage
+# rather than natural variation.
+#
+# Left unwidened anyway: any new bound we could state would just be the
+# min and max of the 69 rows we believe are genuine, i.e. fitted exactly
+# to exclude the two we believe are damaged. That is the gate trusting
+# its own output the brief warns against, unlike the V tolerance below
+# which comes from an independent physical derivation. Task 3 adjudicates
+# all 71 by hand instead.
 EVENING_BAND = (17.13, 19.65)
 MORNING_BAND = (4.95, 6.63)
 
@@ -65,7 +82,24 @@ ARC_ROUNDING = 0.05
 
 # Relation 6, the V checksum. hijri_odeh_v (hijri.h:2137) takes arc minutes;
 # Table VI's W column is arc seconds.
-V_TOLERANCE = 0.07
+#
+# The tolerance is the sum of three independent rounding contributions,
+# not the cubic term alone:
+#   - W is printed to a half arc second, and the cubic's derivative
+#     against W is about 0.105 per arc second there, giving 0.053.
+#   - ARCV is printed to one decimal place, a half-unit rounding of 0.05.
+#   - V itself is printed to two decimal places, a half-unit rounding of
+#     0.005.
+#   0.053 + 0.05 + 0.005 = 0.108, rounded up to 0.11.
+#
+# Measured over the 532 of 575 rows whose ARCV, W and V all parse
+# (2026-09-05, task 2b): worst residual 44.1479, p99 0.0901, p95 0.0751,
+# median 0.0288. Exactly 3 rows fail at a tolerance of 0.10, and the same
+# 3 still fail at 0.50, so this bound and 0.109 pick the same 3 rows:
+# rounding noise and real damage are separated by an empty gap from about
+# 0.094 to 0.5. Page 6 falls to zero failures at this tolerance, matching
+# the research doc's 39 of 39.
+V_TOLERANCE = 0.11
 
 # Section 7.2 and 7.3's stated extremes.
 LAG_MIN_OPTICAL = 21
