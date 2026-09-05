@@ -1,9 +1,14 @@
 # Odeh Table VI transcription adjudication
 
 This records how much hand correction the Table VI fixture rests on.
-The scratch transcription has 575 rows.
-The gate originally rejected 412 of them.
+The scratch transcription has 578 rows.
+The gate originally rejected 412 of the 575 rows the extraction produced at that point.
 Every rejected cell, and the elevation and visibility-mark columns on every row (rejected or not), were read directly against the scanned page pixels rather than accepted from OCR or inferred from the gate's own arithmetic.
+
+The 575 figure this document originally reported was an undercount.
+`extract.py` finds a row by matching a dd-mm-yyyy pattern in the Date cell, so a row whose date failed to transcribe was invisible to it and to every check built on its output, including the row-by-row adjudication below, which worked from that same 575-row CSV.
+Nothing before this pass ever compared the transcription against a count of what is actually printed on the page.
+That gap is closed below.
 
 ## Glyph mapping verified before use
 
@@ -28,23 +33,28 @@ A small number of cells (elevation glyphs shaped identically for the digit `0` a
 
 ## Residual gate failures, left uncorrected on purpose
 
-After adjudication the gate reports 497 of 575 rows passing.
-The remaining 78 failures are not transcription damage and were not corrected, because the pixels for every one of them match what is already in the CSV.
+After adjudication the gate reports 499 of 578 rows passing.
+The remaining 79 failures are not transcription damage and were not corrected, because the pixels for every one of them match what is already in the CSV.
 
-75 of the 78 are `relation2_local_time_band` failures.
+76 of the 79 are `relation2_local_time_band` failures.
 This mirrors the finding recorded earlier (2026-09-05, task 2b) that the gate's local-time band is deliberately narrower than the real spread of the data, and widening it would mean fitting the gate to the answer instead of deriving it independently.
 The two rows previously identified as genuinely damaged in that earlier measurement, rather than merely outside the band, are corrected in this pass (their Julian Date fields carried digit errors) and now pass the gate.
+One of the three rows inserted by the completeness check below (record 253, page 14) also falls in this class, just past the band's upper edge, and its cells were read directly from the pixels during insertion, so this is the same known limitation, not a new transcription error.
 The other rows in this class are left failing on purpose, as a known limitation of the gate rather than an error in the data.
 
 The remaining 3 failures (one `relation1_date_jd_long`, one `relation4_spherical_closure`, one `extreme_arcl_naked_eye`) were each individually checked cell by cell against the source pixels for every column the check depends on.
 In each case every relevant cell matches the printed page exactly, so the discrepancy is either a genuine inconsistency in Odeh's original table or an edge case the check's tolerance does not cover, not a transcription error, and no correction was made.
 
-## Rows missing from the transcription entirely
+## Completeness check and the rows it found
 
-While reading pixels for the second-reading pass, two of the seventeen page agents (page 11 and page 14) noticed that the source scan contains rows with no counterpart anywhere in the 575-row CSV, on any page.
-Page 11 has one such row, between the rows for record numbers 688 and 265.
-Page 14 has two, one between the rows for record numbers 488 and 621, and one after record number 031 at the end of that page's rows.
-These are not cell-level errors and cannot be fixed by correcting a cell, since they have no row to attach a correction to.
-Inserting them would also renumber every subsequent row index in the CSV, which is a structural change well outside adjudicating existing cells against existing gate failures.
-They are recorded here as a known gap in the fixture's completeness for whoever scopes the next piece of work on it.
-The rest of the page-by-page work did not include a systematic count of physical rows against CSV rows, so it cannot rule out further gaps of the same kind on other pages.
+While reading pixels for the second-reading pass, two of the seventeen page agents (page 11 and page 14) noticed that the source scan contains rows with no counterpart anywhere in the CSV, on any page.
+That finding could not be trusted beyond those two pages on its own, because nothing had checked the other fifteen, and the technique that produced the original count, matching a dd-mm-yyyy pattern in the Date cell, is exactly the technique that would miss a row like this: a row whose date failed to transcribe has no date pattern to match, so it is invisible to both the extraction and to any check built the same way.
+
+`gate.py` now runs an independent completeness check instead.
+For each page it clusters the No. column's tokens from that page's tesseract TSV into row bands, counting physical rows by the record number's presence (or, failing that, its ink) rather than by whether the row's date parsed, and compares that count against how many rows in the CSV carry that page number.
+Run across all seventeen pages, it found exactly the two pages already flagged by hand and no others: page 11 short by one row, page 14 short by two.
+
+Page 11 was missing record 264, between the rows for record numbers 688 and 265.
+Page 14 was missing record 253, between the rows for record numbers 488 and 621, and record 303, after record number 031 at the end of that page's rows.
+All three were read directly from the source pixels and inserted at their correct position and page, bringing the total from 575 to 578.
+Running the completeness check again over the enlarged CSV reports no page where the physical and transcribed counts differ.

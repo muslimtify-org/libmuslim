@@ -3,8 +3,9 @@
 
 Runs a set of checks over the scratch CSV `extract.py` produces: column
 alphabet validation, five astronomical relations recorded as holding on
-page 6 in `docs/research/2026-08-22-odeh-table-vi-ocr-fidelity.md`, and
-the paper's own stated extremes for lag and elongation.
+page 6 in `docs/research/2026-08-22-odeh-table-vi-ocr-fidelity.md`, the
+paper's own stated extremes for lag and elongation, and a completeness
+check that counts each page's physical rows independently of the CSV.
 
 This script fixes nothing. Tesseract's known error modes, `V` rendered as
 a `\\Y` family or as `Vv`/`vV`/etc, and a leading minus in Long read as a
@@ -12,6 +13,17 @@ tilde, are reported by class so a human can adjudicate them against the
 page images, not silently normalised here. Applying an unverified mapping
 here would bake a guess into the fixture and destroy the evidence the
 adjudication step needs.
+
+The completeness check exists because the CSV's own row count cannot
+prove itself complete: `extract.py` finds a row by matching a dd-mm-yyyy
+Date cell, so a row whose date fails to transcribe is invisible to it,
+and nothing before this check ever compared the count against the page
+image. Instead this counts each page's physical rows by clustering the
+No. column's tokens into row bands, which survives a damaged Date cell
+because the row still carries a record number (or, failing that, ink) in
+that column. It reads `SCRATCH_CSV`'s sibling `page-images` directory,
+the same layout `extract.py` writes, and is skipped with a note if that
+directory is absent.
 
 Exit 0 means the gate ran to completion, not that every row passed. The
 report lists every failure; driving that list to empty is later work.
@@ -25,9 +37,13 @@ counts to stdout.
 
 import csv
 import math
+import re
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import extract as _extract
 
 R_ALPHABET = set("ABCDFI")
 E_ALPHABET = set("ME")
@@ -290,7 +306,87 @@ def check_row(row):
     return failures
 
 
-def write_report(path, rows, all_failures):
+# The header title repeats verbatim ("No." or "NO.") wherever it appears;
+# a page image can carry it more than once if the scan stacks two of the
+# book's printed pages into one raster (observed on page 7).
+_HEADER_TITLE_RE = re.compile(r"^no\.?$", re.IGNORECASE)
+
+# Row bands on the same physical row jitter by a handful of pixels; the
+# next row down is a full pitch away (47-58px). This only needs to keep
+# rows apart, not be precise about it, same as extract.py's own constant.
+_ROW_BAND_GAP_PX = 20
+
+
+def physical_row_count(tsv_path):
+    """Count a page's physical data rows by clustering the No. column's
+    tokens into row bands, independent of whether each row's Date parsed.
+
+    Excludes the header title token (which can repeat, see _HEADER_TITLE_RE)
+    and the narrow ruler digit that sits under the No. column one row below
+    the header row: every genuine record number renders far wider (three
+    digits, zero padded) than that single unpadded digit, so a width cutoff
+    at half the column's own median width separates the two without a fixed
+    pixel row to skip, which is what silently lost the first data row on
+    almost every page the last time this was tried with `top > 200`.
+
+    Returns None if the page's header row cannot be located.
+    """
+    words = _extract._read_words(tsv_path)
+    anchors = _extract._find_header_anchors(words)
+    if anchors is None:
+        return None
+
+    header_top = min(
+        w["top"] for w in words if w["text"] in _extract._HEADER_ANCHOR_TOKENS
+    )
+    bounds = _extract._column_boundaries(anchors)
+    no_col_words = [
+        w for w in words
+        if _extract._assign_column(w, bounds) == 0
+        and w["top"] > header_top + _extract._COARSE_ROW_GAP_PX
+        and not _HEADER_TITLE_RE.match(w["text"].strip())
+    ]
+    if not no_col_words:
+        return 0
+
+    widths = sorted(w["width"] for w in no_col_words)
+    median_width = widths[len(widths) // 2]
+    data_words = [w for w in no_col_words if w["width"] >= median_width * 0.5]
+    if not data_words:
+        return 0
+
+    tops = sorted(w["top"] for w in data_words)
+    row_count = 1
+    for prev_top, top in zip(tops, tops[1:]):
+        if top - prev_top > _ROW_BAND_GAP_PX:
+            row_count += 1
+    return row_count
+
+
+def completeness_check(tsv_dir, rows):
+    """Compare each page's physical row-band count against how many rows
+    in `rows` carry that page number. Returns a list of
+    (page, physical_count, transcribed_count) for every page that differs,
+    in page order, or None if `tsv_dir` does not exist."""
+    tsv_dir = Path(tsv_dir)
+    if not tsv_dir.is_dir():
+        return None
+
+    transcribed_counts = Counter(row["page"] for row in rows)
+    tsv_paths = sorted(tsv_dir.glob("page-*.tsv"))
+    mismatches = []
+    for index, tsv_path in enumerate(tsv_paths):
+        page_num = str(_extract.FIRST_PAGE + index)
+        physical = physical_row_count(tsv_path)
+        if physical is None:
+            continue
+        transcribed = transcribed_counts.get(page_num, 0)
+        if physical != transcribed:
+            mismatches.append((page_num, physical, transcribed))
+    return mismatches
+
+
+def write_report(path, rows, all_failures, completeness_mismatches):
     total = len(rows)
     failing_row_indices = sorted(all_failures.keys())
     fail_count = len(failing_row_indices)
@@ -330,6 +426,21 @@ def write_report(path, rows, all_failures):
             f"row {idx} (page {row['page']}, No. {row['No.']}): {checks}"
         )
 
+    lines.append("")
+    lines.append("=== Completeness: physical rows vs transcribed rows, by page ===")
+    if completeness_mismatches is None:
+        lines.append(
+            "skipped: no page-images/ directory next to the scratch CSV"
+        )
+    elif not completeness_mismatches:
+        lines.append("every page's physical row count matches its transcribed count")
+    else:
+        for page, physical, transcribed in completeness_mismatches:
+            lines.append(
+                f"page {page}: {physical} physical rows, "
+                f"{transcribed} transcribed (missing {physical - transcribed})"
+            )
+
     path.write_text("\n".join(lines) + "\n")
     return pass_count, fail_count
 
@@ -349,10 +460,20 @@ def main():
         if failures:
             all_failures[idx] = failures
 
+    completeness_mismatches = completeness_check(
+        csv_path.with_name("page-images"), rows,
+    )
+
     report_path = csv_path.with_name("gate_report.txt")
-    pass_count, fail_count = write_report(report_path, rows, all_failures)
+    pass_count, fail_count = write_report(
+        report_path, rows, all_failures, completeness_mismatches,
+    )
 
     print(f"{len(rows)} rows: {pass_count} pass, {fail_count} fail")
+    if completeness_mismatches is None:
+        print("completeness check: skipped, no page-images/ directory")
+    else:
+        print(f"completeness check: {len(completeness_mismatches)} page(s) with a mismatch")
     print(f"report: {report_path}")
     return 0
 
