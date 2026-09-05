@@ -123,6 +123,35 @@ LAG_MIN_NAKED_EYE = 29
 ARCL_MIN_OPTICAL = 6.4
 ARCL_MIN_NAKED_EYE = 7.7
 
+# Both the table and the paper's stated extremes are rounded, so a bound
+# stated as an exact equality is stricter than the paper's own numbers
+# support.
+#
+# Table VI's Lag column prints a whole number of minutes, a half-unit
+# rounding envelope of 0.5 minutes. Section 7.2's own quoted minimums (21
+# and 29) are also whole minutes, contributing another 0.5 minute
+# envelope. A printed Lag one minute under the stated minimum can
+# therefore still represent a true Lag that satisfies it, e.g. a printed
+# 20 stands for a true value down to 19.5, and a quoted minimum of 21
+# stands for a true value as low as 20.5, so the two can agree at 20.5.
+# 0.5 + 0.5 = 1 minute.
+LAG_ROUNDING_TOLERANCE = 1
+
+# Table VI's ARCL column prints one decimal place, a half-unit rounding
+# envelope of 0.05 degrees (see ARC_ROUNDING above, which is the same
+# quantity). Section 7.3's own quoted minimums (6.4 and 7.7) are also
+# printed to one decimal, contributing another 0.05 degree envelope. A
+# printed 7.6 stands for a true value from 7.55 to 7.65, and the quoted
+# 7.7 stands for a true value from 7.65 to 7.75, so the two can agree at
+# 7.65. 0.05 + 0.05 = 0.1 degree.
+#
+# Section 7.3's figures are also quoted at the time of last or first
+# visibility, while Table VI's ARCL column is at best time, a different
+# instant in the same sighting. That is a second, independent reason the
+# two need not match exactly even with perfect transcription, on top of
+# the rounding envelope computed above.
+ARCL_ROUNDING_TOLERANCE = 0.1
+
 
 def classify_mark_illegal(value, extra_unverified):
     """Bucket an illegal N/B/T-style mark into a named systematic class."""
@@ -289,18 +318,23 @@ def check_row(row):
     naked_eye = row["N"].strip() == "V"
     optical_aid = row["B"].strip() == "V" or row["T"].strip() == "V"
 
+    # A tiny epsilon absorbs binary floating point representation error in
+    # the threshold subtraction below (e.g. 7.7 - 0.1 lands a hair above
+    # 7.6 in binary), not any rounding envelope of the data itself.
+    epsilon = 1e-9
+
     if "Lag" in numeric:
         lag = numeric["Lag"]
-        if optical_aid and lag < LAG_MIN_OPTICAL:
+        if optical_aid and lag < LAG_MIN_OPTICAL - LAG_ROUNDING_TOLERANCE - epsilon:
             failures.append(("extreme_lag_optical", f"Lag={lag} < {LAG_MIN_OPTICAL}", ""))
-        if naked_eye and lag < LAG_MIN_NAKED_EYE:
+        if naked_eye and lag < LAG_MIN_NAKED_EYE - LAG_ROUNDING_TOLERANCE - epsilon:
             failures.append(("extreme_lag_naked_eye", f"Lag={lag} < {LAG_MIN_NAKED_EYE}", ""))
 
     if "ARCL" in numeric:
         arcl = numeric["ARCL"]
-        if optical_aid and arcl < ARCL_MIN_OPTICAL:
+        if optical_aid and arcl < ARCL_MIN_OPTICAL - ARCL_ROUNDING_TOLERANCE - epsilon:
             failures.append(("extreme_arcl_optical", f"ARCL={arcl} < {ARCL_MIN_OPTICAL}", ""))
-        if naked_eye and arcl < ARCL_MIN_NAKED_EYE:
+        if naked_eye and arcl < ARCL_MIN_NAKED_EYE - ARCL_ROUNDING_TOLERANCE - epsilon:
             failures.append(("extreme_arcl_naked_eye", f"ARCL={arcl} < {ARCL_MIN_NAKED_EYE}", ""))
 
     return failures
