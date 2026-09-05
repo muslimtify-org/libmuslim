@@ -11,7 +11,20 @@
  * The CSV columns, in order, are:
  * No.,R,E,Date,Observer,Long,Lat,Ele,N,B,T,JD,Age,Lag,ARCV,DAZ,ARCL,W,V,page
  * Date is dd-mm-yyyy, local. Long is signed degrees east, Lat signed
- * degrees north, matching HijriLocation's own convention. */
+ * degrees north, matching HijriLocation's own convention.
+ *
+ * `--emit-zones OUTPUT.csv` writes one `No.,zone` line per input row, in
+ * the scratch CSV's own row order, so `extract.py`'s fixture emit step can
+ * zip it positionally against the same scratch CSV. `zone` is this
+ * library's own `hijri_odeh_classify` result, recomputed from the row's
+ * own date, latitude, longitude and elevation through
+ * `hijri_odeh_evaluate_evening`, using the same name strings as
+ * `tests/hijri_research_probe.c`'s `odeh_zone_name`. Morning (`E` column
+ * `M`) rows are not evaluated (the function models evenings only) and get
+ * an empty zone; an evening row whose sunset or moonset event fails also
+ * gets `UNAVAILABLE`, matching the research probe's convention for a NaN
+ * result. This mode never prints Odeh's own ARCV/DAZ/ARCL/W/V: those never
+ * leave this scratch tool. */
 
 #define HIJRI_IMPLEMENTATION
 #include "hijri.h"
@@ -58,11 +71,92 @@ static double median_of(double *values, long count) {
   return 0.5 * (values[count / 2 - 1] + values[count / 2]);
 }
 
-int main(int argc, char **argv) {
-  if (argc < 2) {
-    fprintf(stderr, "usage: %s <table_vi-evening.csv>\n", argv[0]);
+/* Same strings as tests/hijri_research_probe.c's odeh_zone_name. */
+static const char *odeh_zone_name(HijriOdehZone zone) {
+  static const char *names[] = {"NOT_VISIBLE", "OPTICAL_AID_ONLY",
+                                 "OPTICAL_AID_OR_NAKED_EYE", "NAKED_EYE"};
+  return names[(int)zone];
+}
+
+static int emit_zones(const char *input_path, const char *output_path) {
+  FILE *f = fopen(input_path, "r");
+  if (!f) {
+    fprintf(stderr, "cannot open %s\n", input_path);
     return 2;
   }
+  FILE *out = fopen(output_path, "w");
+  if (!out) {
+    fprintf(stderr, "cannot open %s for writing\n", output_path);
+    fclose(f);
+    return 2;
+  }
+
+  char line[512];
+  if (!fgets(line, sizeof line, f)) { /* header */
+    fclose(f);
+    fclose(out);
+    return 2;
+  }
+  fprintf(out, "No.,zone\n");
+
+  long row_count = 0;
+  while (fgets(line, sizeof line, f)) {
+    char *fields[MAX_COLS];
+    int nfields = split_csv(line, fields, MAX_COLS);
+    if (nfields != 20) {
+      fprintf(stderr, "row %ld: expected 20 fields, got %d\n", row_count + 1,
+              nfields);
+      fclose(f);
+      fclose(out);
+      return 2;
+    }
+    row_count++;
+
+    if (strcmp(fields[2], "M") == 0) {
+      fprintf(out, "%s,\n", fields[0]);
+      continue;
+    }
+
+    int day, month, year;
+    if (sscanf(fields[3], "%d-%d-%d", &day, &month, &year) != 3) {
+      fprintf(stderr, "row %ld: unparsable Date %s\n", row_count, fields[3]);
+      fclose(f);
+      fclose(out);
+      return 2;
+    }
+
+    double lon_deg = atof(fields[5]);
+    double lat_deg = atof(fields[6]);
+    double ele = atof(fields[7]);
+
+    HijriLocation loc = {lat_deg, lon_deg, ele, NULL};
+    HijriOdehResult result =
+        hijri_odeh_evaluate_evening(year, month, day, &loc);
+
+    if (isnan(result.v)) {
+      fprintf(out, "%s,UNAVAILABLE\n", fields[0]);
+    } else {
+      fprintf(out, "%s,%s\n", fields[0], odeh_zone_name(result.zone));
+    }
+  }
+
+  fclose(f);
+  fclose(out);
+  fprintf(stderr, "wrote %ld zone rows to %s\n", row_count, output_path);
+  return 0;
+}
+
+int main(int argc, char **argv) {
+  if (argc < 2) {
+    fprintf(stderr,
+            "usage: %s <table_vi-evening.csv>\n"
+            "       %s <table_vi_transcription.csv> --emit-zones <output.csv>\n",
+            argv[0], argv[0]);
+    return 2;
+  }
+
+  if (argc == 4 && strcmp(argv[2], "--emit-zones") == 0)
+    return emit_zones(argv[1], argv[3]);
 
   FILE *f = fopen(argv[1], "r");
   if (!f) {

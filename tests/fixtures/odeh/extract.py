@@ -29,8 +29,16 @@ Usage:
 Writes OUTPUT_DIR/page-images (pdfimages + tesseract TSVs) and
 OUTPUT_DIR/table_vi_transcription.csv, then prints the row count and the
 output CSV path to stdout.
+
+`extract.py --emit-fixture --scratch SCRATCH.csv --zones ZONES.csv
+OUTPUT.csv` instead builds the committed fixture from the adjudicated
+scratch CSV (ADJUDICATION.md) and `compare_arcv --emit-zones`'s output,
+dropping every column Odeh's paper holds copyright on (see
+tests/fixtures/odeh/README.md's licensing section for which columns those
+are and why).
 """
 
+import argparse
 import csv
 import re
 import subprocess
@@ -250,13 +258,138 @@ def _transcribe_page(tsv_path, page_num):
     return out_rows
 
 
-def main():
-    if len(sys.argv) != 3:
-        print(f"usage: {sys.argv[0]} INPUT.pdf OUTPUT_DIR", file=sys.stderr)
-        return 2
+# The committed fixture's own column set. Every column Odeh's paper holds
+# copyright on (record number, source, observer, Julian date, age, lag,
+# ARCV, DAZ, ARCL, W, V) is excluded; see README.md's licensing section.
+FIXTURE_COLUMNS = [
+    "year", "month", "day", "phase", "lat_deg", "lon_deg", "elev_m",
+    "naked_eye", "binocular", "telescope", "zone",
+]
 
-    pdf_path = Path(sys.argv[1])
-    output_dir = Path(sys.argv[2])
+_PHASE_NAME = {"E": "evening", "M": "morning"}
+
+
+def _format_number(text):
+    """Parse a numeric cell and drop the source's fixed-width padding
+    (e.g. "018.4" -> 18.4, "3800" -> 3800), returning an int where the
+    value is whole so integral columns like elevation print without a
+    spurious ".0"."""
+    value = float(text)
+    return int(value) if value == int(value) else value
+
+
+def _emit_fixture(scratch_csv_path, zones_csv_path, output_csv_path):
+    """Build the committed fixture from the adjudicated scratch CSV
+    (ADJUDICATION.md) and compare_arcv --emit-zones's output.
+
+    The two files are read in their on-disk row order and zipped
+    positionally: both walk the same 578-row scratch CSV in the same
+    order, so index i in one is the same record as index i in the other.
+    Each pair's No. field is cross-checked as a guard against the two
+    files silently drifting out of alignment; No. itself is never written
+    to the fixture, since the record number is one of the columns Odeh's
+    paper holds copyright on.
+    """
+    with open(scratch_csv_path, newline="") as f:
+        scratch_rows = list(csv.DictReader(f))
+    with open(zones_csv_path, newline="") as f:
+        zone_rows = list(csv.DictReader(f))
+
+    if len(zone_rows) != len(scratch_rows):
+        print(
+            f"FATAL: {zones_csv_path} has {len(zone_rows)} rows, expected "
+            f"{len(scratch_rows)} to match {scratch_csv_path}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    fixture_rows = []
+    for scratch, zone_row in zip(scratch_rows, zone_rows):
+        if scratch["No."] != zone_row["No."]:
+            print(
+                f"FATAL: scratch/zones rows out of alignment: No. "
+                f"{scratch['No.']!r} vs {zone_row['No.']!r}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        phase = _PHASE_NAME.get(scratch["E"].strip())
+        if phase is None:
+            print(
+                f"FATAL: No. {scratch['No.']}: E column {scratch['E']!r} "
+                "is outside {E, M}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        day, month, year = (int(p) for p in scratch["Date"].strip().split("-"))
+
+        fixture_rows.append({
+            "year": year,
+            "month": month,
+            "day": day,
+            "phase": phase,
+            "lat_deg": _format_number(scratch["Lat"]),
+            "lon_deg": _format_number(scratch["Long"]),
+            "elev_m": _format_number(scratch["Ele"]),
+            "naked_eye": scratch["N"].strip(),
+            "binocular": scratch["B"].strip(),
+            "telescope": scratch["T"].strip(),
+            "zone": zone_row["zone"].strip(),
+        })
+
+    fixture_rows.sort(
+        key=lambda r: (r["year"], r["month"], r["day"], r["lat_deg"], r["lon_deg"])
+    )
+
+    with open(output_csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=FIXTURE_COLUMNS, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(fixture_rows)
+
+    return fixture_rows
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("input_pdf", nargs="?")
+    parser.add_argument("output_csv")
+    parser.add_argument(
+        "--emit-fixture",
+        action="store_true",
+        help="build the committed fixture from --scratch and --zones "
+        "instead of transcribing a PDF; output_csv is the fixture "
+        "destination",
+    )
+    parser.add_argument(
+        "--scratch",
+        help="the adjudicated scratch CSV (--emit-fixture mode)",
+    )
+    parser.add_argument(
+        "--zones",
+        help="compare_arcv --emit-zones output, paired positionally "
+        "against --scratch (--emit-fixture mode)",
+    )
+    args = parser.parse_args()
+
+    if args.emit_fixture:
+        if not args.scratch or not args.zones or not args.output_csv:
+            parser.error(
+                "--emit-fixture requires --scratch, --zones and output_csv"
+            )
+        rows = _emit_fixture(args.scratch, args.zones, args.output_csv)
+        print(
+            f"fixture OK: {len(rows)} rows written to {args.output_csv}",
+            file=sys.stderr,
+        )
+        return 0
+
+    if not args.input_pdf or not args.output_csv:
+        parser.error("input_pdf and OUTPUT_DIR are required unless "
+                      "--emit-fixture is given")
+
+    pdf_path = Path(args.input_pdf)
+    output_dir = Path(args.output_csv)
     output_dir.mkdir(parents=True, exist_ok=True)
     images_dir = output_dir / "page-images"
 
