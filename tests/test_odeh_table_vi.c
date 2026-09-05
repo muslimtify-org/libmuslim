@@ -160,6 +160,23 @@ int main(void) {
            EXPECTED_ROWS);
   }
 
+  // Mutation record 1: changed the frozen zone of the fixture's first data
+  // row (1859-07-01, lat 38.0, lon 23.7) from NAKED_EYE to
+  // OPTICAL_AID_OR_NAKED_EYE, ran `make test`, observed:
+  // FAIL zone/mismatch date=1859-07-01 lat=38.0000 lon=23.7000 expected=OPTICAL_AID_OR_NAKED_EYE actual=NAKED_EYE
+  // Row restored afterward.
+  //
+  // Mutation record 2: renamed
+  // tests/fixtures/odeh/table-vi-observations.csv out of the way, ran
+  // `make test`, observed:
+  // FAIL fixture/open path=tests/fixtures/odeh/table-vi-observations.csv
+  // Fixture name restored afterward.
+  //
+  // Mutation record 3: changed EXPECTED_ROWS from 522 to 523, ran
+  // `make test`, observed:
+  // FAIL fixture/row_count actual=522 expected=523
+  // Value restored afterward.
+
   // Predicted zone against observed outcome, tallied over all 522 evening
   // rows. This is printed for a reader to see, not asserted against a
   // threshold: the observations carry real atmospheric scatter and Odeh's
