@@ -2,6 +2,16 @@
 
 Date: 2026-08-22. Issue: #47.
 
+Correction, 2026-09-05: the finding below that Odeh's V does not close, at "What does not check out", is wrong.
+Table VI prints crescent width W in arc seconds, and `hijri_odeh_v` takes W in arc minutes, so the comparison must use the printed W divided by 60.
+That conversion was missed, which produced the false ratios of 1.29 to 2.10 reported below.
+With the conversion applied, V closes against the printed ARCV and W across all 532 rows whose ARCV, W and V all parse, with a worst residual of 0.0932.
+That residual matches the print rounding, since ARCV's rounding contributes 0.05, W's integer arc second rounding contributes about 0.053 through the cubic's slope, and V's rounding contributes 0.005.
+Rounding noise and real damage separate cleanly, since exactly 3 rows fail at a tolerance of 0.10 and the same 3 rows still fail at 0.50, leaving nothing between roughly 0.094 and 0.5.
+The corrected measurement is in `docs/research/2026-09-05-odeh-table-vi-residual.md`, from PR #91, now merged, which also closed issue #47.
+The planning conclusion drawn below from the wrong finding is also wrong. The checksum #47 proposed does work, and it was used as a gate in the work that built the fixture.
+The original finding and its planning conclusion are left unchanged below as a record of how the unit conversion error was made, since it is a mistake anyone re-deriving V from Table VI can repeat.
+
 #47 says Table VI does not extract, that building the fixture means OCR of numeric tables, and that OCR "is exactly the tool most likely to introduce silent digit errors into a fixture whose purpose is catching digit errors". This measures whether that risk is real and, more usefully, whether it is checkable.
 
 Verdict: transcription is reliable and mechanically verifiable, but the checks that verify it cover mostly the columns licensing forces us to discard. Of the five columns #47 plans to commit, two cannot be verified by any arithmetic at all, and one of those two is the fixture's entire purpose.
