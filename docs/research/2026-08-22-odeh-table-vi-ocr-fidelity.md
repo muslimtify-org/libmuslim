@@ -44,6 +44,8 @@ Five relations hold between columns that were read independently of one another.
 
 **Odeh's V does not close against the printed ARCV and W.** Solving `V = ARCV - (-0.1018 W^3 + 0.7319 W^2 - 6.3226 W + 7.1651)` for W, using the library's own coefficients, gives a W that is 1.29 to 2.10 times the printed W column, with no constant ratio. Either the W column's unit is not what it appears, or V is computed from quantities other than the printed ARCV and W, for instance at a different instant.
 
+See the correction at the top of this document, this finding is wrong.
+
 This matters for planning. #47 names exactly this relation as the parse checksum, "recompute V from the row's own ARCV and W and compare against the row's own printed V", and proposes keeping the computed columns in an untracked scratch file to run it. That gate does not currently close on correctly transcribed data, so it would reject good rows. It has to be resolved before it can gate anything.
 
 ## The coverage problem
@@ -83,6 +85,8 @@ Proceed, but not on the protocol #47 currently describes.
 The arithmetic gate is worth building and is cheap, and it will catch transcription damage across nine columns at once. It is not sufficient, and the columns it misses are precisely the ones that get committed. Those need a second independent transcription pass, diffed against the first, for latitude, elevation and the three visibility columns. Seventeen pages, two passes on part of each.
 
 The V checksum #47 planned needs the W unit question resolved first, otherwise it rejects correct rows.
+
+See the correction at the top of this document, this conclusion is wrong.
 
 ## Reproduction
 
