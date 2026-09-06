@@ -438,16 +438,38 @@
  * and W is confirmed by a published anchor rather than by inspection
  * alone. See docs/research/2026-08-16-odeh-primary-source.md.
  *
- * Odeh still has no observation-level validation, because the paper's
- * Table VI holds 737 observation records and does not extract as text,
- * the table is image-only. See issue #47 for that gap.
+ * Odeh is now validated against the observations in its own Table VI.
+ * The table is image-only, with no text layer, and was transcribed from
+ * the paper's scanned pages with pdfimages and tesseract OCR. The
+ * committed fixture, tests/fixtures/odeh/, holds 578 rows, 522 of them
+ * evening. Over the 469 evening rows that pass every transcription
+ * gate, library minus Odeh's own printed values: ARCV differs by a
+ * mean absolute 0.048 degrees, worst 0.510, none beyond one degree,
+ * and crescent width by a mean absolute 0.005 arc minutes, worst
+ * 0.018, none beyond one arc minute. Both sit within the precision
+ * Table VI itself prints to, 0.1 degrees for ARCV and the nearest arc
+ * second for width. See docs/research/2026-09-05-odeh-table-vi-residual.md
+ * for the full measurement.
  *
- * This leaves an asymmetry a reader should not miss. Yallop is validated
- * above against 271 observations, but his coefficients were never checked
- * against HMNAO's own statement of them. Odeh is the reverse, its
- * coefficients are verified verbatim against the paper, but there is no
- * observation-level validation at all. Neither model is complete in the
- * other's sense.
+ * The paper's own prose claims 737 observation records, and its
+ * source-list breakdown sums to exactly that, but the printed table
+ * itself holds only 578 rows. tests/fixtures/odeh/README.md records
+ * why those two figures differ, so a reader who encounters the 737
+ * figure elsewhere is not surprised by the 578 committed here.
+ *
+ * The committed Odeh fixture is, like the Yallop fixture above, a
+ * frozen regression baseline, not a live comparison. The validation
+ * above ran once, its full working is recorded in
+ * docs/research/2026-09-05-odeh-table-vi-residual.md, and CI only
+ * checks the committed fixture for byte-exact regression. It does not
+ * re-run the comparison against Odeh's printed values on every build.
+ *
+ * The asymmetry described above has flipped, not resolved. Yallop is
+ * validated above against 271 observations, but his coefficients
+ * were never checked against HMNAO's own statement of them. Odeh now
+ * has both: its coefficients are verified verbatim against the
+ * paper, and it is validated above against its own Table VI's
+ * observations. Yallop is now the model left with the remaining gap.
  *
  * -----------------------------------------------------------------------
  * LICENSE
