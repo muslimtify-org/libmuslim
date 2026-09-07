@@ -2006,7 +2006,17 @@ hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
    * verified against the book's own worked example, which this library
    * reproduces to 0.4' (see tests/test_hijri.c and
    * docs/research/2026-08-01-wujudul-hilal-convention.md). Adding dip on
-   * the altitude side alone would deviate from the source by ~17'. */
+   * the altitude side alone would deviate from the source by ~17'.
+   *
+   * SUPERSEDED for Muhammadiyah: from 1447 H the Muhammadiyah calendar
+   * follows KHGT (Kalender Hijriah Global Tunggal, Istanbul 2016), a global
+   * imkan-rukyat criterion this file does not implement. The Maklumat
+   * fixtures in tests/test_hijri.c therefore end at 1446 H and cannot be
+   * extended under this predicate. The predicate below is still wujudul
+   * hilal and still correct as such, reproducing the book's worked example
+   * to 0.4'. What changed is the authority that used it, so it is retained
+   * for historical evaluation and for callers applying the criterion
+   * locally, not as Muhammadiyah's currently governing rule. */
   case HIJRI_PREDICATE_WUJUDUL_HILAL:
     return p->conjunction_before_sunset &&
            p->moon_upper_limb_apparent_altitude_deg > HIJRI_WUJUDUL_HILAL_LIMB_DEG;

@@ -142,11 +142,16 @@ convention finding are in
 [`docs/research/2026-08-01-kemenag-reference.md`](docs/research/2026-08-01-kemenag-reference.md).
 
 Against Muhammadiyah's official calendar, the Wujudul Hilal predicate at
-Yogyakarta reproduces all twelve Maklumat-announced month starts of the
-criterion's final four years (1443–1446 H, before Muhammadiyah's switch to
-the KHGT global calendar), never early, matching every published
-wujud/belum-wujud verdict — fixture-enforced; see
+Yogyakarta reproduces all twelve Maklumat-announced month starts of 1443 to
+1446 H, never early, matching every published wujud/belum-wujud verdict,
+fixture-enforced. See
 [`docs/research/2026-08-01-muhammadiyah-reference.md`](docs/research/2026-08-01-muhammadiyah-reference.md).
+
+From 1447 H Muhammadiyah follows KHGT (Kalender Hijriah Global Tunggal,
+Istanbul 2016), a global criterion this library does not implement. Wujudul
+Hilal reproduces the Muhammadiyah calendar through 1446 H and no further.
+Selecting it for dates after that computes the criterion Muhammadiyah used
+previously, not the one it uses now.
 
 A calculated result is still not an observation, and nothing here decides
 religious validity.
