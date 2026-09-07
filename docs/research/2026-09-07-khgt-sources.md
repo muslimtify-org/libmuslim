@@ -65,3 +65,14 @@ Neither condition is met yet.
 
 No implementation work is started here.
 A future attempt should try to obtain the Scientific Committee's own working paper, "al-Milaff al-Muhtawi Ma'ayir Mashru'ay at-Taqwim al-Uhadi wa ath-Thuna'i al-Manwi Taqdimuhu ila al-Mu'tamar Ma'a an-Namadhij at-Tatbiqiyyah", cited at page 9 by Muhammadiyah's own Pedoman Hisab book, since that is the most specific named document this search turned up that has not yet been read.
+
+## A numeric coincidence in the existing code
+
+`hijri.h` already ships `HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8`, defined by `HIJRI_RESEARCH_ALTITUDE_DEG 5.0` and `HIJRI_RESEARCH_ELONGATION_DEG 8.0`, with its elongation stated explicitly as geocentric.
+That is the same threshold pair, 5 degrees altitude and 8 degrees elongation, in the same geocentric frame, that this note found stated in Muhammadiyah's Pedoman Hisab book and in Diyanet's congress proceedings for KHGT.
+`docs/research/hijri-2020-2025-sources.md` records that no primary source was ever located for that predicate either, and that it infers no global or authority policy.
+
+This is recorded here as an observation, not as a claim of provenance.
+There is no evidence that `HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8` was derived from KHGT, and the two are not being asserted to be the same rule.
+They are not interchangeable in any case: KHGT is a global criterion asking whether the crescent is visible anywhere on Earth within a bounded window, while `HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8` evaluates at one observer point.
+`ROADMAP.md`'s own admission criteria name exactly this hazard, in the bullet reading "The implementation represents the complete documented policy, not a similarly shaped local threshold."

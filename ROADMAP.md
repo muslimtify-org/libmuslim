@@ -432,10 +432,12 @@ crescent is visible anywhere on Earth within a bounded window rather than at
 one observer point, so it needs the geographic aggregation and time-bounded
 global search listed under "General policy boundary" above.
 
-Whether a primary technical specification for it is obtainable is an open
-research question, tracked in
-`docs/research/2026-09-07-khgt-sources.md`. Until that is answered KHGT
-stays a research candidate under the criteria above, not a planned API.
+Whether a primary technical specification for it is obtainable was
+researched in
+`docs/research/2026-09-07-khgt-sources.md`. No primary document was found
+that specifies the criterion precisely enough to implement without
+inference, so KHGT stays a research candidate under the criteria above, not
+a planned API.
 
 ### Observation integration
 
