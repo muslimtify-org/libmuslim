@@ -424,6 +424,21 @@ are available.
 - The implementation represents the complete documented policy, not a
   similarly shaped local threshold.
 
+KHGT (Kalender Hijriah Global Tunggal), the Istanbul 2016 global
+imkan-rukyat criterion, is the case now most likely to be requested:
+Muhammadiyah adopted it from 1447 H and Turkey's unified calendar rests on
+it. It differs in kind from every predicate here, since it asks whether the
+crescent is visible anywhere on Earth within a bounded window rather than at
+one observer point, so it needs the geographic aggregation and time-bounded
+global search listed under "General policy boundary" above.
+
+Whether a primary technical specification for it is obtainable was
+researched in
+`docs/research/2026-09-07-khgt-sources.md`. No primary document was found
+that specifies the criterion precisely enough to implement without
+inference, so KHGT stays a research candidate under the criteria above, not
+a planned API.
+
 ### Observation integration
 
 Provide optional data structures for applications that combine calculated
