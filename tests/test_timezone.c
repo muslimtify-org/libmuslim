@@ -201,6 +201,40 @@ static void test_differential(void) {
   printf("\n");
 }
 
+// Mutation record: changed MUSLIM_TZ_MAX_RULE_HOURS from 167 to 24, then
+// `make check`. Observed FAIL lines, verbatim:
+// FAIL  Asia/Jerusalem @ 2225908800         rc=-1 offset=+0.00  libc=+3.00
+// FAIL  Asia/Jerusalem @ 3803745600         rc=-1 offset=+0.00  libc=+3.00
+// FAIL  Asia/Gaza @ 3803745600              rc=-1 offset=+0.00  libc=+3.00
+// FAIL  Asia/Hebron @ 3803745600            rc=-1 offset=+0.00  libc=+3.00
+// FAIL  Jerusalem /26 before spring         rc=-1 offset=+0.00  expected=+2.00
+// FAIL  Jerusalem /26 at spring             rc=-1 offset=+0.00  expected=+3.00
+// FAIL  Jerusalem /26 before autumn         rc=-1 offset=+0.00  expected=+3.00
+// FAIL  Jerusalem /26 at autumn             rc=-1 offset=+0.00  expected=+2.00
+// FAIL  Gaza /50 before spring              rc=-1 offset=+0.00  expected=+2.00
+// FAIL  Gaza /50 at spring                  rc=-1 offset=+0.00  expected=+3.00
+// (10 check(s) FAILED out of 223.) Reverted after recording.
+//
+// Zones whose footer carries a rule time above 24 hours, checked past the last
+// transition their table holds, which is where the footer governs. The instants
+// are 2040 and 2090 because a fat tzdata build runs Jerusalem's table to 2037
+// and Gaza's and Hebron's to 2086, so 2090 exercises the footer for all three
+// while 2040 already does for Jerusalem. Adding these zones to
+// test_differential instead would not catch the bug at all: its instants are in
+// 2026, still inside the table on a fat build.
+static void test_rule_time_zones(void) {
+  static const char *const zones[] = {"Asia/Jerusalem", "Asia/Gaza",
+                                      "Asia/Hebron"};
+  static const time_t when[] = {(time_t)2225908800, (time_t)3803745600};
+  size_t z, t;
+
+  printf("Test group: footer rule times above 24 hours\n");
+  for (z = 0; z < sizeof zones / sizeof zones[0]; z++)
+    for (t = 0; t < sizeof when / sizeof when[0]; t++)
+      check_agrees_with_libc(zones[z], when[t]);
+  printf("\n");
+}
+
 // ---------------------------------------------------------------------------
 // The input forms the spec records as working: a bare zone name, the same with
 // a leading colon, an absolute path to a zone file, and two bare POSIX TZ
@@ -306,6 +340,10 @@ static void test_concurrent_resolution(void) {
 
 static void test_differential(void) {
   printf("Test group: differential vs libc (skipped on Windows)\n\n");
+}
+
+static void test_rule_time_zones(void) {
+  printf("Test group: footer rule times above 24 hours (skipped on Windows)\n\n");
 }
 
 static void test_input_forms(void) {
@@ -580,40 +618,6 @@ static void test_system_timezone(void) {
            off_rc, off);
     failures++;
   }
-  printf("\n");
-}
-
-// Mutation record: changed MUSLIM_TZ_MAX_RULE_HOURS from 167 to 24, then
-// `make check`. Observed FAIL lines, verbatim:
-// FAIL  Asia/Jerusalem @ 2225908800         rc=-1 offset=+0.00  libc=+3.00
-// FAIL  Asia/Jerusalem @ 3803745600         rc=-1 offset=+0.00  libc=+3.00
-// FAIL  Asia/Gaza @ 3803745600              rc=-1 offset=+0.00  libc=+3.00
-// FAIL  Asia/Hebron @ 3803745600            rc=-1 offset=+0.00  libc=+3.00
-// FAIL  Jerusalem /26 before spring         rc=-1 offset=+0.00  expected=+2.00
-// FAIL  Jerusalem /26 at spring             rc=-1 offset=+0.00  expected=+3.00
-// FAIL  Jerusalem /26 before autumn         rc=-1 offset=+0.00  expected=+3.00
-// FAIL  Jerusalem /26 at autumn             rc=-1 offset=+0.00  expected=+2.00
-// FAIL  Gaza /50 before spring              rc=-1 offset=+0.00  expected=+2.00
-// FAIL  Gaza /50 at spring                  rc=-1 offset=+0.00  expected=+3.00
-// (10 check(s) FAILED out of 223.) Reverted after recording.
-//
-// Zones whose footer carries a rule time above 24 hours, checked past the last
-// transition their table holds, which is where the footer governs. The instants
-// are 2040 and 2090 because a fat tzdata build runs Jerusalem's table to 2037
-// and Gaza's and Hebron's to 2086, so 2090 exercises the footer for all three
-// while 2040 already does for Jerusalem. Adding these zones to
-// test_differential instead would not catch the bug at all: its instants are in
-// 2026, still inside the table on a fat build.
-static void test_rule_time_zones(void) {
-  static const char *const zones[] = {"Asia/Jerusalem", "Asia/Gaza",
-                                      "Asia/Hebron"};
-  static const time_t when[] = {(time_t)2225908800, (time_t)3803745600};
-  size_t z, t;
-
-  printf("Test group: footer rule times above 24 hours\n");
-  for (z = 0; z < sizeof zones / sizeof zones[0]; z++)
-    for (t = 0; t < sizeof when / sizeof when[0]; t++)
-      check_agrees_with_libc(zones[z], when[t]);
   printf("\n");
 }
 
