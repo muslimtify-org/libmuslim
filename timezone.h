@@ -23,7 +23,7 @@
  */
 
 /*
- * timezone.h -- v0.1.1 -- optional DST-aware timezone helper for libmuslim
+ * timezone.h -- v0.1.2 -- optional DST-aware timezone helper for libmuslim
  *
  * The version above is this file's own. It is not the libmuslim release
  * tag, which is a calendar date such as 2026.08.18 and covers a snapshot
@@ -847,8 +847,20 @@ static int muslim_posix_tz_parse_name(const char **p, char *buf, size_t cap) {
   return 0;
 }
 
+/* RFC 8536 section 3.3.1 allows a transition rule's time to range over -167 to
+   167 hours, because a transition can be expressed relative to a day other
+   than the one the rule names. tzdata uses that range: Asia/Jerusalem carries
+   "IST-2IDT,M3.4.4/26,M10.5.0", where the 4th Thursday of March 2026 is the
+   26th and /26 puts the switch at 02:00 the next day, and Asia/Gaza and
+   Asia/Hebron carry /50. A zone's own UTC offset is a different field with a
+   tighter bound, and sharing one limit between the two is what made those
+   zones return -1 once their footer governed. */
+#define MUSLIM_TZ_MAX_RULE_HOURS 167
+#define MUSLIM_TZ_MAX_OFFSET_HOURS 24
+
 /* [+-]hh[:mm[:ss]], west-positive, as written. */
-static int muslim_posix_tz_parse_offset(const char **p, long *seconds) {
+static int muslim_posix_tz_parse_offset_max(const char **p, long *seconds,
+                                            long maxh) {
   const char *s = *p;
   int neg = 0;
   long h = 0, m = 0, sec = 0;
@@ -859,7 +871,7 @@ static int muslim_posix_tz_parse_offset(const char **p, long *seconds) {
     neg = 1;
     s++;
   }
-  if (muslim_posix_tz_parse_num(&s, 3, &h) != 0 || h > 24)
+  if (muslim_posix_tz_parse_num(&s, 3, &h) != 0 || h > maxh)
     return -1;
   if (*s == ':') {
     s++;
@@ -877,6 +889,13 @@ static int muslim_posix_tz_parse_offset(const char **p, long *seconds) {
     *seconds = -*seconds;
   *p = s;
   return 0;
+}
+
+/* A zone's own UTC offset. Kept at its own bound so widening the rule time
+   cannot widen this. */
+static int muslim_posix_tz_parse_offset(const char **p, long *seconds) {
+  return muslim_posix_tz_parse_offset_max(p, seconds,
+                                          MUSLIM_TZ_MAX_OFFSET_HOURS);
 }
 
 /* A transition rule: "Mm.w.d", "Jn" (1..365, never counting Feb 29) or
@@ -916,7 +935,8 @@ static int muslim_posix_tz_parse_rule(const char **p, int *mode, int *m, int *w,
 
   if (*s == '/') {
     s++;
-    if (muslim_posix_tz_parse_offset(&s, &tod) != 0)
+    if (muslim_posix_tz_parse_offset_max(&s, &tod, MUSLIM_TZ_MAX_RULE_HOURS) !=
+        0)
       return -1;
   }
 

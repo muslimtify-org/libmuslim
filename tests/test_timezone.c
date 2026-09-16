@@ -431,6 +431,30 @@ static void test_posix_tz_strings(void) {
   check_tz_string_rejected("EST5EDT,M3.2.7,M11.1.0", "weekday out of range");
   check_tz_string_rejected("EST5EDT,M3.2.0,M11.1.0,", "trailing garbage");
   check_tz_string_rejected("<-03", "unterminated quoted name");
+
+  // A rule time above 24 hours. Asia/Jerusalem's footer puts the spring switch
+  // at 02:00 on the day after the 4th Thursday of March, which in 2026 is the
+  // 27th. Before the rule bound was split from the zone offset bound, this
+  // whole string was rejected and the zone resolved to nothing.
+  check_tz_string("IST-2IDT,M3.4.4/26,M10.5.0", (time_t)1774568800, 2.0,
+                  "Jerusalem /26 before spring");
+  check_tz_string("IST-2IDT,M3.4.4/26,M10.5.0", (time_t)1774572400, 3.0,
+                  "Jerusalem /26 at spring");
+  check_tz_string("IST-2IDT,M3.4.4/26,M10.5.0", (time_t)1792882000, 3.0,
+                  "Jerusalem /26 before autumn");
+  check_tz_string("IST-2IDT,M3.4.4/26,M10.5.0", (time_t)1792885600, 2.0,
+                  "Jerusalem /26 at autumn");
+  check_tz_string("EET-2EEST,M3.4.4/50,M10.4.4/50", (time_t)1774655200, 2.0,
+                  "Gaza /50 before spring");
+  check_tz_string("EET-2EEST,M3.4.4/50,M10.4.4/50", (time_t)1774658800, 3.0,
+                  "Gaza /50 at spring");
+  // The sign is handled separately from the magnitude the bound tests, so a
+  // negative rule time must keep working.
+  check_tz_string("IST-2IDT,M3.4.4/-2,M10.5.0", (time_t)1775000000, 3.0,
+                  "negative rule time parses");
+  // The zone offset keeps its own bound. Widening the rule time must not
+  // widen this one.
+  check_tz_string_rejected("XYZ100", "zone offset above 24 hours rejected");
   printf("\n");
 }
 
@@ -559,6 +583,40 @@ static void test_system_timezone(void) {
   printf("\n");
 }
 
+// Mutation record: changed MUSLIM_TZ_MAX_RULE_HOURS from 167 to 24, then
+// `make check`. Observed FAIL lines, verbatim:
+// FAIL  Asia/Jerusalem @ 2225908800         rc=-1 offset=+0.00  libc=+3.00
+// FAIL  Asia/Jerusalem @ 3803745600         rc=-1 offset=+0.00  libc=+3.00
+// FAIL  Asia/Gaza @ 3803745600              rc=-1 offset=+0.00  libc=+3.00
+// FAIL  Asia/Hebron @ 3803745600            rc=-1 offset=+0.00  libc=+3.00
+// FAIL  Jerusalem /26 before spring         rc=-1 offset=+0.00  expected=+2.00
+// FAIL  Jerusalem /26 at spring             rc=-1 offset=+0.00  expected=+3.00
+// FAIL  Jerusalem /26 before autumn         rc=-1 offset=+0.00  expected=+3.00
+// FAIL  Jerusalem /26 at autumn             rc=-1 offset=+0.00  expected=+2.00
+// FAIL  Gaza /50 before spring              rc=-1 offset=+0.00  expected=+2.00
+// FAIL  Gaza /50 at spring                  rc=-1 offset=+0.00  expected=+3.00
+// (10 check(s) FAILED out of 223.) Reverted after recording.
+//
+// Zones whose footer carries a rule time above 24 hours, checked past the last
+// transition their table holds, which is where the footer governs. The instants
+// are 2040 and 2090 because a fat tzdata build runs Jerusalem's table to 2037
+// and Gaza's and Hebron's to 2086, so 2090 exercises the footer for all three
+// while 2040 already does for Jerusalem. Adding these zones to
+// test_differential instead would not catch the bug at all: its instants are in
+// 2026, still inside the table on a fat build.
+static void test_rule_time_zones(void) {
+  static const char *const zones[] = {"Asia/Jerusalem", "Asia/Gaza",
+                                      "Asia/Hebron"};
+  static const time_t when[] = {(time_t)2225908800, (time_t)3803745600};
+  size_t z, t;
+
+  printf("Test group: footer rule times above 24 hours\n");
+  for (z = 0; z < sizeof zones / sizeof zones[0]; z++)
+    for (t = 0; t < sizeof when / sizeof when[0]; t++)
+      check_agrees_with_libc(zones[z], when[t]);
+  printf("\n");
+}
+
 int main(void) {
   printf("=== timezone.h tests ===\n\n");
 
@@ -567,6 +625,7 @@ int main(void) {
   test_dst_offsets();
   test_invalid_zones();
   test_differential();
+  test_rule_time_zones();
   test_input_forms();
   test_posix_tz_strings();
   test_system_timezone();
