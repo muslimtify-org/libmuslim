@@ -8,7 +8,7 @@ and you are done. C11 and C++17, no build system, no package manager.
 |---|---|---|---|
 | [`prayertimes.h`](prayertimes.h) | `v0.2.4` | Prayer times, 21 calculation methods | `<math.h>` |
 | [`hijri.h`](hijri.h) | `v0.1.1` | Hijri calendar, crescent visibility models | `<math.h>` |
-| [`timezone.h`](timezone.h) | `v0.1.1` | IANA zone name → UTC offset, DST applied | OS timezone database |
+| [`timezone.h`](timezone.h) | `v0.1.2` | IANA zone name → UTC offset, DST applied | OS timezone database |
 
 `prayertimes.h` and `hijri.h` are independent and dependency-free.
 `timezone.h` is optional and is the only header that touches the OS.
