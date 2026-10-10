@@ -7,7 +7,7 @@ and you are done. C11 and C++17, no build system, no package manager.
 | Header | Version | Provides | Depends on |
 |---|---|---|---|
 | [`prayertimes.h`](prayertimes.h) | `v0.2.4` | Prayer times, 21 calculation methods | `<math.h>` |
-| [`hijri.h`](hijri.h) | `v0.1.1` | Hijri calendar, crescent visibility models | `<math.h>` |
+| [`hijri.h`](hijri.h) | `v0.2.0` | Hijri calendar, crescent visibility models | `<math.h>` |
 | [`timezone.h`](timezone.h) | `v0.1.2` | IANA zone name → UTC offset, DST applied | OS timezone database |
 
 `prayertimes.h` and `hijri.h` are independent and dependency-free.
@@ -154,6 +154,31 @@ Istanbul 2016), a global criterion this library does not implement. Wujudul
 Hilal reproduces the Muhammadiyah calendar through 1446 H and no further.
 Selecting it for dates after that computes the criterion Muhammadiyah used
 previously, not the one it uses now.
+
+**Authority registry.** `hijri_authority_get()` returns a calculation profile for a named authority: which rule, at which reference point, for which dates, and what it was checked against. `hijri_authority_from_gregorian()` converts a date under that profile.
+
+```c
+HijriDate date;
+HijriAuthorityStatus status = hijri_authority_from_gregorian(
+    HIJRI_AUTHORITY_KEMENAG, 2026, 7, 27, &date);
+
+if (status == HIJRI_AUTHORITY_IN_RULE_PERIOD) {
+    /* date is filled, and the rule governed that day */
+} else if (status == HIJRI_AUTHORITY_OUTSIDE_RULE_PERIOD) {
+    /* date is filled, but the library has no source for the rule governing that day */
+}
+```
+
+| Authority | Rule | Reference point | Checked against |
+|---|---|---|---|
+| `HIJRI_AUTHORITY_KEMENAG` | MABIMS 2021 | Sabang | 33 of 37 official calendar months |
+| `HIJRI_AUTHORITY_JAKIM` | MABIMS 2021 | Kuala Lumpur | 7 of 7 announced starts |
+| `HIJRI_AUTHORITY_MUIS` | MABIMS 2021 | Singapore | 7 of 7 announced starts |
+| `HIJRI_AUTHORITY_BRUNEI_KHEU` | MABIMS 2021 | Bandar Seri Begawan | 7 of 7 announced starts |
+| `HIJRI_AUTHORITY_UMM_AL_QURA` | published table | none | 198 of 198 months |
+| `HIJRI_AUTHORITY_MUHAMMADIYAH_WUJUDUL_HILAL` | Wujudul Hilal | Yogyakarta | 12 of 12 announced starts, through 1446 H |
+
+An entry is a calculation profile, not the authority. The result is the rule computed at one point and chained month to month, and each authority can and does depart from it by ruling. The counts above are read from the entry itself, and the test suite recomputes them from the fixtures, so the table in the header cannot drift from the tests. Only authorities with a fixture have an entry. The sourced period for each rule is in [`docs/research/2026-10-10-authority-rule-periods.md`](docs/research/2026-10-10-authority-rule-periods.md), and why one reference point stands in for a territory is in [`docs/research/2026-10-10-region-aggregation-measured.md`](docs/research/2026-10-10-region-aggregation-measured.md).
 
 A calculated result is still not an observation, and nothing here decides
 religious validity.

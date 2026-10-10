@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-/* hijri.h -- v0.1.1 -- stb-style single-file astronomical Hijri calendar library
+/* hijri.h -- v0.2.0 -- stb-style single-file astronomical Hijri calendar library
  *
  * The version above is this file's own. It is not the libmuslim release
  * tag, which is a calendar date such as 2026.08.18 and covers a snapshot
@@ -870,6 +870,128 @@ HIJRIDEF int hijri_umm_al_qura_from_gregorian(int gy, int gm, int gd,
  * function is what tells a caller which algorithm is in play, a return
  * value of 1 alone does not say. */
 HIJRIDEF int hijri_umm_al_qura_covers(int gy, int gm, int gd);
+
+/* ---- Authority registry --------------------------------------------------
+ * Which rule a named authority's calendar is computed from, at which
+ * reference point, for which dates, and what that was checked against.
+ *
+ * READ THIS BEFORE USING A RESULT. An entry is a calculation profile, not
+ * the authority. hijri_authority_from_gregorian computes the entry's rule
+ * at ONE reference point and chains it month to month. It is not the
+ * authority's decision: Kemenag rules after an itsbat session, Malaysia and
+ * Brunei by royal proclamation, Singapore by its Mufti, and each can depart
+ * from the calculation. For Kemenag the computed date differs from the
+ * official calendar by a day in the months the fixture documents, 4 of the
+ * 37 checked.
+ *
+ * Only authorities with a fixture in tests/test_hijri.c have an entry. An
+ * authority missing here is missing because no rule and reference record
+ * for it has been admitted, not because it was overlooked. See ROADMAP.md,
+ * "Additional named policies".
+ *
+ * One reference point stands in for a territory-wide rule. That was
+ * measured, not assumed: across a grid covering Indonesia the verdict
+ * matched Sabang alone on every evening checked. See
+ * docs/research/2026-10-10-region-aggregation-measured.md. */
+
+typedef enum {
+  /* Kementerian Agama RI. MABIMS 2021 at Sabang, Indonesia's west tip. */
+  HIJRI_AUTHORITY_KEMENAG = 0,
+  /* Malaysia, KIR2021, computed by JAKIM and declared by the Keeper of the
+   * Rulers' Seal. MABIMS 2021 at Kuala Lumpur. */
+  HIJRI_AUTHORITY_JAKIM,
+  /* Majlis Ugama Islam Singapura. MABIMS 2021 at Singapore. */
+  HIJRI_AUTHORITY_MUIS,
+  /* Brunei, Kementerian Hal Ehwal Ugama. MABIMS 2021 at Bandar Seri
+   * Begawan. */
+  HIJRI_AUTHORITY_BRUNEI_KHEU,
+  /* Saudi civil calendar, read from the published table. */
+  HIJRI_AUTHORITY_UMM_AL_QURA,
+  /* Muhammadiyah while it used hisab hakiki wujudul hilal, through 1446 H.
+   * From 1447 H it follows KHGT, which this library does not implement. */
+  HIJRI_AUTHORITY_MUHAMMADIYAH_WUJUDUL_HILAL,
+  HIJRI_AUTHORITY_COUNT
+} HijriAuthority;
+
+typedef enum {
+  /* A HijriLocalPredicate evaluated at the entry's reference point. */
+  HIJRI_BASIS_LOCAL_PREDICATE,
+  /* The published Umm al-Qura table, which takes no location. */
+  HIJRI_BASIS_PUBLISHED_TABLE
+} HijriAuthorityBasis;
+
+typedef enum {
+  /* Every month of an official published calendar over a span. */
+  HIJRI_VALIDATION_OFFICIAL_CALENDAR_MONTHS,
+  /* Individually announced month starts, a few month names per year. */
+  HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS,
+  /* The entry IS a published table, checked against an independent copy. */
+  HIJRI_VALIDATION_PUBLISHED_TABLE
+} HijriAuthorityValidation;
+
+/* A Gregorian civil date. year == 0 means "no bound on this side". */
+typedef struct {
+  int year;
+  int month;
+  int day;
+} HijriGregorianDate;
+
+typedef struct {
+  /* Display name of the authority. Never NULL. */
+  const char *name;
+  /* How the calendar is produced. */
+  HijriAuthorityBasis basis;
+  /* The predicate evaluated, for HIJRI_BASIS_LOCAL_PREDICATE. For the
+   * published table it names the predicate the reconstruction outside the
+   * table uses, and the conversion does not read it. */
+  HijriLocalPredicate predicate;
+  /* The single point the predicate is evaluated at. For the published table
+   * it is Mecca, and the conversion does not read it. */
+  HijriLocation reference;
+  /* First and last Gregorian dates this library has a SOURCE for the rule
+   * governing, inclusive. They err narrow: a date outside them may still
+   * have been governed by the rule, and a bound is never guessed. year == 0
+   * leaves that side open. Sources and the gaps are in
+   * docs/research/2026-10-10-authority-rule-periods.md. */
+  HijriGregorianDate rule_from;
+  HijriGregorianDate rule_until;
+  /* What kind of record the entry was checked against. */
+  HijriAuthorityValidation validation;
+  /* validated_supported of validated_total month starts in that record are
+   * reproduced. tests/test_hijri.c recomputes both from the fixtures and
+   * asserts they equal these fields, so they cannot drift from the tests.
+   * A high ratio over a short record is still a short record: read
+   * validated_total before trusting the ratio. */
+  int validated_supported;
+  int validated_total;
+} HijriAuthorityEntry;
+
+/* Nonzero means *out was filled, matching the int the other calendar
+ * functions return. Compare against HIJRI_AUTHORITY_IN_RULE_PERIOD for the
+ * strict reading. */
+typedef enum {
+  /* No entry for that authority, or the underlying calculation failed.
+   * *out is untouched. */
+  HIJRI_AUTHORITY_UNRESOLVED = 0,
+  /* *out is filled and the date lies inside the entry's rule period. */
+  HIJRI_AUTHORITY_IN_RULE_PERIOD = 1,
+  /* *out is filled, but this library has no source for the entry's rule
+   * governing that date. The rule was computed anyway. For Muhammadiyah
+   * after 1446 H this is the criterion it used previously, not the one it
+   * uses now. For Umm al-Qura it is the reconstruction, not the table. */
+  HIJRI_AUTHORITY_OUTSIDE_RULE_PERIOD = 2
+} HijriAuthorityStatus;
+
+/* The entry for `authority`, or a null pointer if it is out of range. The
+ * pointer is to constant storage and stays valid for the program's life. */
+HIJRIDEF const HijriAuthorityEntry *hijri_authority_get(HijriAuthority authority);
+
+/* Converts a Gregorian date under the entry's rule. See READ THIS BEFORE
+ * USING A RESULT above. out is documented non-NULL with no runtime check,
+ * as loc is throughout this file. */
+HIJRIDEF HijriAuthorityStatus
+hijri_authority_from_gregorian(HijriAuthority authority, int gy, int gm,
+                               int gd, HijriDate *out);
 
 typedef enum {
   HIJRI_YALLOP_A_EASILY_VISIBLE,
@@ -2643,6 +2765,91 @@ HIJRIDEF int hijri_umm_al_qura_covers(int gy, int gm, int gd) {
   double target_jd = floor(hijri_jd_from_gregorian(gy, gm, (double)gd));
   return target_jd >= HIJRI__UQ_ANCHOR_JD &&
          target_jd < HIJRI__UQ_ANCHOR_JD + (double)HIJRI__UQ_TOTAL_DAYS;
+}
+
+/* ---- Authority registry ------------------------------------------------
+ * Rows are positional and in HijriAuthority order, because the C++17 build
+ * of this file cannot use array designators. tests/test_hijri.c asserts
+ * every field of every row, so a row out of order fails there. */
+static const HijriAuthorityEntry hijri__authority_table[HIJRI_AUTHORITY_COUNT] = {
+    {"Kemenag RI, Indonesia", HIJRI_BASIS_LOCAL_PREDICATE,
+     HIJRI_PREDICATE_MABIMS_2021, {5.8926, 95.3238, 10.0, "Sabang"},
+     {2022, 4, 3}, {0, 0, 0},
+     HIJRI_VALIDATION_OFFICIAL_CALENDAR_MONTHS, 33, 37},
+    {"JAKIM, Malaysia", HIJRI_BASIS_LOCAL_PREDICATE,
+     HIJRI_PREDICATE_MABIMS_2021, {3.1390, 101.6869, 56.0, "Kuala Lumpur"},
+     {2021, 11, 25}, {0, 0, 0},
+     HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS, 7, 7},
+    {"MUIS, Singapore", HIJRI_BASIS_LOCAL_PREDICATE,
+     HIJRI_PREDICATE_MABIMS_2021, {1.3521, 103.8198, 15.0, "Singapore"},
+     {2022, 5, 2}, {0, 0, 0},
+     HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS, 7, 7},
+    /* rule_from is this entry's first validated month start. The criterion
+     * governed Brunei earlier than that, and no primary source for when was
+     * found. */
+    {"KHEU, Brunei Darussalam", HIJRI_BASIS_LOCAL_PREDICATE,
+     HIJRI_PREDICATE_MABIMS_2021,
+     {4.9031, 114.9398, 10.0, "Bandar Seri Begawan"},
+     {2024, 3, 12}, {0, 0, 0},
+     HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS, 7, 7},
+    {"Umm al-Qura, Saudi Arabia", HIJRI_BASIS_PUBLISHED_TABLE,
+     HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET,
+     {21.4225, 39.8262, 240.0, "Mecca"},
+     {1882, 11, 12}, {2174, 11, 25},
+     HIJRI_VALIDATION_PUBLISHED_TABLE, 198, 198},
+    /* rule_from is open because no source in this repository states when
+     * wujudul hilal began to govern. Validation covers 1443 to 1446 H only. */
+    {"Muhammadiyah, wujudul hilal", HIJRI_BASIS_LOCAL_PREDICATE,
+     HIJRI_PREDICATE_WUJUDUL_HILAL,
+     {-(7.0 + 48.0 / 60.0), 110.0 + 21.0 / 60.0, 90.0, "Yogyakarta"},
+     {0, 0, 0}, {2025, 6, 25},
+     HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS, 12, 12},
+};
+
+HIJRIDEF const HijriAuthorityEntry *hijri_authority_get(HijriAuthority authority) {
+  int index = (int)authority;
+  if (index < 0 || index >= (int)HIJRI_AUTHORITY_COUNT) {
+    return 0;
+  }
+  return &hijri__authority_table[index];
+}
+
+static double hijri__gregorian_date_jd(HijriGregorianDate date) {
+  return floor(hijri_jd_from_gregorian(date.year, date.month, (double)date.day));
+}
+
+HIJRIDEF HijriAuthorityStatus
+hijri_authority_from_gregorian(HijriAuthority authority, int gy, int gm,
+                               int gd, HijriDate *out) {
+  const HijriAuthorityEntry *entry = hijri_authority_get(authority);
+  HijriDate date;
+  double target_jd;
+  int ok;
+
+  if (!entry) {
+    return HIJRI_AUTHORITY_UNRESOLVED;
+  }
+  if (entry->basis == HIJRI_BASIS_PUBLISHED_TABLE) {
+    ok = hijri_umm_al_qura_from_gregorian(gy, gm, gd, &date);
+  } else {
+    ok = hijri_from_gregorian_with_local_predicate(
+        gy, gm, gd, &entry->reference, entry->predicate, &date);
+  }
+  if (!ok) {
+    return HIJRI_AUTHORITY_UNRESOLVED;
+  }
+  *out = date;
+
+  target_jd = floor(hijri_jd_from_gregorian(gy, gm, (double)gd));
+  if (entry->rule_from.year != 0 &&
+      target_jd < hijri__gregorian_date_jd(entry->rule_from)) {
+    return HIJRI_AUTHORITY_OUTSIDE_RULE_PERIOD;
+  }
+  if (entry->rule_until.year != 0 &&
+      target_jd > hijri__gregorian_date_jd(entry->rule_until)) {
+    return HIJRI_AUTHORITY_OUTSIDE_RULE_PERIOD;
+  }
+  return HIJRI_AUTHORITY_IN_RULE_PERIOD;
 }
 
 #endif /* HIJRI_IMPLEMENTATION */

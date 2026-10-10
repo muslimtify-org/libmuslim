@@ -1780,18 +1780,18 @@ static void test_kemenag_published_quantities(void) {
  *
  *   FAIL synthetic/kemenag_support_floor_topocentric expected=true
  *   FAIL synthetic/kemenag_support_floor_geocentric expected=true */
+static const int KEMENAG_STARTS[][3] = {
+    {2024, 1, 13},  {2024, 2, 11}, {2024, 3, 12}, {2024, 4, 10},
+    {2024, 5, 10},  {2024, 6, 8},  {2024, 7, 7},  {2024, 8, 6},
+    {2024, 9, 5},   {2024, 10, 4}, {2024, 11, 3}, {2024, 12, 3},
+    {2025, 1, 1},   {2025, 1, 31}, {2025, 3, 1},  {2025, 3, 31},
+    {2025, 4, 29},  {2025, 5, 28}, {2025, 6, 27}, {2025, 7, 26},
+    {2025, 8, 25},  {2025, 9, 23}, {2025, 10, 23}, {2025, 11, 22},
+    {2025, 12, 21}, {2026, 1, 20}, {2026, 2, 19}, {2026, 3, 21},
+    {2026, 4, 19},  {2026, 5, 18}, {2026, 6, 16}, {2026, 7, 16},
+    {2026, 8, 14},  {2026, 9, 13}, {2026, 10, 12}, {2026, 11, 11},
+    {2026, 12, 10}};
 static void test_kemenag_official_calendar(void) {
-  static const int KEMENAG_STARTS[][3] = {
-      {2024, 1, 13},  {2024, 2, 11}, {2024, 3, 12}, {2024, 4, 10},
-      {2024, 5, 10},  {2024, 6, 8},  {2024, 7, 7},  {2024, 8, 6},
-      {2024, 9, 5},   {2024, 10, 4}, {2024, 11, 3}, {2024, 12, 3},
-      {2025, 1, 1},   {2025, 1, 31}, {2025, 3, 1},  {2025, 3, 31},
-      {2025, 4, 29},  {2025, 5, 28}, {2025, 6, 27}, {2025, 7, 26},
-      {2025, 8, 25},  {2025, 9, 23}, {2025, 10, 23}, {2025, 11, 22},
-      {2025, 12, 21}, {2026, 1, 20}, {2026, 2, 19}, {2026, 3, 21},
-      {2026, 4, 19},  {2026, 5, 18}, {2026, 6, 16}, {2026, 7, 16},
-      {2026, 8, 14},  {2026, 9, 13}, {2026, 10, 12}, {2026, 11, 11},
-      {2026, 12, 10}};
   HijriLocation sabang = {5.8926, 95.3238, 10.0, "Sabang"};
   const size_t total = sizeof(KEMENAG_STARTS) / sizeof(KEMENAG_STARTS[0]);
   size_t index;
@@ -1877,12 +1877,12 @@ static void test_kemenag_official_calendar(void) {
  * 1.5 deg fails muh_official_starts_supported (actual=10) and the razor
  * pin muh_maklumat_2024_03_10 (actual=0). Reverting either restores
  * 485 checks, 0 failures. */
+static const int MUH_STARTS[][3] = {
+    {2022, 4, 2},  {2022, 5, 2},  {2022, 6, 30},
+    {2023, 3, 23}, {2023, 4, 21}, {2023, 6, 19},
+    {2024, 3, 11}, {2024, 4, 10}, {2024, 6, 8},
+    {2025, 3, 1},  {2025, 3, 31}, {2025, 5, 28}};
 static void test_muhammadiyah_official_calendar(void) {
-  static const int MUH_STARTS[][3] = {
-      {2022, 4, 2},  {2022, 5, 2},  {2022, 6, 30},
-      {2023, 3, 23}, {2023, 4, 21}, {2023, 6, 19},
-      {2024, 3, 11}, {2024, 4, 10}, {2024, 6, 8},
-      {2025, 3, 1},  {2025, 3, 31}, {2025, 5, 28}};
   /* Decision evenings whose Maklumat publishes an explicit altitude and
    * wujud/belum-wujud verdict (altitudes quoted in the research note). */
   static const struct {
@@ -2008,10 +2008,10 @@ static void count_start_support(const int (*starts)[3], size_t total,
  *   FAIL exact/muis_announced_starts_supported actual=6 expected=7
  * Reverting any of the three restores the check count seen when the fixture
  * was added. */
+static const int MUIS_STARTS[][3] = {
+    {2024, 3, 12}, {2024, 4, 10}, {2025, 3, 2}, {2025, 3, 31},
+    {2025, 5, 29}, {2026, 2, 19}, {2026, 3, 21}};
 static void test_muis_announced_starts(void) {
-  static const int MUIS_STARTS[][3] = {
-      {2024, 3, 12}, {2024, 4, 10}, {2025, 3, 2}, {2025, 3, 31},
-      {2025, 5, 29}, {2026, 2, 19}, {2026, 3, 21}};
   const HijriLocation singapore = {1.3521, 103.8198, 15.0, "Singapore"};
   int support, early;
   count_start_support(MUIS_STARTS,
@@ -2052,10 +2052,10 @@ static void test_muis_announced_starts(void) {
  *   FAIL exact/malaysia_announced_starts_supported actual=6 expected=7
  * Reverting any of the three restores the check count seen when the fixture
  * was added. */
+static const int MALAYSIA_STARTS[][3] = {
+    {2024, 3, 12}, {2024, 4, 10}, {2025, 3, 2}, {2025, 3, 31},
+    {2025, 5, 29}, {2026, 2, 19}, {2026, 3, 21}};
 static void test_malaysia_announced_starts(void) {
-  static const int MALAYSIA_STARTS[][3] = {
-      {2024, 3, 12}, {2024, 4, 10}, {2025, 3, 2}, {2025, 3, 31},
-      {2025, 5, 29}, {2026, 2, 19}, {2026, 3, 21}};
   const HijriLocation kuala_lumpur = {3.1390, 101.6869, 56.0,
                                       "Kuala Lumpur"};
   int support, early;
@@ -2096,10 +2096,10 @@ static void test_malaysia_announced_starts(void) {
  *   FAIL exact/brunei_announced_starts_supported actual=6 expected=7
  * Reverting any of the three restores the check count seen when the fixture
  * was added. */
+static const int BRUNEI_STARTS[][3] = {
+    {2024, 3, 12}, {2024, 4, 10}, {2025, 3, 2}, {2025, 3, 31},
+    {2025, 5, 29}, {2026, 2, 19}, {2026, 3, 21}};
 static void test_brunei_announced_starts(void) {
-  static const int BRUNEI_STARTS[][3] = {
-      {2024, 3, 12}, {2024, 4, 10}, {2025, 3, 2}, {2025, 3, 31},
-      {2025, 5, 29}, {2026, 2, 19}, {2026, 3, 21}};
   const HijriLocation bandar_seri_begawan = {4.9031, 114.9398, 10.0,
                                              "Bandar Seri Begawan"};
   int support, early;
@@ -2109,6 +2109,272 @@ static void test_brunei_announced_starts(void) {
                       &support, &early);
   check_int("brunei_announced_starts_supported", support, 7);
   check_int("brunei_never_early", early, 0);
+}
+
+/* The authority registry: hijri_authority_get and
+ * hijri_authority_from_gregorian.
+ *
+ * Four things are pinned. Every field of every entry, against literals, so
+ * a row edited or reordered in hijri.h fails here. The three status values,
+ * on both sides of each period bound to the day. Delegation: the conversion
+ * returns exactly what the function it wraps returns, so it adds no
+ * astronomy of its own. And the validation counts: each is recomputed from
+ * the same fixture table the per-authority test uses, at the entry's own
+ * predicate and reference point, and must equal the entry's fields, so a
+ * count in hijri.h cannot drift from the tests.
+ *
+ * The period bounds asserted here are the sourced ones recorded in
+ * docs/research/2026-10-10-authority-rule-periods.md. Brunei's is its first
+ * validated start, because no source for its adoption date was found.
+ *
+ * Mutation-tested on 2026-10-10: raising the Kemenag validated_supported
+ * field in hijri.h from 33 to 34 fails these checks:
+ *
+ *   FAIL exact/authority_kemenag_validated_supported actual=34 expected=33
+ *   FAIL exact/authority_kemenag_supported_matches_fixture actual=33 expected=34
+ *
+ * Moving the Muhammadiyah rule_until from 2025-06-25 to 2025-06-24 in
+ * hijri.h fails these checks:
+ *
+ *   FAIL synthetic/authority_muhammadiyah_rule_until expected=true
+ *   FAIL exact/authority_status_muhammadiyah_last_day actual=2 expected=1
+ *
+ * Reverting either restores 2676 checks, 0 failures. */
+static void test_authority_registry(void) {
+  static const struct {
+    HijriAuthority authority;
+    const char *key;
+    HijriAuthorityBasis basis;
+    HijriLocalPredicate predicate;
+    double lat, lon, elev;
+    int from[3], until[3];
+    HijriAuthorityValidation validation;
+    int supported, total;
+  } EXPECTED[] = {
+      {HIJRI_AUTHORITY_KEMENAG, "kemenag", HIJRI_BASIS_LOCAL_PREDICATE,
+       HIJRI_PREDICATE_MABIMS_2021, 5.8926, 95.3238, 10.0,
+       {2022, 4, 3}, {0, 0, 0},
+       HIJRI_VALIDATION_OFFICIAL_CALENDAR_MONTHS, 33, 37},
+      {HIJRI_AUTHORITY_JAKIM, "jakim", HIJRI_BASIS_LOCAL_PREDICATE,
+       HIJRI_PREDICATE_MABIMS_2021, 3.1390, 101.6869, 56.0,
+       {2021, 11, 25}, {0, 0, 0},
+       HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS, 7, 7},
+      {HIJRI_AUTHORITY_MUIS, "muis", HIJRI_BASIS_LOCAL_PREDICATE,
+       HIJRI_PREDICATE_MABIMS_2021, 1.3521, 103.8198, 15.0,
+       {2022, 5, 2}, {0, 0, 0},
+       HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS, 7, 7},
+      {HIJRI_AUTHORITY_BRUNEI_KHEU, "brunei", HIJRI_BASIS_LOCAL_PREDICATE,
+       HIJRI_PREDICATE_MABIMS_2021, 4.9031, 114.9398, 10.0,
+       {2024, 3, 12}, {0, 0, 0},
+       HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS, 7, 7},
+      {HIJRI_AUTHORITY_UMM_AL_QURA, "umm_al_qura",
+       HIJRI_BASIS_PUBLISHED_TABLE, HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET,
+       21.4225, 39.8262, 240.0, {1882, 11, 12}, {2174, 11, 25},
+       HIJRI_VALIDATION_PUBLISHED_TABLE, 198, 198},
+      {HIJRI_AUTHORITY_MUHAMMADIYAH_WUJUDUL_HILAL, "muhammadiyah",
+       HIJRI_BASIS_LOCAL_PREDICATE, HIJRI_PREDICATE_WUJUDUL_HILAL,
+       -(7.0 + 48.0 / 60.0), 110.0 + 21.0 / 60.0, 90.0,
+       {0, 0, 0}, {2025, 6, 25},
+       HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS, 12, 12}};
+  /* The fixture table behind each local-predicate entry. */
+  static const struct {
+    HijriAuthority authority;
+    const char *key;
+    const int (*starts)[3];
+    size_t total;
+  } FIXTURES[] = {
+      {HIJRI_AUTHORITY_KEMENAG, "kemenag", KEMENAG_STARTS,
+       sizeof(KEMENAG_STARTS) / sizeof(KEMENAG_STARTS[0])},
+      {HIJRI_AUTHORITY_JAKIM, "jakim", MALAYSIA_STARTS,
+       sizeof(MALAYSIA_STARTS) / sizeof(MALAYSIA_STARTS[0])},
+      {HIJRI_AUTHORITY_MUIS, "muis", MUIS_STARTS,
+       sizeof(MUIS_STARTS) / sizeof(MUIS_STARTS[0])},
+      {HIJRI_AUTHORITY_BRUNEI_KHEU, "brunei", BRUNEI_STARTS,
+       sizeof(BRUNEI_STARTS) / sizeof(BRUNEI_STARTS[0])},
+      {HIJRI_AUTHORITY_MUHAMMADIYAH_WUJUDUL_HILAL, "muhammadiyah",
+       MUH_STARTS, sizeof(MUH_STARTS) / sizeof(MUH_STARTS[0])}};
+  /* A date, the authority asked, and the status it must return. Each bound
+   * is tested on its own day and on the day outside it. */
+  static const struct {
+    const char *name;
+    HijriAuthority authority;
+    int y, m, d;
+    HijriAuthorityStatus status;
+  } STATUS[] = {
+      {"kemenag_first_day", HIJRI_AUTHORITY_KEMENAG, 2022, 4, 3,
+       HIJRI_AUTHORITY_IN_RULE_PERIOD},
+      {"kemenag_day_before", HIJRI_AUTHORITY_KEMENAG, 2022, 4, 2,
+       HIJRI_AUTHORITY_OUTSIDE_RULE_PERIOD},
+      {"jakim_first_day", HIJRI_AUTHORITY_JAKIM, 2021, 11, 25,
+       HIJRI_AUTHORITY_IN_RULE_PERIOD},
+      {"jakim_day_before", HIJRI_AUTHORITY_JAKIM, 2021, 11, 24,
+       HIJRI_AUTHORITY_OUTSIDE_RULE_PERIOD},
+      {"muis_first_day", HIJRI_AUTHORITY_MUIS, 2022, 5, 2,
+       HIJRI_AUTHORITY_IN_RULE_PERIOD},
+      {"muis_day_before", HIJRI_AUTHORITY_MUIS, 2022, 5, 1,
+       HIJRI_AUTHORITY_OUTSIDE_RULE_PERIOD},
+      {"brunei_first_day", HIJRI_AUTHORITY_BRUNEI_KHEU, 2024, 3, 12,
+       HIJRI_AUTHORITY_IN_RULE_PERIOD},
+      {"brunei_day_before", HIJRI_AUTHORITY_BRUNEI_KHEU, 2024, 3, 11,
+       HIJRI_AUTHORITY_OUTSIDE_RULE_PERIOD},
+      {"umm_first_day", HIJRI_AUTHORITY_UMM_AL_QURA, 1882, 11, 12,
+       HIJRI_AUTHORITY_IN_RULE_PERIOD},
+      {"umm_day_before", HIJRI_AUTHORITY_UMM_AL_QURA, 1882, 11, 11,
+       HIJRI_AUTHORITY_OUTSIDE_RULE_PERIOD},
+      {"umm_last_day", HIJRI_AUTHORITY_UMM_AL_QURA, 2174, 11, 25,
+       HIJRI_AUTHORITY_IN_RULE_PERIOD},
+      {"umm_day_after", HIJRI_AUTHORITY_UMM_AL_QURA, 2174, 11, 26,
+       HIJRI_AUTHORITY_OUTSIDE_RULE_PERIOD},
+      {"muhammadiyah_last_day", HIJRI_AUTHORITY_MUHAMMADIYAH_WUJUDUL_HILAL,
+       2025, 6, 25, HIJRI_AUTHORITY_IN_RULE_PERIOD},
+      {"muhammadiyah_day_after", HIJRI_AUTHORITY_MUHAMMADIYAH_WUJUDUL_HILAL,
+       2025, 6, 26, HIJRI_AUTHORITY_OUTSIDE_RULE_PERIOD},
+      {"muhammadiyah_open_start", HIJRI_AUTHORITY_MUHAMMADIYAH_WUJUDUL_HILAL,
+       2000, 1, 1, HIJRI_AUTHORITY_IN_RULE_PERIOD}};
+  char name[96];
+  size_t index;
+
+  check_int("authority_count", (int)HIJRI_AUTHORITY_COUNT, 6);
+  check_int("authority_expected_rows",
+            (int)(sizeof(EXPECTED) / sizeof(EXPECTED[0])),
+            (int)HIJRI_AUTHORITY_COUNT);
+  check_true("authority_get_count_is_null",
+             hijri_authority_get(HIJRI_AUTHORITY_COUNT) == 0);
+  check_true("authority_get_negative_is_null",
+             hijri_authority_get((HijriAuthority)-1) == 0);
+
+  for (index = 0; index < sizeof(EXPECTED) / sizeof(EXPECTED[0]); index++) {
+    const HijriAuthorityEntry *e = hijri_authority_get(EXPECTED[index].authority);
+    const char *key = EXPECTED[index].key;
+    snprintf(name, sizeof name, "authority_%s_present", key);
+    check_true(name, e != 0 && e->name != 0 && e->name[0] != '\0');
+    if (e == 0) {
+      continue;
+    }
+    snprintf(name, sizeof name, "authority_%s_basis", key);
+    check_int(name, (int)e->basis, (int)EXPECTED[index].basis);
+    snprintf(name, sizeof name, "authority_%s_predicate", key);
+    check_int(name, (int)e->predicate, (int)EXPECTED[index].predicate);
+    snprintf(name, sizeof name, "authority_%s_latitude", key);
+    check_close(name, e->reference.latitude_deg, EXPECTED[index].lat, 1e-12);
+    snprintf(name, sizeof name, "authority_%s_longitude", key);
+    check_close(name, e->reference.longitude_deg, EXPECTED[index].lon, 1e-12);
+    snprintf(name, sizeof name, "authority_%s_elevation", key);
+    check_close(name, e->reference.elevation_m, EXPECTED[index].elev, 1e-12);
+    snprintf(name, sizeof name, "authority_%s_rule_from", key);
+    check_true(name, e->rule_from.year == EXPECTED[index].from[0] &&
+                         e->rule_from.month == EXPECTED[index].from[1] &&
+                         e->rule_from.day == EXPECTED[index].from[2]);
+    snprintf(name, sizeof name, "authority_%s_rule_until", key);
+    check_true(name, e->rule_until.year == EXPECTED[index].until[0] &&
+                         e->rule_until.month == EXPECTED[index].until[1] &&
+                         e->rule_until.day == EXPECTED[index].until[2]);
+    snprintf(name, sizeof name, "authority_%s_validation", key);
+    check_int(name, (int)e->validation, (int)EXPECTED[index].validation);
+    snprintf(name, sizeof name, "authority_%s_validated_supported", key);
+    check_int(name, e->validated_supported, EXPECTED[index].supported);
+    snprintf(name, sizeof name, "authority_%s_validated_total", key);
+    check_int(name, e->validated_total, EXPECTED[index].total);
+  }
+
+  /* Counts recomputed from the fixtures, at the entry's own predicate and
+   * reference point. */
+  for (index = 0; index < sizeof(FIXTURES) / sizeof(FIXTURES[0]); index++) {
+    const HijriAuthorityEntry *e = hijri_authority_get(FIXTURES[index].authority);
+    int support, early;
+    count_start_support(FIXTURES[index].starts, FIXTURES[index].total,
+                        &e->reference, e->predicate, &support, &early);
+    snprintf(name, sizeof name, "authority_%s_supported_matches_fixture",
+             FIXTURES[index].key);
+    check_int(name, support, e->validated_supported);
+    snprintf(name, sizeof name, "authority_%s_total_matches_fixture",
+             FIXTURES[index].key);
+    check_int(name, (int)FIXTURES[index].total, e->validated_total);
+  }
+  {
+    const HijriAuthorityEntry *e = hijri_authority_get(HIJRI_AUTHORITY_UMM_AL_QURA);
+    const size_t total = sizeof(HIJRI_UMM_OFFICIAL) / sizeof(HIJRI_UMM_OFFICIAL[0]);
+    int exact = 0;
+    for (index = 0; index < total; index++) {
+      const int *row = HIJRI_UMM_OFFICIAL[index];
+      HijriDate got;
+      if (hijri_authority_from_gregorian(HIJRI_AUTHORITY_UMM_AL_QURA, row[0],
+                                         row[1], row[2], &got) ==
+              HIJRI_AUTHORITY_IN_RULE_PERIOD &&
+          got.day == 1 && got.year == row[3] && got.month == row[4]) {
+        exact++;
+      }
+    }
+    check_int("authority_umm_al_qura_supported_matches_fixture", exact,
+              e->validated_supported);
+    check_int("authority_umm_al_qura_total_matches_fixture", (int)total,
+              e->validated_total);
+  }
+
+  for (index = 0; index < sizeof(STATUS) / sizeof(STATUS[0]); index++) {
+    HijriDate got = {-1, -1, -1};
+    snprintf(name, sizeof name, "authority_status_%s", STATUS[index].name);
+    check_int(name,
+              (int)hijri_authority_from_gregorian(STATUS[index].authority,
+                                                  STATUS[index].y,
+                                                  STATUS[index].m,
+                                                  STATUS[index].d, &got),
+              (int)STATUS[index].status);
+    snprintf(name, sizeof name, "authority_status_%s_filled",
+             STATUS[index].name);
+    check_true(name, got.year != -1);
+  }
+  {
+    HijriDate untouched = {-1, -1, -1};
+    check_int("authority_status_out_of_range_unresolved",
+              (int)hijri_authority_from_gregorian(HIJRI_AUTHORITY_COUNT, 2025,
+                                                  3, 15, &untouched),
+              (int)HIJRI_AUTHORITY_UNRESOLVED);
+    check_date("authority_status_out_of_range_untouched", untouched, -1, -1,
+               -1);
+  }
+
+  /* Delegation. Every 97 days from 2019-01-01, 30 dates, which crosses every
+   * period bound between 2021 and 2025. The conversion must fill the same
+   * date the wrapped function fills, and resolve exactly when it does. */
+  for (index = 0; index < sizeof(EXPECTED) / sizeof(EXPECTED[0]); index++) {
+    const HijriAuthorityEntry *e = hijri_authority_get(EXPECTED[index].authority);
+    const double first_jd = floor(hijri_jd_from_gregorian(2019, 1, 1.0));
+    int step, mismatches = 0, resolved = 0;
+    for (step = 0; step < 30; step++) {
+      int gy, gm;
+      double gd_frac;
+      HijriDate via_registry = {0, 0, 0}, direct = {0, 0, 0};
+      HijriAuthorityStatus status;
+      int ok;
+      hijri_gregorian_from_jd(first_jd + 97.0 * (double)step + 0.5, &gy, &gm,
+                              &gd_frac);
+      status = hijri_authority_from_gregorian(EXPECTED[index].authority, gy,
+                                              gm, (int)floor(gd_frac),
+                                              &via_registry);
+      if (e->basis == HIJRI_BASIS_PUBLISHED_TABLE) {
+        ok = hijri_umm_al_qura_from_gregorian(gy, gm, (int)floor(gd_frac),
+                                              &direct);
+      } else {
+        ok = hijri_from_gregorian_with_local_predicate(
+            gy, gm, (int)floor(gd_frac), &e->reference, e->predicate,
+            &direct);
+      }
+      if ((status != HIJRI_AUTHORITY_UNRESOLVED) != (ok != 0) ||
+          via_registry.year != direct.year ||
+          via_registry.month != direct.month ||
+          via_registry.day != direct.day) {
+        mismatches++;
+      }
+      resolved += (status != HIJRI_AUTHORITY_UNRESOLVED);
+    }
+    snprintf(name, sizeof name, "authority_%s_delegation_mismatches",
+             EXPECTED[index].key);
+    check_int(name, mismatches, 0);
+    snprintf(name, sizeof name, "authority_%s_delegation_resolved",
+             EXPECTED[index].key);
+    check_int(name, resolved, 30);
+  }
 }
 
 /* Status-return contract for the conjunction finders (the roadmap's
@@ -2744,6 +3010,7 @@ int main(void) {
   test_muis_announced_starts();
   test_malaysia_announced_starts();
   test_brunei_announced_starts();
+  test_authority_registry();
   test_conjunction_status_returns();
   test_setting_status_matches_the_window();
   test_decision_margins();

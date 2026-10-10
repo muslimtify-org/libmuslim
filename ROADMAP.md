@@ -393,6 +393,10 @@ A policy may need to represent:
 - Every named authority policy documents its geographic and decision scope.
 - Custom application policies remain possible without modifying `hijri.h`.
 
+**First step taken (2026-10).** `hijri.h` v0.2.0 adds an authority registry: `hijri_authority_get()` and `hijri_authority_from_gregorian()`, with six entries. It is not the general abstraction this item describes. It exists because two decision flows are now both in the file, a local predicate at a reference point and a published table, and a caller should not have to know which one an authority uses. Each entry reports the period its rule is sourced as governing and what it was validated against, and the conversion's status says when a date falls outside that period. An entry is admitted only with a fixture behind it, under the criteria in "Additional named policies" below.
+
+**Region aggregation was measured and deferred (2026-10).** Evaluating MABIMS 2021 at every whole degree of a box covering Indonesia gave the same verdict as Sabang alone on all 74 evenings checked, 33 of 37 Kemenag starts supported and none early, at about 850 times the cost. The four unsupported starts miss by 0.19 to 0.80 degrees at the best point in the box, so they are not a geography problem. One reference point per authority is used instead. Measurement and its limits: [`docs/research/2026-10-10-region-aggregation-measured.md`](docs/research/2026-10-10-region-aggregation-measured.md). The multi-location and regional aggregation bullets above stay open, to be revisited if a longer official record shows a month one reference point cannot reproduce. Time-bounded global search, which KHGT needs, is a separate question this measurement does not touch.
+
 ### Official Umm al-Qura data mode
 
 Keep the existing astronomical Mecca conjunction-and-moonset policy distinct
