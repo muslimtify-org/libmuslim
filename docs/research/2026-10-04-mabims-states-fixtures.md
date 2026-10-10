@@ -27,6 +27,7 @@ A table whose every decision evening passes easily and whose every previous even
 |---|---|---|---|---|
 | 2025-02-28 | Singapore | 4.141 | 5.125 | elongation |
 | 2025-02-28 | Kuala Lumpur | 4.242 | 5.188 | elongation |
+| 2025-02-28 | Langkawi | 4.342 | 5.233 | elongation |
 | 2025-02-28 | Bandar Seri Begawan | 3.795 | 4.683 | elongation |
 | 2025-05-27 | Singapore | 2.148 | 6.272 | both |
 | 2025-05-27 | Kuala Lumpur | 2.440 | 6.311 | both |
@@ -34,6 +35,7 @@ A table whose every decision evening passes easily and whose every previous even
 | 2025-05-27 | Bandar Seri Begawan | 2.128 | 5.987 | both |
 | 2026-03-19 | Singapore | 2.286 | 5.152 | both |
 | 2026-03-19 | Kuala Lumpur | 2.481 | 5.199 | both |
+| 2026-03-19 | Langkawi | 2.761 | 5.220 | both |
 | 2026-03-19 | Bandar Seri Begawan | 2.160 | 4.740 | both |
 
 2025-05-27 is the closest. Langkawi sits 0.120 degrees under the altitude threshold and 0.061 degrees under the elongation threshold. Both are far outside the 0.0070 degree error bar `hijri.h` documents, so the verdict is decided and not a coin toss. This is also the month where Indonesia and the other three states part: Kemenag's calendar starts Zulhijjah 1446 on 2025-05-28, and Singapore, Malaysia and Brunei announced 2025-05-29.
