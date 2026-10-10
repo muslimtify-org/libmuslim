@@ -1957,14 +1957,20 @@ hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
    * whether MUIS rounds its published quantities before comparing, which
    * would make exact values reachable in their arithmetic though not in ours.
    *
-   * VALIDATION COVERAGE, and it is narrower than "the four MABIMS states"
-   * above suggests. Only Indonesia is reproduced against an official
-   * published calendar. Malaysia, Brunei and Singapore run this same
-   * criterion through this same code path with no fixture behind them,
-   * because no citable primary source for their calendars was obtained.
+   * VALIDATION COVERAGE, and it is uneven across the four MABIMS states.
+   * Indonesia is checked against 37 months of an official published
+   * calendar. Malaysia, Brunei and Singapore are each checked against seven
+   * announced month starts, the Ramadan, Syawal and Zulhijjah announcements
+   * of 2024 to 2026, at one site per country. The predicate supports all
+   * seven at each capital and is never one day early. Seven starts cover
+   * three month names, so an ordinary month in those three states has no
+   * fixture behind it. Sources are in
+   * docs/research/2026-09-25-mabims-takwim-sources.md and the measurement
+   * in docs/research/2026-10-04-mabims-states-fixtures.md.
    *
-   * That is not a formality, and the tempting argument that one criterion
-   * through one code path makes an Indonesian fixture cover the rest is
+   * Separate fixtures per state are not a formality, and the tempting
+   * argument that one criterion through one code path makes an Indonesian
+   * fixture cover the rest is
    * false. This predicate is not location-invariant. Comparing the verdict
    * it returns at Jakarta against each of the other three capitals, every
    * evening from 2022 to 2026 that has a moonset after sunset, a window
@@ -1978,22 +1984,22 @@ hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
    * A differing verdict is a differing month start, so that is three to
    * seven disagreeing month starts in five years, and they are precisely
    * the starts an Indonesian fixture says nothing about. A caller outside
-   * Indonesia is getting a result this library has never checked against
-   * their own authority's calendar.
+   * Indonesia is getting a result checked against their own authority only
+   * on the seven announced starts above.
    *
    * One thing tempers that without removing it. The divergences sit in the
    * marginal population this file's header already documents as the band
    * where the verdict is a coin toss the arithmetic cannot settle, so
-   * fixtures for these states would validate the library exactly where the
-   * criterion is least decisive.
+   * a fuller fixture for these states would validate the library exactly
+   * where the criterion is least decisive.
    *
    * tests/test_hijri.c pins these counts, so a change to the criterion or to
    * the sunset and moonset solvers moves a committed number rather than
    * passing unnoticed. They are a relationship between four coordinates and
    * not a defect rate: they show an Indonesian fixture cannot transfer, and
-   * they do not show the library is wrong at the other three. Nothing here
-   * could, because the fixtures that would settle that are the ones issue
-   * #27 recorded as unavailable. */
+   * they do not show the library is wrong at the other three. The
+   * announced-start fixtures in the same file are what bear on that, for
+   * the seven starts each one covers. */
   case HIJRI_PREDICATE_MABIMS_2021:
     return p->moon_center_geometric_altitude_deg >= HIJRI_MABIMS_2021_ALTITUDE_DEG &&
            p->topocentric_elongation_deg >= HIJRI_MABIMS_2021_ELONGATION_DEG;
