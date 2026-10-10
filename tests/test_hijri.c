@@ -2342,9 +2342,9 @@ static void test_setting_status_matches_the_window(void) {
 
    These numbers are a relationship between four coordinates, not a defect
    rate. They show an Indonesian fixture cannot transfer. They do not show the
-   library is wrong at the other three, and nothing here could, because the
-   fixtures that would settle that are the ones issue #27 recorded as
-   unavailable for lack of a citable primary source.
+   library is wrong at the other three. test_muis_announced_starts,
+   test_malaysia_announced_starts and test_brunei_announced_starts bear on
+   that, for the seven announced starts each one covers.
 
    Elevations are chosen rather than sourced. hijri.h documents elevation as
    deliberately nearly inert, with the measurements behind that in

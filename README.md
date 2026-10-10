@@ -141,6 +141,8 @@ criterion alone does not produce. Details and the geocentric-elongation
 convention finding are in
 [`docs/research/2026-08-01-kemenag-reference.md`](docs/research/2026-08-01-kemenag-reference.md).
 
+Against the announced Ramadan, Syawal and Zulhijjah starts of Singapore, Malaysia and Brunei for 2024 to 2026, seven per country, the same predicate at each capital supports every start and is never one day early, fixture-enforced. That is seven month starts per country, not their calendars. See [`docs/research/2026-10-04-mabims-states-fixtures.md`](docs/research/2026-10-04-mabims-states-fixtures.md).
+
 Against Muhammadiyah's official calendar, the Wujudul Hilal predicate at
 Yogyakarta reproduces all twelve Maklumat-announced month starts of 1443 to
 1446 H, never early, matching every published wujud/belum-wujud verdict,
