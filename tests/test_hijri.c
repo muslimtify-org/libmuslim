@@ -2003,7 +2003,11 @@ static void count_start_support(const int (*starts)[3], size_t total,
  * Lowering HIJRI_MABIMS_2021_ELONGATION_DEG in hijri.h from 6.4 to 4.5 fails,
  * verbatim:
  *   FAIL exact/muis_never_early actual=1 expected=0
- * Reverting either restores the check count seen when the fixture was added. */
+ * Raising HIJRI_MABIMS_2021_ALTITUDE_DEG in hijri.h from 3.0 to 8.0 fails,
+ * verbatim:
+ *   FAIL exact/muis_announced_starts_supported actual=6 expected=7
+ * Reverting any of the three restores the check count seen when the fixture
+ * was added. */
 static void test_muis_announced_starts(void) {
   static const int MUIS_STARTS[][3] = {
       {2024, 3, 12}, {2024, 4, 10}, {2025, 3, 2}, {2025, 3, 31},
@@ -2043,7 +2047,11 @@ static void test_muis_announced_starts(void) {
  * Lowering HIJRI_MABIMS_2021_ELONGATION_DEG in hijri.h from 6.4 to 4.5 fails,
  * verbatim:
  *   FAIL exact/malaysia_never_early actual=1 expected=0
- * Reverting either restores the check count seen when the fixture was added. */
+ * Raising HIJRI_MABIMS_2021_ALTITUDE_DEG in hijri.h from 3.0 to 8.0 fails,
+ * verbatim:
+ *   FAIL exact/malaysia_announced_starts_supported actual=6 expected=7
+ * Reverting any of the three restores the check count seen when the fixture
+ * was added. */
 static void test_malaysia_announced_starts(void) {
   static const int MALAYSIA_STARTS[][3] = {
       {2024, 3, 12}, {2024, 4, 10}, {2025, 3, 2}, {2025, 3, 31},
@@ -2083,7 +2091,11 @@ static void test_malaysia_announced_starts(void) {
  * Lowering HIJRI_MABIMS_2021_ELONGATION_DEG in hijri.h from 6.4 to 4.5 fails,
  * verbatim:
  *   FAIL exact/brunei_never_early actual=1 expected=0
- * Reverting either restores the check count seen when the fixture was added. */
+ * Raising HIJRI_MABIMS_2021_ALTITUDE_DEG in hijri.h from 3.0 to 8.0 fails,
+ * verbatim:
+ *   FAIL exact/brunei_announced_starts_supported actual=6 expected=7
+ * Reverting any of the three restores the check count seen when the fixture
+ * was added. */
 static void test_brunei_announced_starts(void) {
   static const int BRUNEI_STARTS[][3] = {
       {2024, 3, 12}, {2024, 4, 10}, {2025, 3, 2}, {2025, 3, 31},

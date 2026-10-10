@@ -1,6 +1,6 @@
 # Fixtures for Singapore, Malaysia and Brunei
 
-**Date:** 2026-10-04
+**Date:** 2026-10-04, measurement rerun 2026-10-10
 
 [2026-09-25-mabims-takwim-sources.md](2026-09-25-mabims-takwim-sources.md) admitted seven announced month starts for each of Singapore, Malaysia and Brunei and measured nothing against the library. This note is that measurement. The three fixtures it backs are `test_muis_announced_starts`, `test_malaysia_announced_starts` and `test_brunei_announced_starts` in `tests/test_hijri.c`.
 
