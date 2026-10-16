@@ -2377,6 +2377,284 @@ static void test_authority_registry(void) {
   }
 }
 
+/* hijri_authority_from_gregorian_announced: the registry corrected by a
+ * caller's announced month starts.
+ *
+ * The fixture is the official Kemenag calendar, KEMENAG_STARTS, Rajab 1445
+ * through Rajab 1448, and as announcements the seven of its starts that
+ * docs/research/2026-08-01-kemenag-reference.md lists as independently
+ * announced by the government. Over every day of that window the test
+ * counts days that differ from the official calendar, once for the registry
+ * alone and once with the announcements. Both counts are pinned as
+ * observed, the second must be lower, and every day still wrong must lie in
+ * a month that neither an announcement nor the month before it reached.
+ *
+ * It also pins that every month the corrected calendar produces in the
+ * window is 29 or 30 days long, that an empty list returns exactly the
+ * registry's answer, each of the five status values, and that each kind of
+ * inconsistent list is rejected with the output untouched.
+ *
+ * Mutation record, run on 2026-10-16. Each change was made alone to
+ * hijri.h and reverted afterwards.
+ *
+ * Loosening the 30-day cap to 31 days (next_start > cur_start + 31.0)
+ * produced:
+ *   FAIL exact/announced_cap_2025_03_01_is_1_ramadan actual=1446-08-31 expected=1446-09-01
+ *
+ * Loosening the list gap check to 31 days a month (gap > 31.0 * months)
+ * produced:
+ *   FAIL exact/announced_invalid_gap_31_days actual=3 expected=-1
+ *   FAIL synthetic/announced_invalid_gap_31_days_untouched expected=true
+ *
+ * Disabling the rejoin of the computed calendar (if (0 && !from_list &&
+ * !clamped)) produced:
+ *   FAIL exact/announced_status_rejoined_computed actual=3 expected=1
+ *   FAIL exact/announced_cap_rejoin_status actual=3 expected=1
+ *
+ * Making the month-label check never reject produced:
+ *   FAIL exact/announced_label_three_days_early actual=3 expected=-1
+ *   FAIL exact/announced_label_three_days_late actual=3 expected=-1
+ *   FAIL exact/announced_label_month_label_one_late actual=3 expected=-1
+ *
+ * Reverting any of them restores 2713 checks with 0 failures. */
+static void test_authority_announced(void) {
+  /* Indices into KEMENAG_STARTS of the seven announced starts, with the
+   * Hijri month each began. KEMENAG_STARTS[0] is 1 Rajab 1445. */
+  static const int ANNOUNCED_INDEX[] = {2, 3, 14, 15, 26, 29, 30};
+  const int announced_count =
+      (int)(sizeof(ANNOUNCED_INDEX) / sizeof(ANNOUNCED_INDEX[0]));
+  const int official_count =
+      (int)(sizeof(KEMENAG_STARTS) / sizeof(KEMENAG_STARTS[0]));
+  HijriAnnouncedStart announced[sizeof(ANNOUNCED_INDEX) /
+                                sizeof(ANNOUNCED_INDEX[0])];
+  int is_announced[sizeof(KEMENAG_STARTS) / sizeof(KEMENAG_STARTS[0])];
+  double official_jd[sizeof(KEMENAG_STARTS) / sizeof(KEMENAG_STARTS[0])];
+  int index;
+
+  for (index = 0; index < official_count; index++) {
+    official_jd[index] = floor(hijri_jd_from_gregorian(
+        KEMENAG_STARTS[index][0], KEMENAG_STARTS[index][1],
+        (double)KEMENAG_STARTS[index][2]));
+    is_announced[index] = 0;
+  }
+  for (index = 0; index < announced_count; index++) {
+    int i = ANNOUNCED_INDEX[index];
+    announced[index].start.year = KEMENAG_STARTS[i][0];
+    announced[index].start.month = KEMENAG_STARTS[i][1];
+    announced[index].start.day = KEMENAG_STARTS[i][2];
+    announced[index].hijri_year = 1445 + (6 + i) / 12;
+    announced[index].hijri_month = (6 + i) % 12 + 1;
+    is_announced[i] = 1;
+  }
+
+  /* The Kemenag window, day by day. */
+  {
+    int registry_wrong = 0, announced_wrong = 0, unexplained = 0;
+    int run_length = 0, bad_lengths = 0, runs = 0;
+    HijriDate previous = {0, 0, 0};
+    double jd;
+    for (jd = official_jd[0]; jd < official_jd[official_count - 1]; jd++) {
+      int i = 0, gy, gm, official_year, official_month, official_day;
+      double gd_frac;
+      HijriDate plain = {0, 0, 0}, corrected = {0, 0, 0};
+      while (i + 1 < official_count && official_jd[i + 1] <= jd) i++;
+      official_year = 1445 + (6 + i) / 12;
+      official_month = (6 + i) % 12 + 1;
+      official_day = (int)(jd - official_jd[i]) + 1;
+      hijri_gregorian_from_jd(jd + 0.5, &gy, &gm, &gd_frac);
+      hijri_authority_from_gregorian(HIJRI_AUTHORITY_KEMENAG, gy, gm,
+                                     (int)floor(gd_frac), &plain);
+      hijri_authority_from_gregorian_announced(
+          HIJRI_AUTHORITY_KEMENAG, announced, announced_count, gy, gm,
+          (int)floor(gd_frac), &corrected);
+      if (plain.year != official_year || plain.month != official_month ||
+          plain.day != official_day) {
+        registry_wrong++;
+      }
+      if (corrected.year != official_year ||
+          corrected.month != official_month ||
+          corrected.day != official_day) {
+        announced_wrong++;
+        if (is_announced[i] || (i > 0 && is_announced[i - 1])) {
+          unexplained++;
+        }
+      }
+      /* Month lengths. A run is closed when the month changes, and only
+       * runs that both start and end inside the window are judged. */
+      if (corrected.year == previous.year &&
+          corrected.month == previous.month) {
+        run_length++;
+      } else {
+        if (runs > 0 && (run_length < 29 || run_length > 30)) {
+          bad_lengths++;
+        }
+        if (previous.year != 0) runs++;
+        run_length = 1;
+      }
+      previous = corrected;
+    }
+    check_int("announced_kemenag_registry_wrong_days", registry_wrong,
+              90);
+    check_int("announced_kemenag_corrected_wrong_days", announced_wrong,
+              30);
+    check_true("announced_kemenag_correction_helps",
+               announced_wrong < registry_wrong);
+    check_int("announced_kemenag_wrong_days_in_announced_reach", unexplained,
+              0);
+    check_int("announced_kemenag_month_lengths_outside_29_30", bad_lengths, 0);
+  }
+
+  /* Each status value. */
+  {
+    HijriDate got = {-1, -1, -1};
+    check_int("announced_status_from_announcement",
+              (int)hijri_authority_from_gregorian_announced(
+                  HIJRI_AUTHORITY_KEMENAG, announced, announced_count, 2025,
+                  3, 1, &got),
+              (int)HIJRI_ANNOUNCED_FROM_ANNOUNCEMENT);
+    check_date("announced_2025_03_01_is_1_ramadan_1446", got, 1446, 9, 1);
+    check_int("announced_status_before_first_in_period",
+              (int)hijri_authority_from_gregorian_announced(
+                  HIJRI_AUTHORITY_KEMENAG, announced, announced_count, 2024,
+                  1, 20, &got),
+              (int)HIJRI_ANNOUNCED_COMPUTED_IN_RULE_PERIOD);
+    check_int("announced_status_before_first_outside_period",
+              (int)hijri_authority_from_gregorian_announced(
+                  HIJRI_AUTHORITY_KEMENAG, announced, announced_count, 2020,
+                  1, 1, &got),
+              (int)HIJRI_ANNOUNCED_COMPUTED_OUTSIDE_RULE_PERIOD);
+    check_int("announced_status_rejoined_computed",
+              (int)hijri_authority_from_gregorian_announced(
+                  HIJRI_AUTHORITY_KEMENAG, announced, announced_count, 2026,
+                  10, 1, &got),
+              (int)HIJRI_ANNOUNCED_COMPUTED_IN_RULE_PERIOD);
+    got.year = -1;
+    check_int("announced_status_out_of_range_authority",
+              (int)hijri_authority_from_gregorian_announced(
+                  HIJRI_AUTHORITY_COUNT, announced, announced_count, 2025, 3,
+                  1, &got),
+              (int)HIJRI_ANNOUNCED_UNRESOLVED);
+    check_true("announced_status_out_of_range_untouched", got.year == -1);
+  }
+
+  /* The 30-day cap. The computed Sha'ban 1446 starts 2025-01-31 and runs
+   * 30 days. Announcing it one day early, 2025-01-30, would leave it 31
+   * days if the computed Ramadan start were kept, so Ramadan must start on
+   * 2025-03-01. The walk rejoins the computed calendar at Syawal. */
+  {
+    static const HijriAnnouncedStart EARLY[] = {{{2025, 1, 30}, 1446, 8}};
+    HijriDate got = {-1, -1, -1};
+    check_int("announced_cap_status",
+              (int)hijri_authority_from_gregorian_announced(
+                  HIJRI_AUTHORITY_KEMENAG, EARLY, 1, 2025, 3, 1, &got),
+              (int)HIJRI_ANNOUNCED_FROM_ANNOUNCEMENT);
+    check_date("announced_cap_2025_03_01_is_1_ramadan", got, 1446, 9, 1);
+    check_int("announced_cap_rejoin_status",
+              (int)hijri_authority_from_gregorian_announced(
+                  HIJRI_AUTHORITY_KEMENAG, EARLY, 1, 2025, 3, 31, &got),
+              (int)HIJRI_ANNOUNCED_COMPUTED_IN_RULE_PERIOD);
+    check_date("announced_cap_2025_03_31_is_1_syawal", got, 1446, 10, 1);
+  }
+
+  /* A month label the calculation does not place within two days of the
+   * entry's date. The computed Ramadan 1446 starts 2025-03-02. Two days
+   * either side is accepted, three is rejected, and so is a label one month
+   * off on the right day. */
+  {
+    static const struct {
+      const char *name;
+      HijriAnnouncedStart a;
+      int y, m, d;
+      HijriAnnouncedStatus status;
+    } LABEL[] = {
+        {"two_days_early", {{2025, 2, 28}, 1446, 9}, 2025, 3, 5,
+         HIJRI_ANNOUNCED_FROM_ANNOUNCEMENT},
+        {"two_days_late", {{2025, 3, 4}, 1446, 9}, 2025, 3, 5,
+         HIJRI_ANNOUNCED_FROM_ANNOUNCEMENT},
+        {"three_days_early", {{2025, 2, 27}, 1446, 9}, 2025, 3, 5,
+         HIJRI_ANNOUNCED_INVALID_LIST},
+        {"three_days_late", {{2025, 3, 5}, 1446, 9}, 2025, 3, 5,
+         HIJRI_ANNOUNCED_INVALID_LIST},
+        {"month_label_one_late", {{2025, 3, 2}, 1446, 10}, 2035, 3, 1,
+         HIJRI_ANNOUNCED_INVALID_LIST}};
+    char name[96];
+    size_t l;
+    for (l = 0; l < sizeof(LABEL) / sizeof(LABEL[0]); l++) {
+      HijriDate got = {-1, -1, -1};
+      HijriAnnouncedStatus status = hijri_authority_from_gregorian_announced(
+          HIJRI_AUTHORITY_KEMENAG, &LABEL[l].a, 1, LABEL[l].y, LABEL[l].m,
+          LABEL[l].d, &got);
+      snprintf(name, sizeof name, "announced_label_%s", LABEL[l].name);
+      check_int(name, (int)status, (int)LABEL[l].status);
+      if (status == HIJRI_ANNOUNCED_INVALID_LIST) {
+        snprintf(name, sizeof name, "announced_label_%s_untouched",
+                 LABEL[l].name);
+        check_true(name, got.year == -1);
+      }
+    }
+  }
+
+  /* Inconsistent lists. */
+  {
+    static const struct {
+      const char *name;
+      HijriAnnouncedStart a, b;
+    } BAD[] = {
+        {"out_of_order", {{2025, 3, 31}, 1446, 10}, {{2025, 3, 1}, 1446, 9}},
+        {"month_13", {{2025, 3, 1}, 1446, 13}, {{2025, 3, 31}, 1446, 10}},
+        {"gap_31_days", {{2025, 3, 1}, 1446, 9}, {{2025, 4, 1}, 1446, 10}},
+        {"gap_28_days", {{2025, 3, 1}, 1446, 9}, {{2025, 3, 29}, 1446, 10}},
+        {"label_skips_a_month",
+         {{2025, 3, 1}, 1446, 9}, {{2025, 3, 31}, 1446, 11}},
+        {"invalid_gregorian", {{2025, 2, 30}, 1446, 9},
+         {{2025, 3, 31}, 1446, 10}}};
+    char name[96];
+    size_t b;
+    for (b = 0; b < sizeof(BAD) / sizeof(BAD[0]); b++) {
+      HijriAnnouncedStart list[2];
+      HijriDate got = {-1, -1, -1};
+      list[0] = BAD[b].a;
+      list[1] = BAD[b].b;
+      snprintf(name, sizeof name, "announced_invalid_%s", BAD[b].name);
+      check_int(name,
+                (int)hijri_authority_from_gregorian_announced(
+                    HIJRI_AUTHORITY_KEMENAG, list, 2, 2025, 3, 15, &got),
+                (int)HIJRI_ANNOUNCED_INVALID_LIST);
+      snprintf(name, sizeof name, "announced_invalid_%s_untouched",
+               BAD[b].name);
+      check_true(name, got.year == -1);
+    }
+  }
+
+  /* An empty list returns exactly the registry's answer. */
+  {
+    int authority, mismatches = 0;
+    for (authority = 0; authority < (int)HIJRI_AUTHORITY_COUNT; authority++) {
+      const double first_jd = floor(hijri_jd_from_gregorian(2019, 1, 1.0));
+      int step;
+      for (step = 0; step < 30; step++) {
+        int gy, gm;
+        double gd_frac;
+        HijriDate registry = {0, 0, 0}, empty = {0, 0, 0};
+        HijriAuthorityStatus a;
+        HijriAnnouncedStatus b;
+        hijri_gregorian_from_jd(first_jd + 97.0 * (double)step + 0.5, &gy,
+                                &gm, &gd_frac);
+        a = hijri_authority_from_gregorian((HijriAuthority)authority, gy, gm,
+                                           (int)floor(gd_frac), &registry);
+        b = hijri_authority_from_gregorian_announced(
+            (HijriAuthority)authority, 0, 0, gy, gm, (int)floor(gd_frac),
+            &empty);
+        if ((int)a != (int)b || registry.year != empty.year ||
+            registry.month != empty.month || registry.day != empty.day) {
+          mismatches++;
+        }
+      }
+    }
+    check_int("announced_empty_list_matches_registry", mismatches, 0);
+  }
+}
+
 /* Status-return contract for the conjunction finders (the roadmap's
  * pre-v1.0 gate). Non-finite input reports HIJRI_EVENT_NOT_FOUND with the
  * result untouched; valid input reports OK with a Julian Day bit-identical
@@ -3011,6 +3289,7 @@ int main(void) {
   test_malaysia_announced_starts();
   test_brunei_announced_starts();
   test_authority_registry();
+  test_authority_announced();
   test_conjunction_status_returns();
   test_setting_status_matches_the_window();
   test_decision_margins();

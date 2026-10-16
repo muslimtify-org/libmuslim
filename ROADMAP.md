@@ -464,6 +464,8 @@ Potential information includes:
 - Applications can trace a calendar decision to its astronomical and
   observational inputs.
 
+**First step taken (2026-10).** `hijri.h` v0.3.0 adds `hijri_authority_from_gregorian_announced()`, which applies a caller's list of announced month starts over an authority registry entry. It keeps the three criteria above: the header ships no announcements and records no observations, it applies a consistent list without judging it, and the returned status says when an announcement decided the date. The observation records listed above, sighting reports, observers, optical aid and conditions, are not part of it and remain open.
+
 ### Backend and policy metadata
 
 Allow applications to record which ephemeris, policy, conventions, and data
