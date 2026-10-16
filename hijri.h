@@ -1014,8 +1014,12 @@ typedef struct {
  * mean, and are returned only when no announcement affects the date. */
 typedef enum {
   /* The list is inconsistent: out of date order, a month outside 1 to 12,
-   * an invalid Gregorian date, or two entries whose gap does not fit 29 to
-   * 30 days per Hijri month between them. *out is untouched. */
+   * an invalid Gregorian date, two entries whose gap does not fit 29 to 30
+   * days per Hijri month between them, or an entry in effect whose month
+   * the calculation does not place within two days of its date. Only the
+   * last entry on or before the requested date is checked against the
+   * calculation, so a list can be accepted for an earlier date and rejected
+   * for a later one. *out is untouched. */
   HIJRI_ANNOUNCED_INVALID_LIST = -1,
   /* No entry for the authority, or the calculation failed. *out is
    * untouched. */
@@ -2981,6 +2985,32 @@ HIJRIDEF HijriAnnouncedStatus hijri_authority_from_gregorian_announced(
   }
   if (!hijri_authority_get(authority)) {
     return HIJRI_ANNOUNCED_UNRESOLVED;
+  }
+
+  /* The entry in effect must name the Hijri month the calculation places
+   * within two days of its date: the computed start of that month lies in
+   * [start - 2, start + 2]. A wrong month label passes every check above,
+   * because the gaps only relate entries to each other, and it would shift
+   * every later date by a month. The gaps tie every other entry's label to
+   * this one, so checking it checks them all. Two days is a chosen bound:
+   * the rulings in this repository's fixtures sit at most one day from the
+   * calculation. */
+  {
+    HijriDate after, before;
+    double entry_jd = hijri__announced_jd(&starts[last]);
+    long entry_index = hijri__hijri_month_index(starts[last].hijri_year,
+                                                starts[last].hijri_month);
+    if (hijri__authority_on_jd(authority, entry_jd + 2.0, &after) ==
+            HIJRI_AUTHORITY_UNRESOLVED ||
+        hijri__authority_on_jd(authority, entry_jd - 3.0, &before) ==
+            HIJRI_AUTHORITY_UNRESOLVED) {
+      return HIJRI_ANNOUNCED_UNRESOLVED;
+    }
+    if (hijri__hijri_month_index(after.year, after.month) != entry_index ||
+        hijri__hijri_month_index(before.year, before.month) !=
+            entry_index - 1) {
+      return HIJRI_ANNOUNCED_INVALID_LIST;
+    }
   }
 
   /* Every entry after `last` starts after the target, so the only one the

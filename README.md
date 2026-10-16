@@ -191,7 +191,7 @@ HijriAnnouncedStatus status = hijri_authority_from_gregorian_announced(
 /* status == HIJRI_ANNOUNCED_FROM_ANNOUNCEMENT, date is 1446-09-01 */
 ```
 
-The header ships no announcements and never judges one. The caller decides where announcements come from and whether to trust them. A list out of date order, or with two entries whose gap cannot fit 29 or 30 days a month, is rejected with `HIJRI_ANNOUNCED_INVALID_LIST`. Against the official Kemenag calendar from Rajab 1445 to Rajab 1448, the seven starts the government announced bring the days the registry gets wrong from 90 to 30. The 30 left are the two Rajab months, which nobody announced.
+The header ships no announcements and never judges one. The caller decides where announcements come from and whether to trust them. A list out of date order, with two entries whose gap cannot fit 29 or 30 days a month, or whose entry in effect names a Hijri month the calculation does not place within two days of its date, is rejected with `HIJRI_ANNOUNCED_INVALID_LIST`. Against the official Kemenag calendar from Rajab 1445 to Rajab 1448, the seven starts the government announced bring the days the registry gets wrong from 90 to 30. The 30 left are the two Rajab months, which nobody announced.
 
 A calculated result is still not an observation, and nothing here decides
 religious validity.

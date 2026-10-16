@@ -2411,7 +2411,12 @@ static void test_authority_registry(void) {
  *   FAIL exact/announced_status_rejoined_computed actual=3 expected=1
  *   FAIL exact/announced_cap_rejoin_status actual=3 expected=1
  *
- * Reverting any of them restores 2705 checks with 0 failures. */
+ * Making the month-label check never reject produced:
+ *   FAIL exact/announced_label_three_days_early actual=3 expected=-1
+ *   FAIL exact/announced_label_three_days_late actual=3 expected=-1
+ *   FAIL exact/announced_label_month_label_one_late actual=3 expected=-1
+ *
+ * Reverting any of them restores 2713 checks with 0 failures. */
 static void test_authority_announced(void) {
   /* Indices into KEMENAG_STARTS of the seven announced starts, with the
    * Hijri month each began. KEMENAG_STARTS[0] is 1 Rajab 1445. */
@@ -2549,6 +2554,44 @@ static void test_authority_announced(void) {
                   HIJRI_AUTHORITY_KEMENAG, EARLY, 1, 2025, 3, 31, &got),
               (int)HIJRI_ANNOUNCED_COMPUTED_IN_RULE_PERIOD);
     check_date("announced_cap_2025_03_31_is_1_syawal", got, 1446, 10, 1);
+  }
+
+  /* A month label the calculation does not place within two days of the
+   * entry's date. The computed Ramadan 1446 starts 2025-03-02. Two days
+   * either side is accepted, three is rejected, and so is a label one month
+   * off on the right day. */
+  {
+    static const struct {
+      const char *name;
+      HijriAnnouncedStart a;
+      int y, m, d;
+      HijriAnnouncedStatus status;
+    } LABEL[] = {
+        {"two_days_early", {{2025, 2, 28}, 1446, 9}, 2025, 3, 5,
+         HIJRI_ANNOUNCED_FROM_ANNOUNCEMENT},
+        {"two_days_late", {{2025, 3, 4}, 1446, 9}, 2025, 3, 5,
+         HIJRI_ANNOUNCED_FROM_ANNOUNCEMENT},
+        {"three_days_early", {{2025, 2, 27}, 1446, 9}, 2025, 3, 5,
+         HIJRI_ANNOUNCED_INVALID_LIST},
+        {"three_days_late", {{2025, 3, 5}, 1446, 9}, 2025, 3, 5,
+         HIJRI_ANNOUNCED_INVALID_LIST},
+        {"month_label_one_late", {{2025, 3, 2}, 1446, 10}, 2035, 3, 1,
+         HIJRI_ANNOUNCED_INVALID_LIST}};
+    char name[96];
+    size_t l;
+    for (l = 0; l < sizeof(LABEL) / sizeof(LABEL[0]); l++) {
+      HijriDate got = {-1, -1, -1};
+      HijriAnnouncedStatus status = hijri_authority_from_gregorian_announced(
+          HIJRI_AUTHORITY_KEMENAG, &LABEL[l].a, 1, LABEL[l].y, LABEL[l].m,
+          LABEL[l].d, &got);
+      snprintf(name, sizeof name, "announced_label_%s", LABEL[l].name);
+      check_int(name, (int)status, (int)LABEL[l].status);
+      if (status == HIJRI_ANNOUNCED_INVALID_LIST) {
+        snprintf(name, sizeof name, "announced_label_%s_untouched",
+                 LABEL[l].name);
+        check_true(name, got.year == -1);
+      }
+    }
   }
 
   /* Inconsistent lists. */
