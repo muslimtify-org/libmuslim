@@ -180,6 +180,19 @@ if (status == HIJRI_AUTHORITY_IN_RULE_PERIOD) {
 
 An entry is a calculation profile, not the authority. The result is the rule computed at one point and chained month to month, and each authority can and does depart from it by ruling. The counts above are read from the entry itself, and the test suite recomputes them from the fixtures, so the table in the header cannot drift from the tests. Only authorities with a fixture have an entry. The sourced period for each rule is in [`docs/research/2026-10-10-authority-rule-periods.md`](docs/research/2026-10-10-authority-rule-periods.md), and why one reference point stands in for a territory is in [`docs/research/2026-10-10-region-aggregation-measured.md`](docs/research/2026-10-10-region-aggregation-measured.md).
 
+**Announced month starts.** An authority rules on a month, and the ruling can differ from the calculation. `hijri_authority_from_gregorian_announced()` takes the caller's list of announced starts and applies it over the registry. A month an announcement moves keeps the month after it at 29 or 30 days, and once a month start agrees with the calculation again the registry's own answer is returned.
+
+```c
+/* 1 Ramadan 1446 as Kemenag announced it, a day before the calculation. */
+static const HijriAnnouncedStart announced[] = {{{2025, 3, 1}, 1446, 9}};
+HijriDate date;
+HijriAnnouncedStatus status = hijri_authority_from_gregorian_announced(
+    HIJRI_AUTHORITY_KEMENAG, announced, 1, 2025, 3, 1, &date);
+/* status == HIJRI_ANNOUNCED_FROM_ANNOUNCEMENT, date is 1446-09-01 */
+```
+
+The header ships no announcements and never judges one. The caller decides where announcements come from and whether to trust them. A list out of date order, or with two entries whose gap cannot fit 29 or 30 days a month, is rejected with `HIJRI_ANNOUNCED_INVALID_LIST`. Against the official Kemenag calendar from Rajab 1445 to Rajab 1448, the seven starts the government announced bring the days the registry gets wrong from 90 to 30. The 30 left are the two Rajab months, which nobody announced.
+
 A calculated result is still not an observation, and nothing here decides
 religious validity.
 
