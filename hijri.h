@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-/* hijri.h -- v0.3.1 -- stb-style single-file astronomical Hijri calendar library
+/* hijri.h -- v0.4.0 -- stb-style single-file astronomical Hijri calendar library
  *
  * The version above is this file's own. It is not the libmuslim release
  * tag, which is a calendar date such as 2026.08.18 and covers a snapshot
@@ -884,6 +884,10 @@ HIJRIDEF int hijri_umm_al_qura_covers(int gy, int gm, int gd);
  * official calendar by a day in the months the fixture documents, 4 of the
  * 37 checked.
  *
+ * A published-table entry computes nothing at a reference point. It reads
+ * the authority's own table. For Diyanet that table is the whole answer,
+ * and a date outside it is unresolved.
+ *
  * Only authorities with a fixture in tests/test_hijri.c have an entry. An
  * authority missing here is missing because no rule and reference record
  * for it has been admitted, not because it was overlooked. See ROADMAP.md,
@@ -911,13 +915,17 @@ typedef enum {
   /* Muhammadiyah while it used hisab hakiki wujudul hilal, through 1446 H.
    * From 1447 H it follows KHGT, which this library does not implement. */
   HIJRI_AUTHORITY_MUHAMMADIYAH_WUJUDUL_HILAL,
+  /* Turkey, Diyanet Isleri Baskanligi. Its published calendar, read from a
+   * table that covers 2021-01-14 to 2035-12-31 and nothing outside it. */
+  HIJRI_AUTHORITY_DIYANET,
   HIJRI_AUTHORITY_COUNT
 } HijriAuthority;
 
 typedef enum {
   /* A HijriLocalPredicate evaluated at the entry's reference point. */
   HIJRI_BASIS_LOCAL_PREDICATE,
-  /* The published Umm al-Qura table, which takes no location. */
+  /* A published table, Umm al-Qura's or Diyanet's, which takes no
+   * location. */
   HIJRI_BASIS_PUBLISHED_TABLE
 } HijriAuthorityBasis;
 
@@ -942,12 +950,13 @@ typedef struct {
   const char *name;
   /* How the calendar is produced. */
   HijriAuthorityBasis basis;
-  /* The predicate evaluated, for HIJRI_BASIS_LOCAL_PREDICATE. For the
-   * published table it names the predicate the reconstruction outside the
-   * table uses, and the conversion does not read it. */
+  /* The predicate evaluated, for HIJRI_BASIS_LOCAL_PREDICATE. For Umm
+   * al-Qura it names the predicate the reconstruction outside the table
+   * uses, and the conversion does not read it. For Diyanet nothing reads
+   * it. */
   HijriLocalPredicate predicate;
-  /* The single point the predicate is evaluated at. For the published table
-   * it is Mecca, and the conversion does not read it. */
+  /* The single point the predicate is evaluated at. For Umm al-Qura it is
+   * Mecca and for Diyanet Ankara, and the conversion reads neither. */
   HijriLocation reference;
   /* First and last Gregorian dates this library has a SOURCE for the rule
    * governing, inclusive. They err narrow: a date outside them may still
@@ -971,8 +980,8 @@ typedef struct {
  * functions return. Compare against HIJRI_AUTHORITY_IN_RULE_PERIOD for the
  * strict reading. */
 typedef enum {
-  /* No entry for that authority, or the underlying calculation failed.
-   * *out is untouched. */
+  /* No entry for that authority, the underlying calculation failed, or
+   * the date is outside the Diyanet table. *out is untouched. */
   HIJRI_AUTHORITY_UNRESOLVED = 0,
   /* *out is filled and the date lies inside the entry's rule period. */
   HIJRI_AUTHORITY_IN_RULE_PERIOD = 1,
@@ -2829,6 +2838,93 @@ HIJRIDEF int hijri_umm_al_qura_covers(int gy, int gm, int gd) {
          target_jd < HIJRI__UQ_ANCHOR_JD + (double)HIJRI__UQ_TOTAL_DAYS;
 }
 
+/* ---- Diyanet published calendar ----------------------------------------
+ * Every month start Diyanet Isleri Baskanligi publishes from 1 Cemaziyelahir
+ * 1442 to 1 Zilkade 1457, as Gregorian dates in order. Entry i begins the
+ * Hijri month i months after the first. Read from mobil.diyanet.gov.tr for
+ * 2021 to 2028 and from vakithesaplama.diyanet.gov.tr for 2027 to 2035,
+ * which agree on every start they share. Sources and parsing are in
+ * docs/research/2026-10-17-diyanet-calendar.md.
+ *
+ * The length of the last month is not published, so the table answers that
+ * month's first day and nothing after it. */
+#define HIJRI__DIYANET_FIRST_YEAR 1442
+#define HIJRI__DIYANET_FIRST_MONTH 6
+#define HIJRI__DIYANET_COUNT 186
+
+static const int hijri__diyanet_starts[HIJRI__DIYANET_COUNT][3] = {
+    {2021, 1, 14}, {2021, 2, 13}, {2021, 3, 14}, {2021, 4, 13}, {2021, 5, 13},
+    {2021, 6, 11}, {2021, 7, 11}, {2021, 8, 9}, {2021, 9, 8}, {2021, 10, 7},
+    {2021, 11, 6}, {2021, 12, 5}, {2022, 1, 4}, {2022, 2, 2}, {2022, 3, 4},
+    {2022, 4, 2}, {2022, 5, 2}, {2022, 5, 31}, {2022, 6, 30}, {2022, 7, 30},
+    {2022, 8, 28}, {2022, 9, 27}, {2022, 10, 27}, {2022, 11, 25},
+    {2022, 12, 24}, {2023, 1, 23}, {2023, 2, 21}, {2023, 3, 23}, {2023, 4, 21},
+    {2023, 5, 21}, {2023, 6, 19}, {2023, 7, 19}, {2023, 8, 17}, {2023, 9, 16},
+    {2023, 10, 16}, {2023, 11, 14}, {2023, 12, 14}, {2024, 1, 12},
+    {2024, 2, 11}, {2024, 3, 11}, {2024, 4, 10}, {2024, 5, 9}, {2024, 6, 7},
+    {2024, 7, 7}, {2024, 8, 5}, {2024, 9, 4}, {2024, 10, 4}, {2024, 11, 3},
+    {2024, 12, 2}, {2025, 1, 1}, {2025, 1, 31}, {2025, 3, 1}, {2025, 3, 30},
+    {2025, 4, 29}, {2025, 5, 28}, {2025, 6, 26}, {2025, 7, 26}, {2025, 8, 24},
+    {2025, 9, 23}, {2025, 10, 23}, {2025, 11, 21}, {2025, 12, 21},
+    {2026, 1, 20}, {2026, 2, 19}, {2026, 3, 20}, {2026, 4, 18}, {2026, 5, 18},
+    {2026, 6, 16}, {2026, 7, 15}, {2026, 8, 14}, {2026, 9, 12}, {2026, 10, 12},
+    {2026, 11, 10}, {2026, 12, 10}, {2027, 1, 9}, {2027, 2, 8}, {2027, 3, 9},
+    {2027, 4, 8}, {2027, 5, 7}, {2027, 6, 6}, {2027, 7, 5}, {2027, 8, 3},
+    {2027, 9, 2}, {2027, 10, 1}, {2027, 10, 31}, {2027, 11, 29}, {2027, 12, 29},
+    {2028, 1, 28}, {2028, 2, 26}, {2028, 3, 27}, {2028, 4, 26}, {2028, 5, 25},
+    {2028, 6, 24}, {2028, 7, 23}, {2028, 8, 21}, {2028, 9, 20}, {2028, 10, 19},
+    {2028, 11, 18}, {2028, 12, 17}, {2029, 1, 16}, {2029, 2, 14}, {2029, 3, 16},
+    {2029, 4, 15}, {2029, 5, 14}, {2029, 6, 13}, {2029, 7, 13}, {2029, 8, 11},
+    {2029, 9, 9}, {2029, 10, 9}, {2029, 11, 7}, {2029, 12, 7}, {2030, 1, 5},
+    {2030, 2, 4}, {2030, 3, 5}, {2030, 4, 4}, {2030, 5, 3}, {2030, 6, 2},
+    {2030, 7, 2}, {2030, 8, 1}, {2030, 8, 30}, {2030, 9, 28}, {2030, 10, 28},
+    {2030, 11, 26}, {2030, 12, 26}, {2031, 1, 24}, {2031, 2, 22}, {2031, 3, 24},
+    {2031, 4, 23}, {2031, 5, 22}, {2031, 6, 21}, {2031, 7, 21}, {2031, 8, 19},
+    {2031, 9, 18}, {2031, 10, 17}, {2031, 11, 16}, {2031, 12, 15},
+    {2032, 1, 14}, {2032, 2, 12}, {2032, 3, 13}, {2032, 4, 11}, {2032, 5, 11},
+    {2032, 6, 9}, {2032, 7, 9}, {2032, 8, 7}, {2032, 9, 6}, {2032, 10, 6},
+    {2032, 11, 4}, {2032, 12, 4}, {2033, 1, 2}, {2033, 2, 1}, {2033, 3, 2},
+    {2033, 4, 1}, {2033, 4, 30}, {2033, 5, 30}, {2033, 6, 28}, {2033, 7, 27},
+    {2033, 8, 26}, {2033, 9, 25}, {2033, 10, 24}, {2033, 11, 23},
+    {2033, 12, 23}, {2034, 1, 21}, {2034, 2, 20}, {2034, 3, 21}, {2034, 4, 20},
+    {2034, 5, 19}, {2034, 6, 17}, {2034, 7, 17}, {2034, 8, 15}, {2034, 9, 14},
+    {2034, 10, 13}, {2034, 11, 12}, {2034, 12, 12}, {2035, 1, 11}, {2035, 2, 9},
+    {2035, 3, 11}, {2035, 4, 9}, {2035, 5, 9}, {2035, 6, 7}, {2035, 7, 6},
+    {2035, 8, 5}, {2035, 9, 3}, {2035, 10, 3}, {2035, 11, 1}, {2035, 12, 1},
+    {2035, 12, 31}};
+
+static double hijri__diyanet_start_jd(int index) {
+  const int *start = hijri__diyanet_starts[index];
+  return floor(hijri_jd_from_gregorian(start[0], start[1], (double)start[2]));
+}
+
+/* Exact conversion for dates inside the table. Returns 0 outside it. */
+static int hijri__diyanet_from_gregorian(double target_jd, HijriDate *out) {
+  int lo = 0;
+  int hi = HIJRI__DIYANET_COUNT - 1;
+  long month_index;
+
+  if (target_jd < hijri__diyanet_start_jd(0) ||
+      target_jd > hijri__diyanet_start_jd(HIJRI__DIYANET_COUNT - 1)) {
+    return 0;
+  }
+  /* The last start on or before target_jd. */
+  while (lo < hi) {
+    int mid = (lo + hi + 1) / 2;
+    if (hijri__diyanet_start_jd(mid) <= target_jd) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  month_index = (long)HIJRI__DIYANET_FIRST_YEAR * 12L +
+                (long)(HIJRI__DIYANET_FIRST_MONTH - 1) + (long)lo;
+  out->year = (int)(month_index / 12L);
+  out->month = (int)(month_index % 12L) + 1;
+  out->day = (int)(target_jd - hijri__diyanet_start_jd(lo)) + 1;
+  return 1;
+}
+
 /* ---- Authority registry ------------------------------------------------
  * Rows are positional and in HijriAuthority order, because the C++17 build
  * of this file cannot use array designators. tests/test_hijri.c asserts
@@ -2875,6 +2971,16 @@ static const HijriAuthorityEntry hijri__authority_table[HIJRI_AUTHORITY_COUNT] =
      {-(7.0 + 48.0 / 60.0), 110.0 + 21.0 / 60.0, 90.0, "Yogyakarta"},
      {0, 0, 0}, {2025, 6, 25},
      HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS, 12, 12},
+    /* The published calendar in hijri__diyanet_starts, and the rule period
+     * is that table's span. The 2016 Istanbul rule Diyanet computes it by is
+     * global, so no single point reproduces it: the predicate is the nearest
+     * local one and Ankara is Diyanet's seat, and the conversion reads
+     * neither. Outside the table it is unresolved. */
+    {"Diyanet, Turkey", HIJRI_BASIS_PUBLISHED_TABLE,
+     HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8,
+     {39.9334, 32.8597, 938.0, "Ankara"},
+     {2021, 1, 14}, {2035, 12, 31},
+     HIJRI_VALIDATION_PUBLISHED_TABLE, 186, 186},
 };
 
 HIJRIDEF const HijriAuthorityEntry *hijri_authority_get(HijriAuthority authority) {
@@ -2900,7 +3006,10 @@ hijri_authority_from_gregorian(HijriAuthority authority, int gy, int gm,
   if (!entry) {
     return HIJRI_AUTHORITY_UNRESOLVED;
   }
-  if (entry->basis == HIJRI_BASIS_PUBLISHED_TABLE) {
+  if (authority == HIJRI_AUTHORITY_DIYANET) {
+    ok = hijri__diyanet_from_gregorian(
+        floor(hijri_jd_from_gregorian(gy, gm, (double)gd)), &date);
+  } else if (entry->basis == HIJRI_BASIS_PUBLISHED_TABLE) {
     ok = hijri_umm_al_qura_from_gregorian(gy, gm, gd, &date);
   } else {
     ok = hijri_from_gregorian_with_local_predicate(
