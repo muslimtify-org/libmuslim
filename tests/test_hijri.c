@@ -1976,86 +1976,83 @@ static void count_start_support(const int (*starts)[3], size_t total,
   }
 }
 
-/* Singapore: seven month starts announced by the Mufti through MUIS media
- * releases, Ramadan and Syawal 1445 to 1447 H and Zulhijjah 1446 H.
+/* Singapore: the MUIS calendar, every month start of 2024 and 2025, plus the
+ * two announced starts of 2026.
  *
- * Provenance: one dated announcement page per event at
- * muis.gov.sg/resources/media-releases/, each published as separate English
- * and Malay pages that agree, two of the seven corroborated by press
- * reporting outside MUIS. The annual printed MUIS calendar could not be
- * read and is not behind this table. Admission record:
- * docs/research/2026-09-25-mabims-takwim-sources.md. Measurement:
- * docs/research/2026-10-04-mabims-states-fixtures.md.
+ * Provenance: MUIS "Key Islamic Dates" sheets for 2024 and 2025, PDFs at
+ * muis.gov.sg/-/media/Files/Corporate-Site/Key-Islamic-Dates-<year>.ashx,
+ * which list 1 of every Hijri month with its weekday, every weekday
+ * matching. No 2026 sheet is online, so 2026 is the Mufti's Ramadan and
+ * Syawal 1447 H announcements admitted in
+ * docs/research/2026-09-25-mabims-takwim-sources.md. Extraction and
+ * measurement: docs/research/2026-10-16-mabims-full-calendars.md.
  *
- * What is claimed: HIJRI_PREDICATE_MABIMS_2021 at Singapore supports all
- * seven announced starts and is never one day early. What is not claimed:
- * that the library reproduces the MUIS calendar. Seven starts cover three
- * month names, and each is a ruling of the Mufti and the Fatwa Committee,
- * not a raw predicate output.
+ * What is claimed: HIJRI_PREDICATE_MABIMS_2021 at Singapore supports all 27
+ * starts and is never one day early. Through the registry that is every day
+ * of the MUIS calendar from 2024-01-13 to 2025-12-31 reproduced. Each date
+ * is still the Mufti's ruling, not a raw predicate output.
  *
- * Asserted as equalities. The measured score is perfect and the lowest
- * altitude on any decision evening in the set is far above 3 deg, so no
- * ephemeris refinement can move these.
+ * Asserted as equalities. The measured score is perfect, and a floor would
+ * let a regression in one month pass.
  *
- * Mutation-tested on 2026-10-10. Shifting the first start from 2024-03-12
- * to 2024-03-13 fails, verbatim:
+ * Mutation-tested on 2026-10-17. Moving 1 Rabiulakhir 1446 from 2024-10-04
+ * to 2024-10-05 fails, verbatim:
  *   FAIL exact/muis_never_early actual=1 expected=0
- * Lowering HIJRI_MABIMS_2021_ELONGATION_DEG in hijri.h from 6.4 to 4.5 fails,
- * verbatim:
- *   FAIL exact/muis_never_early actual=1 expected=0
- * Raising HIJRI_MABIMS_2021_ALTITUDE_DEG in hijri.h from 3.0 to 8.0 fails,
- * verbatim:
- *   FAIL exact/muis_announced_starts_supported actual=6 expected=7
- * Reverting any of the three restores the check count seen when the fixture
- * was added. */
+ * Reverting it restores the count. */
 static const int MUIS_STARTS[][3] = {
-    {2024, 3, 12}, {2024, 4, 10}, {2025, 3, 2}, {2025, 3, 31},
-    {2025, 5, 29}, {2026, 2, 19}, {2026, 3, 21}};
-static void test_muis_announced_starts(void) {
+    {2024, 1, 13}, {2024, 2, 11}, {2024, 3, 12}, {2024, 4, 10},
+    {2024, 5, 10}, {2024, 6, 8}, {2024, 7, 7}, {2024, 8, 6},
+    {2024, 9, 5}, {2024, 10, 4}, {2024, 11, 3}, {2024, 12, 3},
+    {2025, 1, 1}, {2025, 1, 31}, {2025, 3, 2}, {2025, 3, 31},
+    {2025, 4, 29}, {2025, 5, 29}, {2025, 6, 27}, {2025, 7, 26},
+    {2025, 8, 25}, {2025, 9, 23}, {2025, 10, 23}, {2025, 11, 22},
+    {2025, 12, 22}, {2026, 2, 19}, {2026, 3, 21}};
+static void test_muis_official_calendar(void) {
   const HijriLocation singapore = {1.3521, 103.8198, 15.0, "Singapore"};
   int support, early;
   count_start_support(MUIS_STARTS,
                       sizeof(MUIS_STARTS) / sizeof(MUIS_STARTS[0]),
                       &singapore, HIJRI_PREDICATE_MABIMS_2021, &support,
                       &early);
-  check_int("muis_announced_starts_supported", support, 7);
+  check_int("muis_official_starts_supported", support, 27);
   check_int("muis_never_early", early, 0);
 }
 
-/* Malaysia: seven month starts declared by the Penyimpan Mohor Besar
- * Raja-Raja, Ramadan and Syawal 1445 to 1447 H and Zulhijjah 1446 H.
+/* Malaysia: the JAKIM calendar, every month start from Rajab 1445 to Rajab
+ * 1448.
  *
- * Provenance: the declaration is a live broadcast, and the dates are taken
- * from the state broadcaster's own reports of it at berita.rtm.gov.my,
- * corroborated by national press that the government does not own. No
- * JAKIM or Istana Negara page states these dates directly. Admission
- * record: docs/research/2026-09-25-mabims-takwim-sources.md. Measurement:
- * docs/research/2026-10-04-mabims-states-fixtures.md.
+ * Provenance: JAKIM's e-solat service, which returns the Hijri date for
+ * every day of a year, zone WLY01, requested for 2024, 2025 and 2026. The
+ * 1096 days run with no gap and every month is 29 or 30 days. The seven
+ * declarations admitted in docs/research/2026-09-25-mabims-takwim-sources.md
+ * all appear in it. Extraction and measurement:
+ * docs/research/2026-10-16-mabims-full-calendars.md.
  *
- * What is claimed: HIJRI_PREDICATE_MABIMS_2021 at Kuala Lumpur supports
- * all seven declared starts and is never one day early. What is not
- * claimed: that the library reproduces the Malaysian calendar. Malaysia
- * decides from hisab and from rukyah at 29 observation sites, and this
- * fixture evaluates one point. Langkawi, in the west of the country, was
- * measured as well and gives the same two counts.
+ * What is claimed: HIJRI_PREDICATE_MABIMS_2021 at Kuala Lumpur supports all
+ * 37 starts and is never one day early. Through the registry that is every
+ * day of the JAKIM calendar from 2024-01-13 to 2026-12-10 reproduced.
+ * Malaysia decides from hisab and from rukyah at 29 observation sites and
+ * this fixture evaluates one point. The two starts after 2026-10-17 were
+ * still JAKIM's prediction when retrieved.
  *
  * Asserted as equalities, for the reason given on the Singapore fixture.
  *
- * Mutation-tested on 2026-10-10. Shifting the first start from 2024-03-12
- * to 2024-03-13 fails, verbatim:
+ * Mutation-tested on 2026-10-17. Moving 1 Rabiulakhir 1446 from 2024-10-04
+ * to 2024-10-05 fails, verbatim:
  *   FAIL exact/malaysia_never_early actual=1 expected=0
- * Lowering HIJRI_MABIMS_2021_ELONGATION_DEG in hijri.h from 6.4 to 4.5 fails,
- * verbatim:
- *   FAIL exact/malaysia_never_early actual=1 expected=0
- * Raising HIJRI_MABIMS_2021_ALTITUDE_DEG in hijri.h from 3.0 to 8.0 fails,
- * verbatim:
- *   FAIL exact/malaysia_announced_starts_supported actual=6 expected=7
- * Reverting any of the three restores the check count seen when the fixture
- * was added. */
+ * Reverting it restores the count. */
 static const int MALAYSIA_STARTS[][3] = {
-    {2024, 3, 12}, {2024, 4, 10}, {2025, 3, 2}, {2025, 3, 31},
-    {2025, 5, 29}, {2026, 2, 19}, {2026, 3, 21}};
-static void test_malaysia_announced_starts(void) {
+    {2024, 1, 13}, {2024, 2, 11}, {2024, 3, 12}, {2024, 4, 10},
+    {2024, 5, 10}, {2024, 6, 8}, {2024, 7, 7}, {2024, 8, 6},
+    {2024, 9, 5}, {2024, 10, 4}, {2024, 11, 3}, {2024, 12, 3},
+    {2025, 1, 1}, {2025, 1, 31}, {2025, 3, 2}, {2025, 3, 31},
+    {2025, 4, 29}, {2025, 5, 29}, {2025, 6, 27}, {2025, 7, 26},
+    {2025, 8, 25}, {2025, 9, 23}, {2025, 10, 23}, {2025, 11, 22},
+    {2025, 12, 22}, {2026, 1, 20}, {2026, 2, 19}, {2026, 3, 21},
+    {2026, 4, 19}, {2026, 5, 18}, {2026, 6, 17}, {2026, 7, 16},
+    {2026, 8, 14}, {2026, 9, 13}, {2026, 10, 12}, {2026, 11, 11},
+    {2026, 12, 11}};
+static void test_malaysia_official_calendar(void) {
   const HijriLocation kuala_lumpur = {3.1390, 101.6869, 56.0,
                                       "Kuala Lumpur"};
   int support, early;
@@ -2063,51 +2060,58 @@ static void test_malaysia_announced_starts(void) {
                       sizeof(MALAYSIA_STARTS) / sizeof(MALAYSIA_STARTS[0]),
                       &kuala_lumpur, HIJRI_PREDICATE_MABIMS_2021, &support,
                       &early);
-  check_int("malaysia_announced_starts_supported", support, 7);
+  check_int("malaysia_official_starts_supported", support, 37);
   check_int("malaysia_never_early", early, 0);
 }
 
-/* Brunei: seven month starts, Ramadan and Syawal 1445 to 1447 H and
- * Zulhijjah 1446 H.
+/* Brunei: the Taqwim, every month start of 2025 and 2026, plus the two
+ * announced starts of 2024.
  *
- * Provenance: the annual Taqwim published by Pusat Da'wah Islamiah at
- * mora.gov.bn, text-layer PDFs read directly for 2024, 2025 and 2026, with
- * six of the seven dates cross-checked against Borneo Bulletin reports of
- * the proclamation broadcast. The Taqwim marks each start as subject to the
- * announced sighting. Admission record:
- * docs/research/2026-09-25-mabims-takwim-sources.md. Measurement:
- * docs/research/2026-10-04-mabims-states-fixtures.md.
+ * Provenance: the Taqwim published by Pusat Da'wah Islamiah at
+ * mora.gov.bn/Muat Turun Library/PDI/, for 2025 and 2026, read from each
+ * monthly page's Gregorian, weekday and Hijri day columns. Every weekday
+ * matches, every month is 29 or 30 days, and 60 of the 61 dated lines the
+ * two Taqwim print agree with the extracted calendar. The one exception is
+ * an eclipse dated after Maghrib, when the Hijri day has already turned.
+ * The 2024 Taqwim is no longer online, so 2024 is the Ramadan and Syawal
+ * 1445 H starts admitted in docs/research/2026-09-25-mabims-takwim-sources.md.
+ * Extraction and measurement: docs/research/2026-10-16-mabims-full-calendars.md.
  *
- * What is claimed: HIJRI_PREDICATE_MABIMS_2021 at Bandar Seri Begawan
- * supports all seven starts and is never one day early. What is not
- * claimed: that the library reproduces the Brunei Taqwim. Seven starts
- * cover three month names, and the final date is a royal proclamation.
+ * Evaluated at KUALA LUMPUR, not Bandar Seri Begawan, because that is the
+ * registry entry's reference point. The Taqwim states it follows the
+ * regional MABIMS calendar and does not say where that is computed. At
+ * Bandar Seri Begawan the predicate misses one of these 27 starts,
+ * 2025-09-23, on elongation, and one more month of the calendar the three
+ * states share, 2024-10-04. Kuala Lumpur misses none.
+ *
+ * What is claimed: HIJRI_PREDICATE_MABIMS_2021 at Kuala Lumpur supports all
+ * 27 starts and is never one day early. Each Taqwim date is printed as
+ * subject to the announced sighting, and the final date is a royal
+ * proclamation.
  *
  * Asserted as equalities, for the reason given on the Singapore fixture.
  *
- * Mutation-tested on 2026-10-10. Shifting the first start from 2024-03-12
- * to 2024-03-13 fails, verbatim:
+ * Mutation-tested on 2026-10-17. Moving 1 Rabiulakhir 1447 from 2025-09-23
+ * to 2025-09-24 fails, verbatim:
  *   FAIL exact/brunei_never_early actual=1 expected=0
- * Lowering HIJRI_MABIMS_2021_ELONGATION_DEG in hijri.h from 6.4 to 4.5 fails,
- * verbatim:
- *   FAIL exact/brunei_never_early actual=1 expected=0
- * Raising HIJRI_MABIMS_2021_ALTITUDE_DEG in hijri.h from 3.0 to 8.0 fails,
- * verbatim:
- *   FAIL exact/brunei_announced_starts_supported actual=6 expected=7
- * Reverting any of the three restores the check count seen when the fixture
- * was added. */
+ * Reverting it restores the count. */
 static const int BRUNEI_STARTS[][3] = {
-    {2024, 3, 12}, {2024, 4, 10}, {2025, 3, 2}, {2025, 3, 31},
-    {2025, 5, 29}, {2026, 2, 19}, {2026, 3, 21}};
-static void test_brunei_announced_starts(void) {
-  const HijriLocation bandar_seri_begawan = {4.9031, 114.9398, 10.0,
-                                             "Bandar Seri Begawan"};
+    {2024, 3, 12}, {2024, 4, 10}, {2025, 1, 1}, {2025, 1, 31},
+    {2025, 3, 2}, {2025, 3, 31}, {2025, 4, 29}, {2025, 5, 29},
+    {2025, 6, 27}, {2025, 7, 26}, {2025, 8, 25}, {2025, 9, 23},
+    {2025, 10, 23}, {2025, 11, 22}, {2025, 12, 22}, {2026, 1, 20},
+    {2026, 2, 19}, {2026, 3, 21}, {2026, 4, 19}, {2026, 5, 18},
+    {2026, 6, 17}, {2026, 7, 16}, {2026, 8, 14}, {2026, 9, 13},
+    {2026, 10, 12}, {2026, 11, 11}, {2026, 12, 11}};
+static void test_brunei_official_calendar(void) {
+  const HijriLocation kuala_lumpur = {3.1390, 101.6869, 56.0,
+                                      "Kuala Lumpur"};
   int support, early;
   count_start_support(BRUNEI_STARTS,
                       sizeof(BRUNEI_STARTS) / sizeof(BRUNEI_STARTS[0]),
-                      &bandar_seri_begawan, HIJRI_PREDICATE_MABIMS_2021,
-                      &support, &early);
-  check_int("brunei_announced_starts_supported", support, 7);
+                      &kuala_lumpur, HIJRI_PREDICATE_MABIMS_2021, &support,
+                      &early);
+  check_int("brunei_official_starts_supported", support, 27);
   check_int("brunei_never_early", early, 0);
 }
 
@@ -2158,15 +2162,15 @@ static void test_authority_registry(void) {
       {HIJRI_AUTHORITY_JAKIM, "jakim", HIJRI_BASIS_LOCAL_PREDICATE,
        HIJRI_PREDICATE_MABIMS_2021, 3.1390, 101.6869, 56.0,
        {2021, 11, 25}, {0, 0, 0},
-       HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS, 7, 7},
+       HIJRI_VALIDATION_OFFICIAL_CALENDAR_MONTHS, 37, 37},
       {HIJRI_AUTHORITY_MUIS, "muis", HIJRI_BASIS_LOCAL_PREDICATE,
        HIJRI_PREDICATE_MABIMS_2021, 1.3521, 103.8198, 15.0,
        {2022, 5, 2}, {0, 0, 0},
-       HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS, 7, 7},
+       HIJRI_VALIDATION_OFFICIAL_CALENDAR_MONTHS, 27, 27},
       {HIJRI_AUTHORITY_BRUNEI_KHEU, "brunei", HIJRI_BASIS_LOCAL_PREDICATE,
-       HIJRI_PREDICATE_MABIMS_2021, 4.9031, 114.9398, 10.0,
+       HIJRI_PREDICATE_MABIMS_2021, 3.1390, 101.6869, 56.0,
        {2024, 3, 12}, {0, 0, 0},
-       HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS, 7, 7},
+       HIJRI_VALIDATION_OFFICIAL_CALENDAR_MONTHS, 27, 27},
       {HIJRI_AUTHORITY_UMM_AL_QURA, "umm_al_qura",
        HIJRI_BASIS_PUBLISHED_TABLE, HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET,
        21.4225, 39.8262, 240.0, {1882, 11, 12}, {2174, 11, 25},
@@ -2898,9 +2902,9 @@ static void test_setting_status_matches_the_window(void) {
 
    These numbers are a relationship between four coordinates, not a defect
    rate. They show an Indonesian fixture cannot transfer. They do not show the
-   library is wrong at the other three. test_muis_announced_starts,
-   test_malaysia_announced_starts and test_brunei_announced_starts bear on
-   that, for the seven announced starts each one covers.
+   library is wrong at the other three. test_muis_official_calendar,
+   test_malaysia_official_calendar and test_brunei_official_calendar bear on
+   that, for the published calendar each one covers.
 
    Elevations are chosen rather than sourced. hijri.h documents elevation as
    deliberately nearly inert, with the measurements behind that in
@@ -3285,9 +3289,9 @@ int main(void) {
   test_kemenag_official_calendar();
   test_kemenag_published_quantities();
   test_muhammadiyah_official_calendar();
-  test_muis_announced_starts();
-  test_malaysia_announced_starts();
-  test_brunei_announced_starts();
+  test_muis_official_calendar();
+  test_malaysia_official_calendar();
+  test_brunei_official_calendar();
   test_authority_registry();
   test_authority_announced();
   test_conjunction_status_returns();

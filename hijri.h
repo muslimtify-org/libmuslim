@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-/* hijri.h -- v0.3.0 -- stb-style single-file astronomical Hijri calendar library
+/* hijri.h -- v0.3.1 -- stb-style single-file astronomical Hijri calendar library
  *
  * The version above is this file's own. It is not the libmuslim release
  * tag, which is a calendar date such as 2026.08.18 and covers a snapshot
@@ -902,8 +902,9 @@ typedef enum {
   HIJRI_AUTHORITY_JAKIM,
   /* Majlis Ugama Islam Singapura. MABIMS 2021 at Singapore. */
   HIJRI_AUTHORITY_MUIS,
-  /* Brunei, Kementerian Hal Ehwal Ugama. MABIMS 2021 at Bandar Seri
-   * Begawan. */
+  /* Brunei, Kementerian Hal Ehwal Ugama. MABIMS 2021 at Kuala Lumpur, which
+   * reproduces Brunei's regional calendar where Bandar Seri Begawan does
+   * not. See the entry's comment in the implementation. */
   HIJRI_AUTHORITY_BRUNEI_KHEU,
   /* Saudi civil calendar, read from the published table. */
   HIJRI_AUTHORITY_UMM_AL_QURA,
@@ -2141,14 +2142,15 @@ hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
    *
    * VALIDATION COVERAGE, and it is uneven across the four MABIMS states.
    * Indonesia is checked against 37 months of an official published
-   * calendar. Malaysia, Brunei and Singapore are each checked against seven
-   * announced month starts, the Ramadan, Syawal and Zulhijjah announcements
-   * of 2024 to 2026, at one site per country. The predicate supports all
-   * seven at each capital and is never one day early. Seven starts cover
-   * three month names, so an ordinary month in those three states has no
-   * fixture behind it. Sources are in
-   * docs/research/2026-09-25-mabims-takwim-sources.md and the measurement
-   * in docs/research/2026-10-04-mabims-states-fixtures.md.
+   * calendar. Malaysia, Singapore and Brunei are checked against their own
+   * published calendars, every month: JAKIM 37 month starts from 2024 to
+   * 2026, MUIS 27 and Brunei's Taqwim 27. The predicate supports every one
+   * and is never one day early, at Kuala Lumpur for Malaysia and Brunei and
+   * at Singapore for Singapore. The three calendars agree on every month
+   * they share. Brunei is evaluated at Kuala Lumpur because Bandar Seri
+   * Begawan misses two months of that shared calendar, one of them in
+   * Brunei's own record. Sources and measurement are in
+   * docs/research/2026-10-16-mabims-full-calendars.md.
    *
    * Separate fixtures per state are not a formality, and the tempting
    * argument that one criterion through one code path makes an Indonesian
@@ -2166,8 +2168,8 @@ hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
    * A differing verdict is a differing month start, so that is three to
    * seven disagreeing month starts in five years, and they are precisely
    * the starts an Indonesian fixture says nothing about. A caller outside
-   * Indonesia is getting a result checked against their own authority only
-   * on the seven announced starts above.
+   * Indonesia is getting a result checked against their own authority's
+   * published calendar for 2024 to 2026, and for no other years.
    *
    * One thing tempers that without removing it. The divergences sit in the
    * marginal population this file's header already documents as the band
@@ -2180,8 +2182,8 @@ hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
    * passing unnoticed. They are a relationship between four coordinates and
    * not a defect rate: they show an Indonesian fixture cannot transfer, and
    * they do not show the library is wrong at the other three. The
-   * announced-start fixtures in the same file are what bear on that, for
-   * the seven starts each one covers. */
+   * official-calendar fixtures in the same file are what bear on that, for
+   * the months each one covers. */
   case HIJRI_PREDICATE_MABIMS_2021:
     return p->moon_center_geometric_altitude_deg >= HIJRI_MABIMS_2021_ALTITUDE_DEG &&
            p->topocentric_elongation_deg >= HIJRI_MABIMS_2021_ELONGATION_DEG;
@@ -2839,19 +2841,28 @@ static const HijriAuthorityEntry hijri__authority_table[HIJRI_AUTHORITY_COUNT] =
     {"JAKIM, Malaysia", HIJRI_BASIS_LOCAL_PREDICATE,
      HIJRI_PREDICATE_MABIMS_2021, {3.1390, 101.6869, 56.0, "Kuala Lumpur"},
      {2021, 11, 25}, {0, 0, 0},
-     HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS, 7, 7},
+     HIJRI_VALIDATION_OFFICIAL_CALENDAR_MONTHS, 37, 37},
     {"MUIS, Singapore", HIJRI_BASIS_LOCAL_PREDICATE,
      HIJRI_PREDICATE_MABIMS_2021, {1.3521, 103.8198, 15.0, "Singapore"},
      {2022, 5, 2}, {0, 0, 0},
-     HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS, 7, 7},
+     HIJRI_VALIDATION_OFFICIAL_CALENDAR_MONTHS, 27, 27},
     /* rule_from is this entry's first validated month start. The criterion
      * governed Brunei earlier than that, and no primary source for when was
-     * found. */
+     * found.
+     *
+     * The reference point is Kuala Lumpur, not Bandar Seri Begawan, and it
+     * was chosen to match the published calendar. Brunei's Taqwim states it
+     * follows the regional MABIMS calendar and does not say where that is
+     * computed. Against its 27 month starts the predicate at Bandar Seri
+     * Begawan misses 2025-09-23 on elongation, and against the 37 starts the
+     * three states publish in common it misses 2024-10-04 as well. Kuala
+     * Lumpur and Singapore miss none, and Kuala Lumpur is the further west.
+     * See docs/research/2026-10-16-mabims-full-calendars.md. */
     {"KHEU, Brunei Darussalam", HIJRI_BASIS_LOCAL_PREDICATE,
      HIJRI_PREDICATE_MABIMS_2021,
-     {4.9031, 114.9398, 10.0, "Bandar Seri Begawan"},
+     {3.1390, 101.6869, 56.0, "Kuala Lumpur"},
      {2024, 3, 12}, {0, 0, 0},
-     HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS, 7, 7},
+     HIJRI_VALIDATION_OFFICIAL_CALENDAR_MONTHS, 27, 27},
     {"Umm al-Qura, Saudi Arabia", HIJRI_BASIS_PUBLISHED_TABLE,
      HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET,
      {21.4225, 39.8262, 240.0, "Mecca"},
