@@ -7,7 +7,7 @@ and you are done. C11 and C++17, no build system, no package manager.
 | Header | Version | Provides | Depends on |
 |---|---|---|---|
 | [`prayertimes.h`](prayertimes.h) | `v0.2.4` | Prayer times, 21 calculation methods | `<math.h>` |
-| [`hijri.h`](hijri.h) | `v0.3.0` | Hijri calendar, crescent visibility models | `<math.h>` |
+| [`hijri.h`](hijri.h) | `v0.3.1` | Hijri calendar, crescent visibility models | `<math.h>` |
 | [`timezone.h`](timezone.h) | `v0.1.2` | IANA zone name → UTC offset, DST applied | OS timezone database |
 
 `prayertimes.h` and `hijri.h` are independent and dependency-free.
@@ -141,7 +141,7 @@ criterion alone does not produce. Details and the geocentric-elongation
 convention finding are in
 [`docs/research/2026-08-01-kemenag-reference.md`](docs/research/2026-08-01-kemenag-reference.md).
 
-Against the announced Ramadan, Syawal and Zulhijjah starts of Singapore, Malaysia and Brunei for 2024 to 2026, seven per country, the same predicate at each capital supports every start and is never one day early, fixture-enforced. That is seven month starts per country, not their calendars. See [`docs/research/2026-10-04-mabims-states-fixtures.md`](docs/research/2026-10-04-mabims-states-fixtures.md).
+Against the published calendars of Malaysia, Singapore and Brunei, every month from 2024 to 2026 that each publishes, the same predicate supports every month start and is never one day early, fixture-enforced: JAKIM 37 starts, MUIS 27, Brunei's Taqwim 27. The three calendars agree on every month they share. Malaysia and Brunei are evaluated at Kuala Lumpur and Singapore at Singapore. Brunei uses Kuala Lumpur because its Taqwim follows the regional calendar, and Bandar Seri Begawan misses two months of that shared calendar, one of them in Brunei's own record. See [`docs/research/2026-10-16-mabims-full-calendars.md`](docs/research/2026-10-16-mabims-full-calendars.md).
 
 Against Muhammadiyah's official calendar, the Wujudul Hilal predicate at
 Yogyakarta reproduces all twelve Maklumat-announced month starts of 1443 to
@@ -172,9 +172,9 @@ if (status == HIJRI_AUTHORITY_IN_RULE_PERIOD) {
 | Authority | Rule | Reference point | Checked against |
 |---|---|---|---|
 | `HIJRI_AUTHORITY_KEMENAG` | MABIMS 2021 | Sabang | 33 of 37 official calendar months |
-| `HIJRI_AUTHORITY_JAKIM` | MABIMS 2021 | Kuala Lumpur | 7 of 7 announced starts |
-| `HIJRI_AUTHORITY_MUIS` | MABIMS 2021 | Singapore | 7 of 7 announced starts |
-| `HIJRI_AUTHORITY_BRUNEI_KHEU` | MABIMS 2021 | Bandar Seri Begawan | 7 of 7 announced starts |
+| `HIJRI_AUTHORITY_JAKIM` | MABIMS 2021 | Kuala Lumpur | 37 of 37 official calendar months |
+| `HIJRI_AUTHORITY_MUIS` | MABIMS 2021 | Singapore | 27 of 27 official calendar months |
+| `HIJRI_AUTHORITY_BRUNEI_KHEU` | MABIMS 2021 | Kuala Lumpur | 27 of 27 official calendar months |
 | `HIJRI_AUTHORITY_UMM_AL_QURA` | published table | none | 198 of 198 months |
 | `HIJRI_AUTHORITY_MUHAMMADIYAH_WUJUDUL_HILAL` | Wujudul Hilal | Yogyakarta | 12 of 12 announced starts, through 1446 H |
 
