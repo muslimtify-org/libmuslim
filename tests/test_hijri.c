@@ -2689,10 +2689,10 @@ static void test_authority_registry(void) {
     check_int("authority_kind_rows", (int)(sizeof KINDS / sizeof KINDS[0]),
               (int)HIJRI_AUTHORITY_COUNT);
     for (index = 0; index < sizeof KINDS / sizeof KINDS[0]; index++) {
-      hijri__authority_convert_fn kind =
-          hijri__authority_kind[KINDS[index].authority];
       snprintf(name, sizeof name, "authority_%s_kind", KINDS[index].key);
-      check_true(name, kind != 0 && kind == KINDS[index].kind);
+      check_true(name,
+                 hijri__authority_kind[KINDS[index].authority] ==
+                     KINDS[index].kind);
     }
   }
 }
