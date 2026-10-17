@@ -2115,6 +2115,236 @@ static void test_brunei_official_calendar(void) {
   check_int("brunei_never_early", early, 0);
 }
 
+/* Diyanet: its published calendar, every month start from 1 Cemaziyelahir
+ * 1442 to 1 Zilkade 1457, as two separate source lists, each row the
+ * Gregorian date of day 1 with the Hijri year and month it begins.
+ *
+ * DIYANET_MOBILE_STARTS is mobil.diyanet.gov.tr/mobile/dinigunler/
+ * dinigunler.html, 2021 to 2028, retrieved 2026-10-17. The page prints no
+ * Hijri years, so they are counted forward from 1 Cemaziyelahir 1442.
+ * DIYANET_VH_STARTS is the 2027 to 2035 lists on
+ * vakithesaplama.diyanet.gov.tr, retrieved 2026-10-17, years as printed.
+ * The two agree on every start they share. hijri.h carries their union.
+ * Parsing is in docs/research/2026-10-17-diyanet-calendar.md. */
+static const int DIYANET_MOBILE_STARTS[][5] = {
+    {2021, 1, 14, 1442, 6}, {2021, 2, 13, 1442, 7}, {2021, 3, 14, 1442, 8},
+    {2021, 4, 13, 1442, 9}, {2021, 5, 13, 1442, 10}, {2021, 6, 11, 1442, 11},
+    {2021, 7, 11, 1442, 12}, {2021, 8, 9, 1443, 1}, {2021, 9, 8, 1443, 2},
+    {2021, 10, 7, 1443, 3}, {2021, 11, 6, 1443, 4}, {2021, 12, 5, 1443, 5},
+    {2022, 1, 4, 1443, 6}, {2022, 2, 2, 1443, 7}, {2022, 3, 4, 1443, 8},
+    {2022, 4, 2, 1443, 9}, {2022, 5, 2, 1443, 10}, {2022, 5, 31, 1443, 11},
+    {2022, 6, 30, 1443, 12}, {2022, 7, 30, 1444, 1}, {2022, 8, 28, 1444, 2},
+    {2022, 9, 27, 1444, 3}, {2022, 10, 27, 1444, 4}, {2022, 11, 25, 1444, 5},
+    {2022, 12, 24, 1444, 6}, {2023, 1, 23, 1444, 7}, {2023, 2, 21, 1444, 8},
+    {2023, 3, 23, 1444, 9}, {2023, 4, 21, 1444, 10}, {2023, 5, 21, 1444, 11},
+    {2023, 6, 19, 1444, 12}, {2023, 7, 19, 1445, 1}, {2023, 8, 17, 1445, 2},
+    {2023, 9, 16, 1445, 3}, {2023, 10, 16, 1445, 4}, {2023, 11, 14, 1445, 5},
+    {2023, 12, 14, 1445, 6}, {2024, 1, 12, 1445, 7}, {2024, 2, 11, 1445, 8},
+    {2024, 3, 11, 1445, 9}, {2024, 4, 10, 1445, 10}, {2024, 5, 9, 1445, 11},
+    {2024, 6, 7, 1445, 12}, {2024, 7, 7, 1446, 1}, {2024, 8, 5, 1446, 2},
+    {2024, 9, 4, 1446, 3}, {2024, 10, 4, 1446, 4}, {2024, 11, 3, 1446, 5},
+    {2024, 12, 2, 1446, 6}, {2025, 1, 1, 1446, 7}, {2025, 1, 31, 1446, 8},
+    {2025, 3, 1, 1446, 9}, {2025, 3, 30, 1446, 10}, {2025, 4, 29, 1446, 11},
+    {2025, 5, 28, 1446, 12}, {2025, 6, 26, 1447, 1}, {2025, 7, 26, 1447, 2},
+    {2025, 8, 24, 1447, 3}, {2025, 9, 23, 1447, 4}, {2025, 10, 23, 1447, 5},
+    {2025, 11, 21, 1447, 6}, {2025, 12, 21, 1447, 7}, {2026, 1, 20, 1447, 8},
+    {2026, 2, 19, 1447, 9}, {2026, 3, 20, 1447, 10}, {2026, 4, 18, 1447, 11},
+    {2026, 5, 18, 1447, 12}, {2026, 6, 16, 1448, 1}, {2026, 7, 15, 1448, 2},
+    {2026, 8, 14, 1448, 3}, {2026, 9, 12, 1448, 4}, {2026, 10, 12, 1448, 5},
+    {2026, 11, 10, 1448, 6}, {2026, 12, 10, 1448, 7}, {2027, 1, 9, 1448, 8},
+    {2027, 2, 8, 1448, 9}, {2027, 3, 9, 1448, 10}, {2027, 4, 8, 1448, 11},
+    {2027, 5, 7, 1448, 12}, {2027, 6, 6, 1449, 1}, {2027, 7, 5, 1449, 2},
+    {2027, 8, 3, 1449, 3}, {2027, 9, 2, 1449, 4}, {2027, 10, 1, 1449, 5},
+    {2027, 10, 31, 1449, 6}, {2027, 11, 29, 1449, 7}, {2027, 12, 29, 1449, 8},
+    {2028, 1, 28, 1449, 9}, {2028, 2, 26, 1449, 10}, {2028, 3, 27, 1449, 11},
+    {2028, 4, 26, 1449, 12}, {2028, 5, 25, 1450, 1}, {2028, 6, 24, 1450, 2},
+    {2028, 7, 23, 1450, 3}, {2028, 8, 21, 1450, 4}, {2028, 9, 20, 1450, 5},
+    {2028, 10, 19, 1450, 6}, {2028, 11, 18, 1450, 7}, {2028, 12, 17, 1450, 8}};
+
+static const int DIYANET_VH_STARTS[][5] = {
+    {2027, 1, 9, 1448, 8}, {2027, 2, 8, 1448, 9}, {2027, 3, 9, 1448, 10},
+    {2027, 4, 8, 1448, 11}, {2027, 5, 7, 1448, 12}, {2027, 6, 6, 1449, 1},
+    {2027, 7, 5, 1449, 2}, {2027, 8, 3, 1449, 3}, {2027, 9, 2, 1449, 4},
+    {2027, 10, 1, 1449, 5}, {2027, 10, 31, 1449, 6}, {2027, 11, 29, 1449, 7},
+    {2027, 12, 29, 1449, 8}, {2028, 1, 28, 1449, 9}, {2028, 2, 26, 1449, 10},
+    {2028, 3, 27, 1449, 11}, {2028, 4, 26, 1449, 12}, {2028, 5, 25, 1450, 1},
+    {2028, 6, 24, 1450, 2}, {2028, 7, 23, 1450, 3}, {2028, 8, 21, 1450, 4},
+    {2028, 9, 20, 1450, 5}, {2028, 10, 19, 1450, 6}, {2028, 11, 18, 1450, 7},
+    {2028, 12, 17, 1450, 8}, {2029, 1, 16, 1450, 9}, {2029, 2, 14, 1450, 10},
+    {2029, 3, 16, 1450, 11}, {2029, 4, 15, 1450, 12}, {2029, 5, 14, 1451, 1},
+    {2029, 6, 13, 1451, 2}, {2029, 7, 13, 1451, 3}, {2029, 8, 11, 1451, 4},
+    {2029, 9, 9, 1451, 5}, {2029, 10, 9, 1451, 6}, {2029, 11, 7, 1451, 7},
+    {2029, 12, 7, 1451, 8}, {2030, 1, 5, 1451, 9}, {2030, 2, 4, 1451, 10},
+    {2030, 3, 5, 1451, 11}, {2030, 4, 4, 1451, 12}, {2030, 5, 3, 1452, 1},
+    {2030, 6, 2, 1452, 2}, {2030, 7, 2, 1452, 3}, {2030, 8, 1, 1452, 4},
+    {2030, 8, 30, 1452, 5}, {2030, 9, 28, 1452, 6}, {2030, 10, 28, 1452, 7},
+    {2030, 11, 26, 1452, 8}, {2030, 12, 26, 1452, 9}, {2031, 1, 24, 1452, 10},
+    {2031, 2, 22, 1452, 11}, {2031, 3, 24, 1452, 12}, {2031, 4, 23, 1453, 1},
+    {2031, 5, 22, 1453, 2}, {2031, 6, 21, 1453, 3}, {2031, 7, 21, 1453, 4},
+    {2031, 8, 19, 1453, 5}, {2031, 9, 18, 1453, 6}, {2031, 10, 17, 1453, 7},
+    {2031, 11, 16, 1453, 8}, {2031, 12, 15, 1453, 9}, {2032, 1, 14, 1453, 10},
+    {2032, 2, 12, 1453, 11}, {2032, 3, 13, 1453, 12}, {2032, 4, 11, 1454, 1},
+    {2032, 5, 11, 1454, 2}, {2032, 6, 9, 1454, 3}, {2032, 7, 9, 1454, 4},
+    {2032, 8, 7, 1454, 5}, {2032, 9, 6, 1454, 6}, {2032, 10, 6, 1454, 7},
+    {2032, 11, 4, 1454, 8}, {2032, 12, 4, 1454, 9}, {2033, 1, 2, 1454, 10},
+    {2033, 2, 1, 1454, 11}, {2033, 3, 2, 1454, 12}, {2033, 4, 1, 1455, 1},
+    {2033, 4, 30, 1455, 2}, {2033, 5, 30, 1455, 3}, {2033, 6, 28, 1455, 4},
+    {2033, 7, 27, 1455, 5}, {2033, 8, 26, 1455, 6}, {2033, 9, 25, 1455, 7},
+    {2033, 10, 24, 1455, 8}, {2033, 11, 23, 1455, 9}, {2033, 12, 23, 1455, 10},
+    {2034, 1, 21, 1455, 11}, {2034, 2, 20, 1455, 12}, {2034, 3, 21, 1456, 1},
+    {2034, 4, 20, 1456, 2}, {2034, 5, 19, 1456, 3}, {2034, 6, 17, 1456, 4},
+    {2034, 7, 17, 1456, 5}, {2034, 8, 15, 1456, 6}, {2034, 9, 14, 1456, 7},
+    {2034, 10, 13, 1456, 8}, {2034, 11, 12, 1456, 9}, {2034, 12, 12, 1456, 10},
+    {2035, 1, 11, 1456, 11}, {2035, 2, 9, 1456, 12}, {2035, 3, 11, 1457, 1},
+    {2035, 4, 9, 1457, 2}, {2035, 5, 9, 1457, 3}, {2035, 6, 7, 1457, 4},
+    {2035, 7, 6, 1457, 5}, {2035, 8, 5, 1457, 6}, {2035, 9, 3, 1457, 7},
+    {2035, 10, 3, 1457, 8}, {2035, 11, 1, 1457, 9}, {2035, 12, 1, 1457, 10},
+    {2035, 12, 31, 1457, 11}};
+
+/* Converts each start of one list and the day before it. Returns how many
+ * starts land on day 1 of their month in the rule period, and through
+ * *previous_ok how many of the days before them that lie in the table land
+ * on day 29 or 30 of the month before. */
+static int diyanet_list_exact(const int (*list)[5], size_t total,
+                              int *previous_ok, int *previous_total) {
+  size_t index;
+  int exact = 0;
+  *previous_ok = 0;
+  *previous_total = 0;
+  for (index = 0; index < total; index++) {
+    const int *row = list[index];
+    const double jd = floor(hijri_jd_from_gregorian(row[0], row[1], row[2]));
+    const long month_index = (long)row[3] * 12L + (long)(row[4] - 1);
+    HijriDate got = {-1, -1, -1};
+    int gy, gm;
+    double gd_frac;
+    if (hijri_authority_from_gregorian(HIJRI_AUTHORITY_DIYANET, row[0],
+                                       row[1], row[2], &got) ==
+            HIJRI_AUTHORITY_IN_RULE_PERIOD &&
+        got.year == row[3] && got.month == row[4] && got.day == 1) {
+      exact++;
+    }
+    if (jd <= floor(hijri_jd_from_gregorian(2021, 1, 14))) {
+      continue;
+    }
+    (*previous_total)++;
+    hijri_gregorian_from_jd(jd - 1.0 + 0.5, &gy, &gm, &gd_frac);
+    got.year = -1;
+    if (hijri_authority_from_gregorian(HIJRI_AUTHORITY_DIYANET, gy, gm,
+                                       (int)floor(gd_frac), &got) ==
+            HIJRI_AUTHORITY_IN_RULE_PERIOD &&
+        (long)got.year * 12L + (long)(got.month - 1) == month_index - 1 &&
+        (got.day == 29 || got.day == 30)) {
+      (*previous_ok)++;
+    }
+  }
+  return exact;
+}
+
+/* What is claimed: hijri_authority_from_gregorian(HIJRI_AUTHORITY_DIYANET)
+ * returns Diyanet's own published calendar on every day from 2021-01-14 to
+ * 2035-12-31, and nothing outside it. Unlike every other entry this is not
+ * a calculation that could depart from the authority, it is the
+ * authority's table. What the fixture guards is the copy: a start mistyped
+ * in hijri.h fails against both source lists that cover it.
+ *
+ * Mutation-tested on 2026-10-17. Moving 1 Ramazan 1447 in
+ * hijri__diyanet_starts from 2026-02-19 to 2026-02-20 fails, verbatim:
+ *   FAIL exact/diyanet_mobile_exact actual=98 expected=99
+ *   FAIL exact/diyanet_mobile_previous_day actual=97 expected=98
+ *   FAIL exact/diyanet_table_gaps_29_or_30 actual=2 expected=0
+ *   FAIL exact/authority_diyanet_supported_matches_fixture actual=185 expected=186
+ * Reverting it restores the count. */
+static void test_diyanet_published_calendar(void) {
+  const size_t mobile_total =
+      sizeof(DIYANET_MOBILE_STARTS) / sizeof(DIYANET_MOBILE_STARTS[0]);
+  const size_t vh_total =
+      sizeof(DIYANET_VH_STARTS) / sizeof(DIYANET_VH_STARTS[0]);
+  int previous_ok, previous_total, shared = 0, disagree = 0;
+  size_t a, b;
+  int index, bad_gaps = 0;
+
+  check_int("diyanet_mobile_exact",
+            diyanet_list_exact(DIYANET_MOBILE_STARTS, mobile_total,
+                               &previous_ok, &previous_total),
+            (int)mobile_total);
+  check_int("diyanet_mobile_previous_day", previous_ok, previous_total);
+  check_int("diyanet_vh_exact",
+            diyanet_list_exact(DIYANET_VH_STARTS, vh_total, &previous_ok,
+                               &previous_total),
+            (int)vh_total);
+  check_int("diyanet_vh_previous_day", previous_ok, previous_total);
+
+  for (a = 0; a < mobile_total; a++) {
+    for (b = 0; b < vh_total; b++) {
+      const int *m = DIYANET_MOBILE_STARTS[a];
+      const int *v = DIYANET_VH_STARTS[b];
+      if (m[0] == v[0] && m[1] == v[1] && m[2] == v[2]) {
+        shared++;
+        disagree += (m[3] != v[3] || m[4] != v[4]);
+      }
+    }
+  }
+  check_int("diyanet_sources_shared", shared, 25);
+  check_int("diyanet_sources_disagree", disagree, 0);
+
+  for (index = 1; index < HIJRI__DIYANET_COUNT; index++) {
+    double gap = hijri__diyanet_start_jd(index) -
+                 hijri__diyanet_start_jd(index - 1);
+    bad_gaps += (gap != 29.0 && gap != 30.0);
+  }
+  check_int("diyanet_table_gaps_29_or_30", bad_gaps, 0);
+
+  {
+    HijriDate got = {-1, -1, -1};
+    check_int("diyanet_day_before_table",
+              (int)hijri_authority_from_gregorian(HIJRI_AUTHORITY_DIYANET,
+                                                  2021, 1, 13, &got),
+              (int)HIJRI_AUTHORITY_UNRESOLVED);
+    check_date("diyanet_day_before_table_untouched", got, -1, -1, -1);
+    check_int("diyanet_first_day",
+              (int)hijri_authority_from_gregorian(HIJRI_AUTHORITY_DIYANET,
+                                                  2021, 1, 14, &got),
+              (int)HIJRI_AUTHORITY_IN_RULE_PERIOD);
+    check_date("diyanet_first_day_date", got, 1442, 6, 1);
+    check_int("diyanet_last_day",
+              (int)hijri_authority_from_gregorian(HIJRI_AUTHORITY_DIYANET,
+                                                  2035, 12, 31, &got),
+              (int)HIJRI_AUTHORITY_IN_RULE_PERIOD);
+    check_date("diyanet_last_day_date", got, 1457, 11, 1);
+    got.year = -1;
+    got.month = -1;
+    got.day = -1;
+    check_int("diyanet_day_after_table",
+              (int)hijri_authority_from_gregorian(HIJRI_AUTHORITY_DIYANET,
+                                                  2036, 1, 1, &got),
+              (int)HIJRI_AUTHORITY_UNRESOLVED);
+    check_date("diyanet_day_after_table_untouched", got, -1, -1, -1);
+  }
+
+  /* Announcements over the table. 1 Ramazan 1447 a day before Diyanet's
+   * applies. Past the table's end the registry has no answer to fall back
+   * to, so the conversion is unresolved. */
+  {
+    static const HijriAnnouncedStart early[] = {{{2026, 2, 18}, 1447, 9}};
+    static const HijriAnnouncedStart last[] = {{{2035, 11, 1}, 1457, 9}};
+    HijriDate got = {-1, -1, -1};
+    check_int("diyanet_announced_inside",
+              (int)hijri_authority_from_gregorian_announced(
+                  HIJRI_AUTHORITY_DIYANET, early, 1, 2026, 2, 18, &got),
+              (int)HIJRI_ANNOUNCED_FROM_ANNOUNCEMENT);
+    check_date("diyanet_announced_inside_date", got, 1447, 9, 1);
+    got.year = -1;
+    got.month = -1;
+    got.day = -1;
+    check_int("diyanet_announced_past_table",
+              (int)hijri_authority_from_gregorian_announced(
+                  HIJRI_AUTHORITY_DIYANET, last, 1, 2036, 1, 1, &got),
+              (int)HIJRI_ANNOUNCED_UNRESOLVED);
+    check_date("diyanet_announced_past_table_untouched", got, -1, -1, -1);
+  }
+}
+
 /* The authority registry: hijri_authority_get and
  * hijri_authority_from_gregorian.
  *
@@ -2179,7 +2409,11 @@ static void test_authority_registry(void) {
        HIJRI_BASIS_LOCAL_PREDICATE, HIJRI_PREDICATE_WUJUDUL_HILAL,
        -(7.0 + 48.0 / 60.0), 110.0 + 21.0 / 60.0, 90.0,
        {0, 0, 0}, {2025, 6, 25},
-       HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS, 12, 12}};
+       HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS, 12, 12},
+      {HIJRI_AUTHORITY_DIYANET, "diyanet", HIJRI_BASIS_PUBLISHED_TABLE,
+       HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8, 39.9334, 32.8597, 938.0,
+       {2021, 1, 14}, {2035, 12, 31},
+       HIJRI_VALIDATION_PUBLISHED_TABLE, 186, 186}};
   /* The fixture table behind each local-predicate entry. */
   static const struct {
     HijriAuthority authority;
@@ -2234,11 +2468,15 @@ static void test_authority_registry(void) {
       {"muhammadiyah_day_after", HIJRI_AUTHORITY_MUHAMMADIYAH_WUJUDUL_HILAL,
        2025, 6, 26, HIJRI_AUTHORITY_OUTSIDE_RULE_PERIOD},
       {"muhammadiyah_open_start", HIJRI_AUTHORITY_MUHAMMADIYAH_WUJUDUL_HILAL,
-       2000, 1, 1, HIJRI_AUTHORITY_IN_RULE_PERIOD}};
+       2000, 1, 1, HIJRI_AUTHORITY_IN_RULE_PERIOD},
+      {"diyanet_first_day", HIJRI_AUTHORITY_DIYANET, 2021, 1, 14,
+       HIJRI_AUTHORITY_IN_RULE_PERIOD},
+      {"diyanet_last_day", HIJRI_AUTHORITY_DIYANET, 2035, 12, 31,
+       HIJRI_AUTHORITY_IN_RULE_PERIOD}};
   char name[96];
   size_t index;
 
-  check_int("authority_count", (int)HIJRI_AUTHORITY_COUNT, 6);
+  check_int("authority_count", (int)HIJRI_AUTHORITY_COUNT, 7);
   check_int("authority_expected_rows",
             (int)(sizeof(EXPECTED) / sizeof(EXPECTED[0])),
             (int)HIJRI_AUTHORITY_COUNT);
@@ -2314,6 +2552,45 @@ static void test_authority_registry(void) {
     check_int("authority_umm_al_qura_total_matches_fixture", (int)total,
               e->validated_total);
   }
+  /* Diyanet: the distinct starts of its two source lists, and how many of
+   * them the conversion places on day 1 of their month. */
+  {
+    const HijriAuthorityEntry *e = hijri_authority_get(HIJRI_AUTHORITY_DIYANET);
+    const size_t mobile_total =
+        sizeof(DIYANET_MOBILE_STARTS) / sizeof(DIYANET_MOBILE_STARTS[0]);
+    const size_t vh_total =
+        sizeof(DIYANET_VH_STARTS) / sizeof(DIYANET_VH_STARTS[0]);
+    int distinct = 0, exact = 0;
+    size_t all;
+    for (all = 0; all < mobile_total + vh_total; all++) {
+      const int *row = all < mobile_total
+                           ? DIYANET_MOBILE_STARTS[all]
+                           : DIYANET_VH_STARTS[all - mobile_total];
+      size_t earlier;
+      int seen = 0;
+      HijriDate got;
+      for (earlier = 0; earlier < all && !seen; earlier++) {
+        const int *other = earlier < mobile_total
+                               ? DIYANET_MOBILE_STARTS[earlier]
+                               : DIYANET_VH_STARTS[earlier - mobile_total];
+        seen = other[0] == row[0] && other[1] == row[1] && other[2] == row[2];
+      }
+      if (seen) {
+        continue;
+      }
+      distinct++;
+      if (hijri_authority_from_gregorian(HIJRI_AUTHORITY_DIYANET, row[0],
+                                         row[1], row[2], &got) ==
+              HIJRI_AUTHORITY_IN_RULE_PERIOD &&
+          got.day == 1 && got.year == row[3] && got.month == row[4]) {
+        exact++;
+      }
+    }
+    check_int("authority_diyanet_supported_matches_fixture", exact,
+              e->validated_supported);
+    check_int("authority_diyanet_total_matches_fixture", distinct,
+              e->validated_total);
+  }
 
   for (index = 0; index < sizeof(STATUS) / sizeof(STATUS[0]); index++) {
     HijriDate got = {-1, -1, -1};
@@ -2345,6 +2622,11 @@ static void test_authority_registry(void) {
     const HijriAuthorityEntry *e = hijri_authority_get(EXPECTED[index].authority);
     const double first_jd = floor(hijri_jd_from_gregorian(2019, 1, 1.0));
     int step, mismatches = 0, resolved = 0;
+    /* No public function wraps the Diyanet table, so there is nothing to
+     * delegate to. test_diyanet_published_calendar checks it directly. */
+    if (EXPECTED[index].authority == HIJRI_AUTHORITY_DIYANET) {
+      continue;
+    }
     for (step = 0; step < 30; step++) {
       int gy, gm;
       double gd_frac;
@@ -3292,6 +3574,7 @@ int main(void) {
   test_muis_official_calendar();
   test_malaysia_official_calendar();
   test_brunei_official_calendar();
+  test_diyanet_published_calendar();
   test_authority_registry();
   test_authority_announced();
   test_conjunction_status_returns();
