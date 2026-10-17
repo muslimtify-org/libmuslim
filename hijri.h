@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-/* hijri.h -- v0.4.0 -- stb-style single-file astronomical Hijri calendar library
+/* hijri.h -- v0.4.1 -- stb-style single-file astronomical Hijri calendar library
  *
  * The version above is this file's own. It is not the libmuslim release
  * tag, which is a calendar date such as 2026.08.18 and covers a snapshot
@@ -2925,6 +2925,40 @@ static int hijri__diyanet_from_gregorian(double target_jd, HijriDate *out) {
   return 1;
 }
 
+/* ---- Authority kinds -----------------------------------------------------
+ * One converter per kind of authority. Each returns 1 with *out filled, or 0
+ * with *out untouched, and reads from the entry only what its kind needs.
+ * hijri_authority_from_gregorian calls the one hijri__authority_kind names
+ * for the authority, so a new kind is a new function here and its rows in
+ * that table, with no edit to any other kind. */
+typedef int (*hijri__authority_convert_fn)(const HijriAuthorityEntry *entry,
+                                           int gy, int gm, int gd,
+                                           HijriDate *out);
+
+/* The entry's predicate evaluated at the entry's reference point. */
+static int hijri__kind_local_predicate(const HijriAuthorityEntry *entry,
+                                       int gy, int gm, int gd,
+                                       HijriDate *out) {
+  return hijri_from_gregorian_with_local_predicate(
+      gy, gm, gd, &entry->reference, entry->predicate, out);
+}
+
+/* The Umm al-Qura table, and its reconstruction outside it. */
+static int hijri__kind_umm_al_qura(const HijriAuthorityEntry *entry, int gy,
+                                   int gm, int gd, HijriDate *out) {
+  (void)entry;
+  return hijri_umm_al_qura_from_gregorian(gy, gm, gd, out);
+}
+
+/* The Diyanet table, and nothing outside it. */
+static int hijri__kind_diyanet_table(const HijriAuthorityEntry *entry,
+                                     int gy, int gm, int gd,
+                                     HijriDate *out) {
+  (void)entry;
+  return hijri__diyanet_from_gregorian(
+      floor(hijri_jd_from_gregorian(gy, gm, (double)gd)), out);
+}
+
 /* ---- Authority registry ------------------------------------------------
  * Rows are positional and in HijriAuthority order, because the C++17 build
  * of this file cannot use array designators. tests/test_hijri.c asserts
@@ -2983,6 +3017,19 @@ static const HijriAuthorityEntry hijri__authority_table[HIJRI_AUTHORITY_COUNT] =
      HIJRI_VALIDATION_PUBLISHED_TABLE, 186, 186},
 };
 
+/* Each authority's kind, positional in HijriAuthority order like the table
+ * above. tests/test_hijri.c asserts every row. */
+static const hijri__authority_convert_fn
+    hijri__authority_kind[HIJRI_AUTHORITY_COUNT] = {
+        hijri__kind_local_predicate, /* KEMENAG */
+        hijri__kind_local_predicate, /* JAKIM */
+        hijri__kind_local_predicate, /* MUIS */
+        hijri__kind_local_predicate, /* BRUNEI_KHEU */
+        hijri__kind_umm_al_qura,     /* UMM_AL_QURA */
+        hijri__kind_local_predicate, /* MUHAMMADIYAH_WUJUDUL_HILAL */
+        hijri__kind_diyanet_table,   /* DIYANET */
+};
+
 HIJRIDEF const HijriAuthorityEntry *hijri_authority_get(HijriAuthority authority) {
   int index = (int)authority;
   if (index < 0 || index >= (int)HIJRI_AUTHORITY_COUNT) {
@@ -3006,15 +3053,7 @@ hijri_authority_from_gregorian(HijriAuthority authority, int gy, int gm,
   if (!entry) {
     return HIJRI_AUTHORITY_UNRESOLVED;
   }
-  if (authority == HIJRI_AUTHORITY_DIYANET) {
-    ok = hijri__diyanet_from_gregorian(
-        floor(hijri_jd_from_gregorian(gy, gm, (double)gd)), &date);
-  } else if (entry->basis == HIJRI_BASIS_PUBLISHED_TABLE) {
-    ok = hijri_umm_al_qura_from_gregorian(gy, gm, gd, &date);
-  } else {
-    ok = hijri_from_gregorian_with_local_predicate(
-        gy, gm, gd, &entry->reference, entry->predicate, &date);
-  }
+  ok = hijri__authority_kind[authority](entry, gy, gm, gd, &date);
   if (!ok) {
     return HIJRI_AUTHORITY_UNRESOLVED;
   }
