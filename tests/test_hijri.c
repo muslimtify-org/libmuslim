@@ -2661,6 +2661,40 @@ static void test_authority_registry(void) {
              EXPECTED[index].key);
     check_int(name, resolved, 30);
   }
+
+  /* Kinds. Each authority's row in hijri__authority_kind names the converter
+   * for its kind. A missing row is null and a shifted row names the wrong
+   * converter, and both fail here, not inside a conversion.
+   *
+   * Mutation record: JAKIM's row in hijri__authority_kind changed to
+   * hijri__kind_umm_al_qura, then `make test`. Observed FAIL lines,
+   * verbatim:
+   * FAIL exact/authority_jakim_delegation_mismatches actual=11 expected=0
+   * FAIL synthetic/authority_jakim_kind expected=true
+   * Reverted after recording. */
+  {
+    static const struct {
+      const char *key;
+      HijriAuthority authority;
+      hijri__authority_convert_fn kind;
+    } KINDS[] = {
+        {"kemenag", HIJRI_AUTHORITY_KEMENAG, hijri__kind_local_predicate},
+        {"jakim", HIJRI_AUTHORITY_JAKIM, hijri__kind_local_predicate},
+        {"muis", HIJRI_AUTHORITY_MUIS, hijri__kind_local_predicate},
+        {"brunei", HIJRI_AUTHORITY_BRUNEI_KHEU, hijri__kind_local_predicate},
+        {"umm_al_qura", HIJRI_AUTHORITY_UMM_AL_QURA, hijri__kind_umm_al_qura},
+        {"muhammadiyah", HIJRI_AUTHORITY_MUHAMMADIYAH_WUJUDUL_HILAL,
+         hijri__kind_local_predicate},
+        {"diyanet", HIJRI_AUTHORITY_DIYANET, hijri__kind_diyanet_table}};
+    check_int("authority_kind_rows", (int)(sizeof KINDS / sizeof KINDS[0]),
+              (int)HIJRI_AUTHORITY_COUNT);
+    for (index = 0; index < sizeof KINDS / sizeof KINDS[0]; index++) {
+      hijri__authority_convert_fn kind =
+          hijri__authority_kind[KINDS[index].authority];
+      snprintf(name, sizeof name, "authority_%s_kind", KINDS[index].key);
+      check_true(name, kind != 0 && kind == KINDS[index].kind);
+    }
+  }
 }
 
 /* hijri_authority_from_gregorian_announced: the registry corrected by a
