@@ -225,11 +225,19 @@ month starts  ⟺  altitude ≥ 5°  AND  elongation ≥ 8°
 Stricter thresholds than MABIMS, and, importantly, intended to be
 checked *globally*: if the criterion is met **anywhere on Earth** at
 that lunar cycle's relevant sunset, the month starts everywhere, not
-just at the site where it happened to be checked. (This library
-evaluates the threshold for whichever single location you pass in,
-reproducing the "anywhere on Earth" logic means sweeping a set of
-candidate longitudes yourself and OR-ing the results, a policy choice
-about which longitudes to check, not a fixed astronomical fact.)
+just at the site where it happened to be checked. The predicate
+`HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8` evaluates the threshold for
+whichever single location you pass in.
+
+For Diyanet the global search is built in. `HIJRI_AUTHORITY_DIYANET`
+searches the whole Earth for a point that passes before 00:00 UT, and also
+checks the Americas mainland, which Diyanet's bulletin allows provided the
+conjunction falls before dawn in Wellington. Which points it checks is the
+library's reading of the bulletin, not a fixed astronomical fact. That
+reading reproduces 184 of Diyanet's 186 published month starts from 2021 to
+2035. See `docs/research/2026-10-25-diyanet-global-rule.md`. ECFR and the
+Fiqh Council of North America have no registry entry, so for them the
+sweep is still yours to run.
 
 **Egypt**
 ```
