@@ -1977,6 +1977,39 @@ hijri_find_relevant_conjunction(double jd_evening, double *result_jd) {
 /* ---- Hilal parameters and criteria
  * -------------------------------------------- */
 
+/* The sun and moon quantities at p->jd_sunset_ut, which must be a found
+ * sunset at loc. Shared by hijri_compute_evening_parameters and the global
+ * rule's point test, so the two cannot measure an evening differently. */
+static void hijri__evening_positions(HijriEveningParameters *p,
+                                     const HijriLocation *loc,
+                                     const HijriSunsetConvention *conv) {
+  double jd_tt = hijri_jd_tt_from_ut(p->jd_sunset_ut);
+  HijriSunPosition sun = hijri_sun_position(jd_tt);
+  HijriMoonPosition moon = hijri_moon_position(jd_tt);
+  double moon_ra_topo;
+  double moon_dec_topo;
+  double semidiameter_deg = 0.2725076 * moon.horizontal_parallax_deg;
+
+  hijri_moon_topocentric(&moon, p->jd_sunset_ut, loc->latitude_deg,
+                         loc->longitude_deg, loc->elevation_m, &moon_ra_topo,
+                         &moon_dec_topo);
+
+  p->sun_center_geometric_altitude_deg =
+      hijri__altitude_gast_deg(sun.right_ascension_deg, sun.declination_deg,
+                               p->jd_sunset_ut, loc);
+  p->moon_center_geometric_altitude_deg =
+      hijri__altitude_deg(moon_ra_topo, moon_dec_topo, p->jd_sunset_ut, loc);
+  p->moon_upper_limb_apparent_altitude_deg =
+      p->moon_center_geometric_altitude_deg + semidiameter_deg +
+      conv->refraction_at_horizon_deg;
+  p->geocentric_elongation_deg = hijri__angular_separation_deg(
+      moon.right_ascension_deg, moon.declination_deg, sun.right_ascension_deg,
+      sun.declination_deg);
+  p->topocentric_elongation_deg = hijri__angular_separation_deg(
+      moon_ra_topo, moon_dec_topo, sun.right_ascension_deg,
+      sun.declination_deg);
+}
+
 HIJRIDEF HijriEveningParameters
 hijri_compute_evening_parameters(int gy, int gm, int gd,
                                  const HijriLocation *loc,
@@ -2024,33 +2057,7 @@ hijri_compute_evening_parameters(int gy, int gm, int gd,
     return p;
   }
 
-  {
-    double jd_tt = hijri_jd_tt_from_ut(p.jd_sunset_ut);
-    HijriSunPosition sun = hijri_sun_position(jd_tt);
-    HijriMoonPosition moon = hijri_moon_position(jd_tt);
-    double moon_ra_topo;
-    double moon_dec_topo;
-    double semidiameter_deg = 0.2725076 * moon.horizontal_parallax_deg;
-
-    hijri_moon_topocentric(&moon, p.jd_sunset_ut, loc->latitude_deg,
-                           loc->longitude_deg, loc->elevation_m,
-                           &moon_ra_topo, &moon_dec_topo);
-
-    p.sun_center_geometric_altitude_deg =
-        hijri__altitude_gast_deg(sun.right_ascension_deg,
-                                 sun.declination_deg, p.jd_sunset_ut, loc);
-    p.moon_center_geometric_altitude_deg =
-        hijri__altitude_deg(moon_ra_topo, moon_dec_topo, p.jd_sunset_ut, loc);
-    p.moon_upper_limb_apparent_altitude_deg =
-        p.moon_center_geometric_altitude_deg + semidiameter_deg +
-        conv->refraction_at_horizon_deg;
-    p.geocentric_elongation_deg = hijri__angular_separation_deg(
-        moon.right_ascension_deg, moon.declination_deg,
-        sun.right_ascension_deg, sun.declination_deg);
-    p.topocentric_elongation_deg = hijri__angular_separation_deg(
-        moon_ra_topo, moon_dec_topo, sun.right_ascension_deg,
-        sun.declination_deg);
-  }
+  hijri__evening_positions(&p, loc, conv);
 
   if (hijri_find_relevant_conjunction(p.jd_sunset_ut,
                                       &p.jd_relevant_conjunction_ut) ==
@@ -2905,9 +2912,6 @@ static int hijri__global_point_passes(HijriLocalPredicate predicate,
   const HijriSunsetConvention *conv = &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL;
   HijriLocation loc;
   HijriEveningParameters p;
-  double jd_tt, moon_ra_topo, moon_dec_topo;
-  HijriSunPosition sun;
-  HijriMoonPosition moon;
 
   loc.latitude_deg = lat;
   loc.longitude_deg = lon;
@@ -2917,31 +2921,12 @@ static int hijri__global_point_passes(HijriLocalPredicate predicate,
                         sunset_jd) != HIJRI_EVENT_OK) {
     return -1;
   }
-  jd_tt = hijri_jd_tt_from_ut(*sunset_jd);
-  sun = hijri_sun_position(jd_tt);
-  moon = hijri_moon_position(jd_tt);
-  hijri_moon_topocentric(&moon, *sunset_jd, lat, lon, 0.0, &moon_ra_topo,
-                         &moon_dec_topo);
-
   p.jd_sunset_ut = *sunset_jd;
   p.jd_relevant_conjunction_ut = jd_conjunction;
   p.jd_moonset_ut = NAN;
   p.sunset_status = HIJRI_EVENT_OK;
   p.moonset_status = HIJRI_EVENT_NOT_FOUND;
-  p.sun_center_geometric_altitude_deg = hijri__altitude_gast_deg(
-      sun.right_ascension_deg, sun.declination_deg, *sunset_jd, &loc);
-  p.moon_center_geometric_altitude_deg =
-      hijri__altitude_deg(moon_ra_topo, moon_dec_topo, *sunset_jd, &loc);
-  p.moon_upper_limb_apparent_altitude_deg =
-      p.moon_center_geometric_altitude_deg +
-      0.2725076 * moon.horizontal_parallax_deg +
-      conv->refraction_at_horizon_deg;
-  p.geocentric_elongation_deg = hijri__angular_separation_deg(
-      moon.right_ascension_deg, moon.declination_deg, sun.right_ascension_deg,
-      sun.declination_deg);
-  p.topocentric_elongation_deg = hijri__angular_separation_deg(
-      moon_ra_topo, moon_dec_topo, sun.right_ascension_deg,
-      sun.declination_deg);
+  hijri__evening_positions(&p, &loc, conv);
   p.moon_age_hours = (*sunset_jd - jd_conjunction) * 24.0;
   p.lag_time_minutes = NAN;
   p.conjunction_before_sunset = jd_conjunction < *sunset_jd;
