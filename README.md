@@ -7,7 +7,7 @@ and you are done. C11 and C++17, no build system, no package manager.
 | Header | Version | Provides | Depends on |
 |---|---|---|---|
 | [`prayertimes.h`](prayertimes.h) | `v0.2.4` | Prayer times, 21 calculation methods | `<math.h>` |
-| [`hijri.h`](hijri.h) | `v0.4.1` | Hijri calendar, crescent visibility models | `<math.h>` |
+| [`hijri.h`](hijri.h) | `v0.5.0` | Hijri calendar, crescent visibility models | `<math.h>` |
 | [`timezone.h`](timezone.h) | `v0.1.2` | IANA zone name → UTC offset, DST applied | OS timezone database |
 
 `prayertimes.h` and `hijri.h` are independent and dependency-free.
@@ -177,9 +177,9 @@ if (status == HIJRI_AUTHORITY_IN_RULE_PERIOD) {
 | `HIJRI_AUTHORITY_BRUNEI_KHEU` | MABIMS 2021 | Kuala Lumpur | 27 of 27 official calendar months |
 | `HIJRI_AUTHORITY_UMM_AL_QURA` | published table | none | 198 of 198 months |
 | `HIJRI_AUTHORITY_MUHAMMADIYAH_WUJUDUL_HILAL` | Wujudul Hilal | Yogyakarta | 12 of 12 announced starts, through 1446 H |
-| `HIJRI_AUTHORITY_DIYANET` | published table | none | 186 of 186 months |
+| `HIJRI_AUTHORITY_DIYANET` | global rule, 5° altitude and 8° elongation | none | 184 of 186 official calendar months |
 
-`HIJRI_AUTHORITY_DIYANET` is Diyanet's own published calendar, every month start from 2021-01-14 to 2035-12-31, as printed on two Diyanet sites that agree on every start they share. Outside those dates it returns `HIJRI_AUTHORITY_UNRESOLVED`: Diyanet computes its calendar by the 2016 Istanbul rule, which asks whether the crescent is visible anywhere on Earth, and no single point reproduces it. See [`docs/research/2026-10-17-diyanet-calendar.md`](docs/research/2026-10-17-diyanet-calendar.md).
+`HIJRI_AUTHORITY_DIYANET` computes the 2016 Istanbul rule Diyanet states in its own bulletin. Day D begins a month when the crescent reaches 5 degrees of altitude and 8 degrees of elongation somewhere on Earth with sunset before 00:00 UT of D, or on the Americas mainland provided the conjunction falls before dawn in Wellington. Checked against Diyanet's published calendar, every month start from 2021-01-14 to 2035-12-31 as printed on two Diyanet sites, it reproduces 184 of the 186. The rule has no end date. Because it searches the globe, a conversion costs about 9 ms. See [`docs/research/2026-10-25-diyanet-global-rule.md`](docs/research/2026-10-25-diyanet-global-rule.md) for the search and the score, and [`docs/research/2026-10-17-diyanet-calendar.md`](docs/research/2026-10-17-diyanet-calendar.md) for the published calendar.
 
 An entry is a calculation profile, not the authority. The result is the rule computed at one point and chained month to month, and each authority can and does depart from it by ruling. The counts above are read from the entry itself, and the test suite recomputes them from the fixtures, so the table in the header cannot drift from the tests. Only authorities with a fixture have an entry. The sourced period for each rule is in [`docs/research/2026-10-10-authority-rule-periods.md`](docs/research/2026-10-10-authority-rule-periods.md), and why one reference point stands in for a territory is in [`docs/research/2026-10-10-region-aggregation-measured.md`](docs/research/2026-10-10-region-aggregation-measured.md).
 

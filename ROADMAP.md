@@ -415,9 +415,7 @@ another authoritative reproducible dataset are available.
 
 ### Additional named policies
 
-Egyptian, Turkish, ECFR, FCNA/ISNA, or other authority policies remain
-research candidates—not planned APIs—until primary technical specifications
-are available.
+Egyptian, ECFR, FCNA/ISNA, or other authority policies remain research candidates, not planned APIs, until primary technical specifications are available. Turkey's was admitted on Diyanet's own bulletin and published calendar, as recorded below.
 
 **Admission criteria:**
 
@@ -442,6 +440,8 @@ researched in
 that specifies the criterion precisely enough to implement without
 inference, so KHGT stays a research candidate under the criteria above, not
 a planned API.
+
+**Diyanet admitted (2026-10).** `hijri.h` v0.5.0 computes Turkey's calendar as `HIJRI_AUTHORITY_DIYANET`, a global rule rather than a single point: the 5 and 8 degree thresholds searched for anywhere on Earth before 00:00 UT, with the Americas exception Diyanet's bulletin states. Checked against Diyanet's published calendar it reproduces 184 of 186 month starts from 2021 to 2035. The bulletin is not a technical specification, so the search window and the reading of the Americas clause are the library's, chosen by that score and recorded in `docs/research/2026-10-25-diyanet-global-rule.md`. KHGT as Muhammadiyah applies it is not admitted.
 
 ### Observation integration
 

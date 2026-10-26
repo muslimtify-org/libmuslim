@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-/* hijri.h -- v0.4.1 -- stb-style single-file astronomical Hijri calendar library
+/* hijri.h -- v0.5.0 -- stb-style single-file astronomical Hijri calendar library
  *
  * The version above is this file's own. It is not the libmuslim release
  * tag, which is a calendar date such as 2026.08.18 and covers a snapshot
@@ -885,8 +885,9 @@ HIJRIDEF int hijri_umm_al_qura_covers(int gy, int gm, int gd);
  * 37 checked.
  *
  * A published-table entry computes nothing at a reference point. It reads
- * the authority's own table. For Diyanet that table is the whole answer,
- * and a date outside it is unresolved.
+ * the authority's own table. A global-rule entry computes nothing at a
+ * reference point either. It searches the whole Earth for a point where the
+ * entry's predicate passes, by the rule its converter states.
  *
  * Only authorities with a fixture in tests/test_hijri.c have an entry. An
  * authority missing here is missing because no rule and reference record
@@ -915,8 +916,8 @@ typedef enum {
   /* Muhammadiyah while it used hisab hakiki wujudul hilal, through 1446 H.
    * From 1447 H it follows KHGT, which this library does not implement. */
   HIJRI_AUTHORITY_MUHAMMADIYAH_WUJUDUL_HILAL,
-  /* Turkey, Diyanet Isleri Baskanligi. Its published calendar, read from a
-   * table that covers 2021-01-14 to 2035-12-31 and nothing outside it. */
+  /* Turkey, Diyanet Isleri Baskanligi. The 2016 Istanbul global rule its
+   * calendar is computed by, checked against its published calendar. */
   HIJRI_AUTHORITY_DIYANET,
   HIJRI_AUTHORITY_COUNT
 } HijriAuthority;
@@ -924,9 +925,11 @@ typedef enum {
 typedef enum {
   /* A HijriLocalPredicate evaluated at the entry's reference point. */
   HIJRI_BASIS_LOCAL_PREDICATE,
-  /* A published table, Umm al-Qura's or Diyanet's, which takes no
-   * location. */
-  HIJRI_BASIS_PUBLISHED_TABLE
+  /* A published table, Umm al-Qura's, which takes no location. */
+  HIJRI_BASIS_PUBLISHED_TABLE,
+  /* A HijriLocalPredicate searched for anywhere on Earth under a global
+   * rule, Diyanet's, which takes no location. */
+  HIJRI_BASIS_GLOBAL_RULE
 } HijriAuthorityBasis;
 
 typedef enum {
@@ -950,9 +953,9 @@ typedef struct {
   const char *name;
   /* How the calendar is produced. */
   HijriAuthorityBasis basis;
-  /* The predicate evaluated, for HIJRI_BASIS_LOCAL_PREDICATE. For Umm
-   * al-Qura it names the predicate the reconstruction outside the table
-   * uses, and the conversion does not read it. For Diyanet nothing reads
+  /* The predicate evaluated, for HIJRI_BASIS_LOCAL_PREDICATE and
+   * HIJRI_BASIS_GLOBAL_RULE. For Umm al-Qura it names the predicate the
+   * reconstruction outside the table uses, and the conversion does not read
    * it. */
   HijriLocalPredicate predicate;
   /* The single point the predicate is evaluated at. For Umm al-Qura it is
@@ -980,8 +983,8 @@ typedef struct {
  * functions return. Compare against HIJRI_AUTHORITY_IN_RULE_PERIOD for the
  * strict reading. */
 typedef enum {
-  /* No entry for that authority, the underlying calculation failed, or
-   * the date is outside the Diyanet table. *out is untouched. */
+  /* No entry for that authority, or the underlying calculation failed.
+   * *out is untouched. */
   HIJRI_AUTHORITY_UNRESOLVED = 0,
   /* *out is filled and the date lies inside the entry's rule period. */
   HIJRI_AUTHORITY_IN_RULE_PERIOD = 1,
@@ -1974,6 +1977,39 @@ hijri_find_relevant_conjunction(double jd_evening, double *result_jd) {
 /* ---- Hilal parameters and criteria
  * -------------------------------------------- */
 
+/* The sun and moon quantities at p->jd_sunset_ut, which must be a found
+ * sunset at loc. Shared by hijri_compute_evening_parameters and the global
+ * rule's point test, so the two cannot measure an evening differently. */
+static void hijri__evening_positions(HijriEveningParameters *p,
+                                     const HijriLocation *loc,
+                                     const HijriSunsetConvention *conv) {
+  double jd_tt = hijri_jd_tt_from_ut(p->jd_sunset_ut);
+  HijriSunPosition sun = hijri_sun_position(jd_tt);
+  HijriMoonPosition moon = hijri_moon_position(jd_tt);
+  double moon_ra_topo;
+  double moon_dec_topo;
+  double semidiameter_deg = 0.2725076 * moon.horizontal_parallax_deg;
+
+  hijri_moon_topocentric(&moon, p->jd_sunset_ut, loc->latitude_deg,
+                         loc->longitude_deg, loc->elevation_m, &moon_ra_topo,
+                         &moon_dec_topo);
+
+  p->sun_center_geometric_altitude_deg =
+      hijri__altitude_gast_deg(sun.right_ascension_deg, sun.declination_deg,
+                               p->jd_sunset_ut, loc);
+  p->moon_center_geometric_altitude_deg =
+      hijri__altitude_deg(moon_ra_topo, moon_dec_topo, p->jd_sunset_ut, loc);
+  p->moon_upper_limb_apparent_altitude_deg =
+      p->moon_center_geometric_altitude_deg + semidiameter_deg +
+      conv->refraction_at_horizon_deg;
+  p->geocentric_elongation_deg = hijri__angular_separation_deg(
+      moon.right_ascension_deg, moon.declination_deg, sun.right_ascension_deg,
+      sun.declination_deg);
+  p->topocentric_elongation_deg = hijri__angular_separation_deg(
+      moon_ra_topo, moon_dec_topo, sun.right_ascension_deg,
+      sun.declination_deg);
+}
+
 HIJRIDEF HijriEveningParameters
 hijri_compute_evening_parameters(int gy, int gm, int gd,
                                  const HijriLocation *loc,
@@ -2021,33 +2057,7 @@ hijri_compute_evening_parameters(int gy, int gm, int gd,
     return p;
   }
 
-  {
-    double jd_tt = hijri_jd_tt_from_ut(p.jd_sunset_ut);
-    HijriSunPosition sun = hijri_sun_position(jd_tt);
-    HijriMoonPosition moon = hijri_moon_position(jd_tt);
-    double moon_ra_topo;
-    double moon_dec_topo;
-    double semidiameter_deg = 0.2725076 * moon.horizontal_parallax_deg;
-
-    hijri_moon_topocentric(&moon, p.jd_sunset_ut, loc->latitude_deg,
-                           loc->longitude_deg, loc->elevation_m,
-                           &moon_ra_topo, &moon_dec_topo);
-
-    p.sun_center_geometric_altitude_deg =
-        hijri__altitude_gast_deg(sun.right_ascension_deg,
-                                 sun.declination_deg, p.jd_sunset_ut, loc);
-    p.moon_center_geometric_altitude_deg =
-        hijri__altitude_deg(moon_ra_topo, moon_dec_topo, p.jd_sunset_ut, loc);
-    p.moon_upper_limb_apparent_altitude_deg =
-        p.moon_center_geometric_altitude_deg + semidiameter_deg +
-        conv->refraction_at_horizon_deg;
-    p.geocentric_elongation_deg = hijri__angular_separation_deg(
-        moon.right_ascension_deg, moon.declination_deg,
-        sun.right_ascension_deg, sun.declination_deg);
-    p.topocentric_elongation_deg = hijri__angular_separation_deg(
-        moon_ra_topo, moon_dec_topo, sun.right_ascension_deg,
-        sun.declination_deg);
-  }
+  hijri__evening_positions(&p, loc, conv);
 
   if (hijri_find_relevant_conjunction(p.jd_sunset_ut,
                                       &p.jd_relevant_conjunction_ut) ==
@@ -2838,90 +2848,205 @@ HIJRIDEF int hijri_umm_al_qura_covers(int gy, int gm, int gd) {
          target_jd < HIJRI__UQ_ANCHOR_JD + (double)HIJRI__UQ_TOTAL_DAYS;
 }
 
-/* ---- Diyanet published calendar ----------------------------------------
- * Every month start Diyanet Isleri Baskanligi publishes from 1 Cemaziyelahir
- * 1442 to 1 Zilkade 1457, as Gregorian dates in order. Entry i begins the
- * Hijri month i months after the first. Read from mobil.diyanet.gov.tr for
- * 2021 to 2028 and from vakithesaplama.diyanet.gov.tr for 2027 to 2035,
- * which agree on every start they share. Sources and parsing are in
- * docs/research/2026-10-17-diyanet-calendar.md.
- *
- * The length of the last month is not published, so the table answers that
- * month's first day and nothing after it. */
-#define HIJRI__DIYANET_FIRST_YEAR 1442
-#define HIJRI__DIYANET_FIRST_MONTH 6
-#define HIJRI__DIYANET_COUNT 186
+/* ---- Diyanet global rule ------------------------------------------------
+ * The rule of the 2016 Istanbul congress, as Diyanet's America bulletin
+ * states it. Day D begins a month when, on the evening of D-1, the crescent
+ * reaches the entry's predicate somewhere on Earth before 00:00 UT of D, or
+ * on the Americas mainland provided the conjunction falls before dawn in
+ * Wellington on D. Derivation and the measured score are in
+ * docs/research/2026-10-25-diyanet-global-rule.md. */
 
-static const int hijri__diyanet_starts[HIJRI__DIYANET_COUNT][3] = {
-    {2021, 1, 14}, {2021, 2, 13}, {2021, 3, 14}, {2021, 4, 13}, {2021, 5, 13},
-    {2021, 6, 11}, {2021, 7, 11}, {2021, 8, 9}, {2021, 9, 8}, {2021, 10, 7},
-    {2021, 11, 6}, {2021, 12, 5}, {2022, 1, 4}, {2022, 2, 2}, {2022, 3, 4},
-    {2022, 4, 2}, {2022, 5, 2}, {2022, 5, 31}, {2022, 6, 30}, {2022, 7, 30},
-    {2022, 8, 28}, {2022, 9, 27}, {2022, 10, 27}, {2022, 11, 25},
-    {2022, 12, 24}, {2023, 1, 23}, {2023, 2, 21}, {2023, 3, 23}, {2023, 4, 21},
-    {2023, 5, 21}, {2023, 6, 19}, {2023, 7, 19}, {2023, 8, 17}, {2023, 9, 16},
-    {2023, 10, 16}, {2023, 11, 14}, {2023, 12, 14}, {2024, 1, 12},
-    {2024, 2, 11}, {2024, 3, 11}, {2024, 4, 10}, {2024, 5, 9}, {2024, 6, 7},
-    {2024, 7, 7}, {2024, 8, 5}, {2024, 9, 4}, {2024, 10, 4}, {2024, 11, 3},
-    {2024, 12, 2}, {2025, 1, 1}, {2025, 1, 31}, {2025, 3, 1}, {2025, 3, 30},
-    {2025, 4, 29}, {2025, 5, 28}, {2025, 6, 26}, {2025, 7, 26}, {2025, 8, 24},
-    {2025, 9, 23}, {2025, 10, 23}, {2025, 11, 21}, {2025, 12, 21},
-    {2026, 1, 20}, {2026, 2, 19}, {2026, 3, 20}, {2026, 4, 18}, {2026, 5, 18},
-    {2026, 6, 16}, {2026, 7, 15}, {2026, 8, 14}, {2026, 9, 12}, {2026, 10, 12},
-    {2026, 11, 10}, {2026, 12, 10}, {2027, 1, 9}, {2027, 2, 8}, {2027, 3, 9},
-    {2027, 4, 8}, {2027, 5, 7}, {2027, 6, 6}, {2027, 7, 5}, {2027, 8, 3},
-    {2027, 9, 2}, {2027, 10, 1}, {2027, 10, 31}, {2027, 11, 29}, {2027, 12, 29},
-    {2028, 1, 28}, {2028, 2, 26}, {2028, 3, 27}, {2028, 4, 26}, {2028, 5, 25},
-    {2028, 6, 24}, {2028, 7, 23}, {2028, 8, 21}, {2028, 9, 20}, {2028, 10, 19},
-    {2028, 11, 18}, {2028, 12, 17}, {2029, 1, 16}, {2029, 2, 14}, {2029, 3, 16},
-    {2029, 4, 15}, {2029, 5, 14}, {2029, 6, 13}, {2029, 7, 13}, {2029, 8, 11},
-    {2029, 9, 9}, {2029, 10, 9}, {2029, 11, 7}, {2029, 12, 7}, {2030, 1, 5},
-    {2030, 2, 4}, {2030, 3, 5}, {2030, 4, 4}, {2030, 5, 3}, {2030, 6, 2},
-    {2030, 7, 2}, {2030, 8, 1}, {2030, 8, 30}, {2030, 9, 28}, {2030, 10, 28},
-    {2030, 11, 26}, {2030, 12, 26}, {2031, 1, 24}, {2031, 2, 22}, {2031, 3, 24},
-    {2031, 4, 23}, {2031, 5, 22}, {2031, 6, 21}, {2031, 7, 21}, {2031, 8, 19},
-    {2031, 9, 18}, {2031, 10, 17}, {2031, 11, 16}, {2031, 12, 15},
-    {2032, 1, 14}, {2032, 2, 12}, {2032, 3, 13}, {2032, 4, 11}, {2032, 5, 11},
-    {2032, 6, 9}, {2032, 7, 9}, {2032, 8, 7}, {2032, 9, 6}, {2032, 10, 6},
-    {2032, 11, 4}, {2032, 12, 4}, {2033, 1, 2}, {2033, 2, 1}, {2033, 3, 2},
-    {2033, 4, 1}, {2033, 4, 30}, {2033, 5, 30}, {2033, 6, 28}, {2033, 7, 27},
-    {2033, 8, 26}, {2033, 9, 25}, {2033, 10, 24}, {2033, 11, 23},
-    {2033, 12, 23}, {2034, 1, 21}, {2034, 2, 20}, {2034, 3, 21}, {2034, 4, 20},
-    {2034, 5, 19}, {2034, 6, 17}, {2034, 7, 17}, {2034, 8, 15}, {2034, 9, 14},
-    {2034, 10, 13}, {2034, 11, 12}, {2034, 12, 12}, {2035, 1, 11}, {2035, 2, 9},
-    {2035, 3, 11}, {2035, 4, 9}, {2035, 5, 9}, {2035, 6, 7}, {2035, 7, 6},
-    {2035, 8, 5}, {2035, 9, 3}, {2035, 10, 3}, {2035, 11, 1}, {2035, 12, 1},
-    {2035, 12, 31}};
+/* Westernmost longitude of the Americas mainland at each whole degree of
+ * latitude from 53 S to 71 N, islands excluded. Derived from Natural Earth
+ * 1:50m land, which is in the public domain, by the script in the research
+ * note above. */
+#define HIJRI__AMERICAS_FIRST_LATITUDE -53
+#define HIJRI__AMERICAS_ROWS 125
+static const double hijri__americas_west_coast[HIJRI__AMERICAS_ROWS] = {
+    -73.41, -73.55, -74.87, -74.36, -74.38, -74.58, -74.17, -75.07,
+    -73.37, -73.23, -72.76, -72.70, -73.98, -73.67, -73.32, -73.48,
+    -73.17, -72.78, -72.20, -71.92, -71.62, -71.52, -71.65, -71.36,
+    -71.51, -71.14, -70.83, -70.64, -70.49, -70.52, -70.42, -70.19,
+    -70.14, -70.15, -70.31, -70.87, -72.11, -74.03, -75.46, -76.29,
+    -76.49, -77.15, -77.67, -78.21, -78.65, -79.22, -79.82, -81.16,
+    -81.12, -81.01, -79.89, -80.77, -80.86, -80.13, -79.57, -78.60,
+    -77.70, -77.39, -77.36, -77.35, -77.71, -81.67, -83.63, -85.71,
+    -85.75, -86.67, -87.63, -91.40, -92.68, -97.81, -100.28, -102.38,
+    -104.25, -105.49, -105.33, -105.65, -110.08, -110.93, -112.12, -112.23,
+    -114.01, -114.20, -114.57, -115.80, -116.30, -116.85, -117.28, -118.49,
+    -120.65, -121.53, -122.17, -123.00, -123.71, -124.02, -124.13, -124.23,
+    -124.46, -124.13, -124.02, -123.95, -124.16, -124.67, -123.09, -124.76,
+    -127.46, -128.20, -128.49, -130.08, -163.29, -161.31, -158.68, -157.61,
+    -161.79, -164.14, -165.10, -165.74, -164.71, -160.88, -166.64, -166.83,
+    -161.67, -165.26, -164.01, -162.52, -157.44,
+};
 
-static double hijri__diyanet_start_jd(int index) {
-  const int *start = hijri__diyanet_starts[index];
-  return floor(hijri_jd_from_gregorian(start[0], start[1], (double)start[2]));
+/* Wellington, where the Americas clause reads its dawn. */
+static const HijriLocation hijri__wellington = {-41.2865, 174.7762, 0.0,
+                                                "Wellington"};
+
+static double hijri__sun_center_altitude(double jd_ut,
+                                         const HijriLocation *loc,
+                                         const HijriSunsetConvention *conv) {
+  (void)conv;
+  return hijri_sun_altitude(jd_ut, loc);
 }
 
-/* Exact conversion for dates inside the table. Returns 0 outside it. */
-static int hijri__diyanet_from_gregorian(double target_jd, HijriDate *out) {
-  int lo = 0;
-  int hi = HIJRI__DIYANET_COUNT - 1;
-  long month_index;
+/* Dawn at Wellington on the day whose 00:00 UT is jd_day_ut: the Sun's
+ * centre rising through -18 degrees between local mean midnight and noon. */
+static int hijri__wellington_dawn(double jd_day_ut, double *result_jd) {
+  double midnight = jd_day_ut - hijri__wellington.longitude_deg / 360.0;
+  return hijri__bisect_crossing(hijri__sun_center_altitude,
+                                &hijri__wellington,
+                                &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL,
+                                midnight, midnight + 0.5, -18.0, result_jd);
+}
 
-  if (target_jd < hijri__diyanet_start_jd(0) ||
-      target_jd > hijri__diyanet_start_jd(HIJRI__DIYANET_COUNT - 1)) {
+/* Whether the point at lat, lon passes on the evening whose date has 00:00
+ * UT at jd_evening_ut. Sunset is written to *sunset_jd whenever it is found,
+ * and the return is -1 when it is not. */
+static int hijri__global_point_passes(HijriLocalPredicate predicate,
+                                      double jd_conjunction,
+                                      double jd_evening_ut, double lat,
+                                      double lon, double *sunset_jd) {
+  const HijriSunsetConvention *conv = &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL;
+  HijriLocation loc;
+  HijriEveningParameters p;
+
+  loc.latitude_deg = lat;
+  loc.longitude_deg = lon;
+  loc.elevation_m = 0.0;
+  loc.name = 0;
+  if (hijri_find_sunset(jd_evening_ut - lon / 360.0, &loc, conv,
+                        sunset_jd) != HIJRI_EVENT_OK) {
+    return -1;
+  }
+  p.jd_sunset_ut = *sunset_jd;
+  p.jd_relevant_conjunction_ut = jd_conjunction;
+  p.jd_moonset_ut = NAN;
+  p.sunset_status = HIJRI_EVENT_OK;
+  p.moonset_status = HIJRI_EVENT_NOT_FOUND;
+  hijri__evening_positions(&p, &loc, conv);
+  p.moon_age_hours = (*sunset_jd - jd_conjunction) * 24.0;
+  p.lag_time_minutes = NAN;
+  p.conjunction_before_sunset = jd_conjunction < *sunset_jd;
+  p.moonset_after_sunset = 0;
+  return p.conjunction_before_sunset &&
+         hijri_local_predicate_evaluate(predicate, &p);
+}
+
+/* Whether the day whose 00:00 UT is jd_day_ut begins a month. B is tried
+ * before A, and A steps 4 degrees of latitude, because over the fixture
+ * dates that measured faster than A first at 2 degrees with the same score.
+ * The times are in the research note above. */
+static int hijri__global_rule_starts(HijriLocalPredicate predicate,
+                                     double jd_conjunction,
+                                     double jd_day_ut) {
+  double jd_evening_ut = jd_day_ut - 1.0;
+  double dawn, sunset;
+  int lat, row;
+
+  /* A needs the conjunction before a sunset before 00:00 UT, and B needs it
+   * before Wellington's dawn, which is earlier still. */
+  if (jd_conjunction >= jd_day_ut) {
     return 0;
   }
-  /* The last start on or before target_jd. */
-  while (lo < hi) {
-    int mid = (lo + hi + 1) / 2;
-    if (hijri__diyanet_start_jd(mid) <= target_jd) {
-      lo = mid;
-    } else {
-      hi = mid - 1;
+
+  /* B: the Americas mainland, if the conjunction precedes Wellington's
+   * dawn on D. */
+  if (hijri__wellington_dawn(jd_day_ut, &dawn) && jd_conjunction < dawn) {
+    for (row = 0; row < HIJRI__AMERICAS_ROWS; row++) {
+      if (hijri__global_point_passes(
+              predicate, jd_conjunction, jd_evening_ut,
+              (double)(HIJRI__AMERICAS_FIRST_LATITUDE + row),
+              hijri__americas_west_coast[row], &sunset) == 1) {
+        return 1;
+      }
     }
   }
-  month_index = (long)HIJRI__DIYANET_FIRST_YEAR * 12L +
-                (long)(HIJRI__DIYANET_FIRST_MONTH - 1) + (long)lo;
-  out->year = (int)(month_index / 12L);
-  out->month = (int)(month_index % 12L) + 1;
-  out->day = (int)(target_jd - hijri__diyanet_start_jd(lo)) + 1;
+
+  /* A: at every fourth degree of latitude, the westernmost point whose
+   * sunset is still before 00:00 UT, found by bisecting longitude over
+   * [-180, 0]. A latitude where a sunset is missing is skipped. */
+  for (lat = -60; lat <= 60; lat += 4) {
+    double east = 0.0, west = -180.0;
+    int step, ok = 1;
+    for (step = 0; step < 11 && ok; step++) {
+      double mid = 0.5 * (east + west);
+      HijriLocation loc;
+      loc.latitude_deg = (double)lat;
+      loc.longitude_deg = mid;
+      loc.elevation_m = 0.0;
+      loc.name = 0;
+      if (hijri_find_sunset(jd_evening_ut - mid / 360.0, &loc,
+                            &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL,
+                            &sunset) != HIJRI_EVENT_OK) {
+        ok = 0;
+      } else if (sunset < jd_day_ut) {
+        east = mid;
+      } else {
+        west = mid;
+      }
+    }
+    if (ok && hijri__global_point_passes(predicate, jd_conjunction,
+                                         jd_evening_ut, (double)lat, east,
+                                         &sunset) == 1 &&
+        sunset < jd_day_ut) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+/* The first of the five days from the conjunction's that begins a month,
+ * as the floor of its Julian Day like target_jd below, or NAN. The floor of
+ * a conjunction after 12:00 UT is the next day, which an evening in the
+ * Americas can still begin, so the search starts there. */
+static double hijri__global_month_start(HijriLocalPredicate predicate,
+                                        double jd_conjunction) {
+  int k;
+  for (k = 0; k < 5; k++) {
+    double start = floor(jd_conjunction) + (double)k;
+    if (hijri__global_rule_starts(predicate, jd_conjunction, start + 0.5)) {
+      return start;
+    }
+  }
+  return NAN;
+}
+
+/* The entry's predicate under the global rule. Follows
+ * hijri_from_gregorian_with_local_predicate step for step. */
+static int hijri__kind_global_rule(const HijriAuthorityEntry *entry, int gy,
+                                   int gm, int gd, HijriDate *out) {
+  double target_jd = floor(hijri_jd_from_gregorian(gy, gm, (double)gd));
+  double jd_conjunction, jd_month_start;
+  int day_number;
+  HijriDate approx;
+
+  if (hijri_find_relevant_conjunction(target_jd + 1.0, &jd_conjunction) !=
+      HIJRI_EVENT_OK) {
+    return 0;
+  }
+  jd_month_start = hijri__global_month_start(entry->predicate, jd_conjunction);
+  if (isnan(jd_month_start) || target_jd < jd_month_start) {
+    if (hijri_find_previous_conjunction(jd_conjunction - 1.0,
+                                        &jd_conjunction) != HIJRI_EVENT_OK) {
+      return 0;
+    }
+    jd_month_start =
+        hijri__global_month_start(entry->predicate, jd_conjunction);
+    if (isnan(jd_month_start) || target_jd < jd_month_start) {
+      return 0;
+    }
+  }
+  day_number = (int)(target_jd - jd_month_start) + 1;
+  if (day_number < 1 || day_number > 30) {
+    return 0;
+  }
+  approx = hijri_tabular_from_jd(jd_month_start + 5.0);
+  out->year = approx.year;
+  out->month = approx.month;
+  out->day = day_number;
   return 1;
 }
 
@@ -2948,15 +3073,6 @@ static int hijri__kind_umm_al_qura(const HijriAuthorityEntry *entry, int gy,
                                    int gm, int gd, HijriDate *out) {
   (void)entry;
   return hijri_umm_al_qura_from_gregorian(gy, gm, gd, out);
-}
-
-/* The Diyanet table, and nothing outside it. */
-static int hijri__kind_diyanet_table(const HijriAuthorityEntry *entry,
-                                     int gy, int gm, int gd,
-                                     HijriDate *out) {
-  (void)entry;
-  return hijri__diyanet_from_gregorian(
-      floor(hijri_jd_from_gregorian(gy, gm, (double)gd)), out);
 }
 
 /* ---- Authority registry ------------------------------------------------
@@ -3005,16 +3121,16 @@ static const HijriAuthorityEntry hijri__authority_table[HIJRI_AUTHORITY_COUNT] =
      {-(7.0 + 48.0 / 60.0), 110.0 + 21.0 / 60.0, 90.0, "Yogyakarta"},
      {0, 0, 0}, {2025, 6, 25},
      HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS, 12, 12},
-    /* The published calendar in hijri__diyanet_starts, and the rule period
-     * is that table's span. The 2016 Istanbul rule Diyanet computes it by is
-     * global, so no single point reproduces it: the predicate is the nearest
-     * local one and Ankara is Diyanet's seat, and the conversion reads
-     * neither. Outside the table it is unresolved. */
-    {"Diyanet, Turkey", HIJRI_BASIS_PUBLISHED_TABLE,
+    /* The 2016 Istanbul global rule, computed by hijri__kind_global_rule
+     * with the rule's 5 and 8 degree thresholds as the predicate. Ankara is
+     * Diyanet's seat, and the conversion does not read it. rule_from is the
+     * first start of the published calendar the rule was checked against,
+     * and no source for an earlier date was found. */
+    {"Diyanet, Turkey", HIJRI_BASIS_GLOBAL_RULE,
      HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8,
      {39.9334, 32.8597, 938.0, "Ankara"},
-     {2021, 1, 14}, {2035, 12, 31},
-     HIJRI_VALIDATION_PUBLISHED_TABLE, 186, 186},
+     {2021, 1, 14}, {0, 0, 0},
+     HIJRI_VALIDATION_OFFICIAL_CALENDAR_MONTHS, 184, 186},
 };
 
 /* Each authority's kind, positional in HijriAuthority order like the table
@@ -3027,7 +3143,7 @@ static const hijri__authority_convert_fn
         hijri__kind_local_predicate, /* BRUNEI_KHEU */
         hijri__kind_umm_al_qura,     /* UMM_AL_QURA */
         hijri__kind_local_predicate, /* MUHAMMADIYAH_WUJUDUL_HILAL */
-        hijri__kind_diyanet_table,   /* DIYANET */
+        hijri__kind_global_rule,     /* DIYANET */
 };
 
 HIJRIDEF const HijriAuthorityEntry *hijri_authority_get(HijriAuthority authority) {
