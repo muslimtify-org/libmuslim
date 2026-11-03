@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-/* hijri.h -- v0.5.0 -- stb-style single-file astronomical Hijri calendar library
+/* hijri.h -- v0.6.0 -- stb-style single-file astronomical Hijri calendar library
  *
  * The version above is this file's own. It is not the libmuslim release
  * tag, which is a calendar date such as 2026.08.18 and covers a snapshot
@@ -712,7 +712,10 @@ typedef enum {
   HIJRI_PREDICATE_WUJUDUL_HILAL,
   HIJRI_PREDICATE_LAG_AT_LEAST_5_MINUTES,
   HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8,
-  HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET
+  HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET,
+  /* The research thresholds with a geocentric altitude, as KHGT states them.
+   * HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8 is the topocentric form. */
+  HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8
 } HijriLocalPredicate;
 
 typedef struct {
@@ -770,6 +773,11 @@ typedef struct {
   /* jd_moonset_ut > jd_sunset_ut, as 0 or 1. 0 whenever jd_moonset_ut is
    * NAN, since the comparison never ran. */
   int moonset_after_sunset;
+  /* GEOCENTRIC and UNREFRACTED: the Moon's centre without the parallax
+   * moon_center_geometric_altitude_deg applies. The quantity
+   * HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8 thresholds at 5 deg.
+   * NAN if sunset_status is not HIJRI_EVENT_OK. */
+  double moon_center_geocentric_altitude_deg;
 } HijriEveningParameters;
 
 HIJRIDEF HijriEveningParameters
@@ -793,7 +801,8 @@ typedef enum {
   HIJRI_TERM_GEOCENTRIC_ELONGATION,
   HIJRI_TERM_TOPOCENTRIC_ELONGATION,
   HIJRI_TERM_MOON_AGE,
-  HIJRI_TERM_LAG_TIME
+  HIJRI_TERM_LAG_TIME,
+  HIJRI_TERM_MOON_GEOCENTRIC_ALTITUDE
 } HijriDecisionTerm;
 
 typedef struct {
@@ -914,18 +923,21 @@ typedef enum {
   /* Saudi civil calendar, read from the published table. */
   HIJRI_AUTHORITY_UMM_AL_QURA,
   /* Muhammadiyah while it used hisab hakiki wujudul hilal, through 1446 H.
-   * From 1447 H it follows KHGT, which this library does not implement. */
+   * From 1447 H it follows KHGT, HIJRI_AUTHORITY_MUHAMMADIYAH_KHGT. */
   HIJRI_AUTHORITY_MUHAMMADIYAH_WUJUDUL_HILAL,
   /* Turkey, Diyanet Isleri Baskanligi. The 2016 Istanbul global rule its
    * calendar is computed by, checked against its published calendar. */
   HIJRI_AUTHORITY_DIYANET,
+  /* Muhammadiyah's Kalender Hijriah Global Tunggal from 1447 H. Its published
+   * table for 1447 to 1492 H, and its stated global rule outside the table. */
+  HIJRI_AUTHORITY_MUHAMMADIYAH_KHGT,
   HIJRI_AUTHORITY_COUNT
 } HijriAuthority;
 
 typedef enum {
   /* A HijriLocalPredicate evaluated at the entry's reference point. */
   HIJRI_BASIS_LOCAL_PREDICATE,
-  /* A published table, Umm al-Qura's, which takes no location. */
+  /* A published table, which takes no location: Umm al-Qura's, or KHGT's. */
   HIJRI_BASIS_PUBLISHED_TABLE,
   /* A HijriLocalPredicate searched for anywhere on Earth under a global
    * rule, Diyanet's, which takes no location. */
@@ -937,7 +949,9 @@ typedef enum {
   HIJRI_VALIDATION_OFFICIAL_CALENDAR_MONTHS,
   /* Individually announced month starts, a few month names per year. */
   HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS,
-  /* The entry IS a published table, checked against an independent copy. */
+  /* The entry IS a published table. Umm al-Qura's is checked against an
+   * independent copy. KHGT's is checked against its fixture, parsed from the
+   * same publisher's calendars, which guards against parse errors only. */
   HIJRI_VALIDATION_PUBLISHED_TABLE
 } HijriAuthorityValidation;
 
@@ -956,10 +970,11 @@ typedef struct {
   /* The predicate evaluated, for HIJRI_BASIS_LOCAL_PREDICATE and
    * HIJRI_BASIS_GLOBAL_RULE. For Umm al-Qura it names the predicate the
    * reconstruction outside the table uses, and the conversion does not read
-   * it. */
+   * it. For KHGT it is what the global rule evaluates outside the table. */
   HijriLocalPredicate predicate;
   /* The single point the predicate is evaluated at. For Umm al-Qura it is
-   * Mecca and for Diyanet Ankara, and the conversion reads neither. */
+   * Mecca, for Diyanet Ankara and for KHGT Yogyakarta, and the conversion
+   * reads none of them. */
   HijriLocation reference;
   /* First and last Gregorian dates this library has a SOURCE for the rule
    * governing, inclusive. They err narrow: a date outside them may still
@@ -991,7 +1006,8 @@ typedef enum {
   /* *out is filled, but this library has no source for the entry's rule
    * governing that date. The rule was computed anyway. For Muhammadiyah
    * after 1446 H this is the criterion it used previously, not the one it
-   * uses now. For Umm al-Qura it is the reconstruction, not the table. */
+   * uses now. For Umm al-Qura it is the reconstruction, not the table. For
+   * KHGT before 1447 H it is the rule before Muhammadiyah adopted it. */
   HIJRI_AUTHORITY_OUTSIDE_RULE_PERIOD = 2
 } HijriAuthorityStatus;
 
@@ -1999,6 +2015,8 @@ static void hijri__evening_positions(HijriEveningParameters *p,
                                p->jd_sunset_ut, loc);
   p->moon_center_geometric_altitude_deg =
       hijri__altitude_deg(moon_ra_topo, moon_dec_topo, p->jd_sunset_ut, loc);
+  p->moon_center_geocentric_altitude_deg = hijri__altitude_deg(
+      moon.right_ascension_deg, moon.declination_deg, p->jd_sunset_ut, loc);
   p->moon_upper_limb_apparent_altitude_deg =
       p->moon_center_geometric_altitude_deg + semidiameter_deg +
       conv->refraction_at_horizon_deg;
@@ -2044,6 +2062,7 @@ hijri_compute_evening_parameters(int gy, int gm, int gd,
   p.moonset_status = p.sunset_status;
   p.sun_center_geometric_altitude_deg = NAN;
   p.moon_center_geometric_altitude_deg = NAN;
+  p.moon_center_geocentric_altitude_deg = NAN;
   p.moon_upper_limb_apparent_altitude_deg = NAN;
   p.geocentric_elongation_deg = NAN;
   p.topocentric_elongation_deg = NAN;
@@ -2219,7 +2238,7 @@ hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
    *
    * SUPERSEDED for Muhammadiyah: from 1447 H the Muhammadiyah calendar
    * follows KHGT (Kalender Hijriah Global Tunggal, Istanbul 2016), a global
-   * imkan-rukyat criterion this file does not implement. The Maklumat
+   * criterion, HIJRI_AUTHORITY_MUHAMMADIYAH_KHGT. The Maklumat
    * fixtures in tests/test_hijri.c therefore end at 1446 H and cannot be
    * extended under this predicate. The predicate below is still wujudul
    * hilal and still correct as such, reproducing the book's worked example
@@ -2243,6 +2262,10 @@ hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
     return p->conjunction_before_sunset &&
            p->moonset_status == HIJRI_EVENT_OK &&
            p->moonset_after_sunset;
+  case HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8:
+    return p->moon_center_geocentric_altitude_deg >=
+               HIJRI_RESEARCH_ALTITUDE_DEG &&
+           p->geocentric_elongation_deg >= HIJRI_RESEARCH_ELONGATION_DEG;
   default:
     return 0;
   }
@@ -2346,6 +2369,16 @@ hijri_predicate_margins(HijriLocalPredicate predicate,
     out.terms[1] = hijri__decision_term(HIJRI_TERM_LAG_TIME,
                                         HIJRI_UNIT_MINUTES,
                                         p->lag_time_minutes, 0.0, 1);
+    break;
+  case HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8:
+    out.count = 2;
+    out.terms[0] = hijri__decision_term(
+        HIJRI_TERM_MOON_GEOCENTRIC_ALTITUDE, HIJRI_UNIT_DEGREES,
+        p->moon_center_geocentric_altitude_deg, HIJRI_RESEARCH_ALTITUDE_DEG,
+        0);
+    out.terms[1] = hijri__decision_term(
+        HIJRI_TERM_GEOCENTRIC_ELONGATION, HIJRI_UNIT_DEGREES,
+        p->geocentric_elongation_deg, HIJRI_RESEARCH_ELONGATION_DEG, 0);
     break;
   default:
     break;
@@ -2786,28 +2819,26 @@ static const unsigned short hijri__uq_month_length[HIJRI__UQ_YEAR_COUNT] = {
     0x0695, 0x06AA, 0x0AD6, 0x055D, 0x029D,
 };
 
-static int hijri__uq_year_days(int index) {
-  int days = 348; /* twelve 29-day months */
-  int m;
-  for (m = 0; m < 12; m++) {
-    if (hijri__uq_month_length[index] & (1 << (11 - m))) {
-      days++;
-    }
-  }
-  return days;
-}
-
-/* Exact conversion for dates inside the table; returns 0 outside it. */
-static int hijri__umm_al_qura_tabular(double target_jd, HijriDate *out) {
-  long days = (long)(target_jd - HIJRI__UQ_ANCHOR_JD);
+/* Exact conversion for dates inside a table of months[] rows in the format
+ * above, whose first row is first_year and begins on anchor_jd, and which
+ * totals total_days days. Returns 0 outside it. */
+static int hijri__table_lookup(const unsigned short *months, int first_year,
+                               double anchor_jd, long total_days,
+                               double target_jd, HijriDate *out) {
+  long days = (long)(target_jd - anchor_jd);
   int index = 0;
   int m;
 
-  if (days < 0 || days >= HIJRI__UQ_TOTAL_DAYS) {
+  if (days < 0 || days >= total_days) {
     return 0;
   }
   for (;;) {
-    int year_len = hijri__uq_year_days(index);
+    int year_len = 348; /* twelve 29-day months */
+    for (m = 0; m < 12; m++) {
+      if (months[index] & (1 << (11 - m))) {
+        year_len++;
+      }
+    }
     if (days < year_len) {
       break;
     }
@@ -2815,14 +2846,13 @@ static int hijri__umm_al_qura_tabular(double target_jd, HijriDate *out) {
     index++;
   }
   for (m = 0; m < 12; m++) {
-    int month_len =
-        (hijri__uq_month_length[index] & (1 << (11 - m))) ? 30 : 29;
+    int month_len = (months[index] & (1 << (11 - m))) ? 30 : 29;
     if (days < month_len) {
       break;
     }
     days -= month_len;
   }
-  out->year = HIJRI__UQ_YEAR_FIRST + index;
+  out->year = first_year + index;
   out->month = m + 1;
   out->day = (int)days + 1;
   return 1;
@@ -2831,7 +2861,9 @@ static int hijri__umm_al_qura_tabular(double target_jd, HijriDate *out) {
 HIJRIDEF int hijri_umm_al_qura_from_gregorian(int gy, int gm, int gd,
                                                HijriDate *out) {
   double target_jd = floor(hijri_jd_from_gregorian(gy, gm, (double)gd));
-  if (hijri__umm_al_qura_tabular(target_jd, out)) {
+  if (hijri__table_lookup(hijri__uq_month_length, HIJRI__UQ_YEAR_FIRST,
+                          HIJRI__UQ_ANCHOR_JD, HIJRI__UQ_TOTAL_DAYS, target_jd,
+                          out)) {
     return 1;
   }
   /* Before 1882-11-12 or after 2174-11-25: fall back to the astronomical
@@ -3075,6 +3107,37 @@ static int hijri__kind_umm_al_qura(const HijriAuthorityEntry *entry, int gy,
   return hijri_umm_al_qura_from_gregorian(gy, gm, gd, out);
 }
 
+/* KHGT's published table, in the format of hijri__uq_month_length. Parsed
+ * from Muhammadiyah's yearly calendars, as docs/research/2026-11-03-khgt-calendar.md
+ * records. */
+#define HIJRI__KHGT_YEAR_FIRST 1447
+#define HIJRI__KHGT_YEAR_COUNT 46
+/* floor(JD) of 2025-06-26, which is 1 Muharam 1447. */
+#define HIJRI__KHGT_ANCHOR_JD 2460852.0
+/* Sum of all month lengths below, so the table ends the day before this. */
+#define HIJRI__KHGT_TOTAL_DAYS 16302
+
+static const unsigned short hijri__khgt_month_length[HIJRI__KHGT_YEAR_COUNT] = {
+    0x0B6A, 0x0575, 0x02B6, 0x0937, 0x049B, 0x0553, 0x06AA, 0x06D5,
+    0x02DA, 0x095D, 0x049D, 0x0A4D, 0x0B25, 0x0D52, 0x0DA9, 0x05AD,
+    0x02B6, 0x0A56, 0x0D17, 0x0693, 0x0749, 0x0754, 0x0B6A, 0x0575,
+    0x02B6, 0x0A56, 0x0D4A, 0x0DA2, 0x0DD2, 0x05D5, 0x02DA, 0x095D,
+    0x02AD, 0x0555, 0x0ACA, 0x0B55, 0x036C, 0x0976, 0x02B6, 0x0A57,
+    0x052B, 0x0695, 0x06CA, 0x0AD5, 0x04EA, 0x0A5D,
+};
+
+/* KHGT's table, and its stated global rule outside it. */
+static int hijri__kind_khgt(const HijriAuthorityEntry *entry, int gy, int gm,
+                            int gd, HijriDate *out) {
+  double target_jd = floor(hijri_jd_from_gregorian(gy, gm, (double)gd));
+  if (hijri__table_lookup(hijri__khgt_month_length, HIJRI__KHGT_YEAR_FIRST,
+                          HIJRI__KHGT_ANCHOR_JD, HIJRI__KHGT_TOTAL_DAYS,
+                          target_jd, out)) {
+    return 1;
+  }
+  return hijri__kind_global_rule(entry, gy, gm, gd, out);
+}
+
 /* ---- Authority registry ------------------------------------------------
  * Rows are positional and in HijriAuthority order, because the C++17 build
  * of this file cannot use array designators. tests/test_hijri.c asserts
@@ -3131,6 +3194,15 @@ static const HijriAuthorityEntry hijri__authority_table[HIJRI_AUTHORITY_COUNT] =
      {39.9334, 32.8597, 938.0, "Ankara"},
      {2021, 1, 14}, {0, 0, 0},
      HIJRI_VALIDATION_OFFICIAL_CALENDAR_MONTHS, 184, 186},
+    /* rule_from is the first day of the published table. The counts are the
+     * table against the months Muhammadiyah prints. How often the rule alone
+     * agrees is pinned in test_khgt_published_calendar. Yogyakarta is the
+     * Wujudul Hilal row's point, and the conversion does not read it. */
+    {"Muhammadiyah, KHGT", HIJRI_BASIS_PUBLISHED_TABLE,
+     HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8,
+     {-(7.0 + 48.0 / 60.0), 110.0 + 21.0 / 60.0, 90.0, "Yogyakarta"},
+     {2025, 6, 26}, {0, 0, 0},
+     HIJRI_VALIDATION_PUBLISHED_TABLE, 552, 552},
 };
 
 /* Each authority's kind, positional in HijriAuthority order like the table
@@ -3144,6 +3216,7 @@ static const hijri__authority_convert_fn
         hijri__kind_umm_al_qura,     /* UMM_AL_QURA */
         hijri__kind_local_predicate, /* MUHAMMADIYAH_WUJUDUL_HILAL */
         hijri__kind_global_rule,     /* DIYANET */
+        hijri__kind_khgt,            /* MUHAMMADIYAH_KHGT */
 };
 
 HIJRIDEF const HijriAuthorityEntry *hijri_authority_get(HijriAuthority authority) {
