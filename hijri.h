@@ -1084,7 +1084,9 @@ typedef enum {
  * starts must be in ascending date order. It may be a null pointer when
  * count is 0, and is otherwise documented non-NULL with no runtime check,
  * as is out. The cost grows with the months between the last announced
- * start and the date, until the walk rejoins the computed calendar. */
+ * start and the date, until the walk rejoins the computed calendar. A date
+ * before an announced start costs up to three registry conversions more,
+ * two for that entry's label check and one for its window. */
 HIJRIDEF HijriAnnouncedStatus hijri_authority_from_gregorian_announced(
     HijriAuthority authority, const HijriAnnouncedStart *starts, int count,
     int gy, int gm, int gd, HijriDate *out);
@@ -3517,9 +3519,7 @@ HIJRIDEF HijriAnnouncedStatus hijri_authority_from_gregorian_announced(
     }
 
     if (target_jd < next_start) {
-      out->year = (int)hijri__floor_div(cur_index, 12);
-      out->month = (int)(cur_index - hijri__floor_div(cur_index, 12) * 12) + 1;
-      out->day = (int)(target_jd - cur_start) + 1;
+      hijri__announced_set(out, cur_index, target_jd - cur_start);
       return HIJRI_ANNOUNCED_FROM_ANNOUNCEMENT;
     }
 
