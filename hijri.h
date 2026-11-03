@@ -2812,28 +2812,26 @@ static const unsigned short hijri__uq_month_length[HIJRI__UQ_YEAR_COUNT] = {
     0x0695, 0x06AA, 0x0AD6, 0x055D, 0x029D,
 };
 
-static int hijri__uq_year_days(int index) {
-  int days = 348; /* twelve 29-day months */
-  int m;
-  for (m = 0; m < 12; m++) {
-    if (hijri__uq_month_length[index] & (1 << (11 - m))) {
-      days++;
-    }
-  }
-  return days;
-}
-
-/* Exact conversion for dates inside the table; returns 0 outside it. */
-static int hijri__umm_al_qura_tabular(double target_jd, HijriDate *out) {
-  long days = (long)(target_jd - HIJRI__UQ_ANCHOR_JD);
+/* Exact conversion for dates inside a table of months[] rows in the format
+ * above, whose first row is first_year and begins on anchor_jd, and which
+ * totals total_days days. Returns 0 outside it. */
+static int hijri__table_lookup(const unsigned short *months, int first_year,
+                               double anchor_jd, long total_days,
+                               double target_jd, HijriDate *out) {
+  long days = (long)(target_jd - anchor_jd);
   int index = 0;
   int m;
 
-  if (days < 0 || days >= HIJRI__UQ_TOTAL_DAYS) {
+  if (days < 0 || days >= total_days) {
     return 0;
   }
   for (;;) {
-    int year_len = hijri__uq_year_days(index);
+    int year_len = 348; /* twelve 29-day months */
+    for (m = 0; m < 12; m++) {
+      if (months[index] & (1 << (11 - m))) {
+        year_len++;
+      }
+    }
     if (days < year_len) {
       break;
     }
@@ -2841,14 +2839,13 @@ static int hijri__umm_al_qura_tabular(double target_jd, HijriDate *out) {
     index++;
   }
   for (m = 0; m < 12; m++) {
-    int month_len =
-        (hijri__uq_month_length[index] & (1 << (11 - m))) ? 30 : 29;
+    int month_len = (months[index] & (1 << (11 - m))) ? 30 : 29;
     if (days < month_len) {
       break;
     }
     days -= month_len;
   }
-  out->year = HIJRI__UQ_YEAR_FIRST + index;
+  out->year = first_year + index;
   out->month = m + 1;
   out->day = (int)days + 1;
   return 1;
@@ -2857,7 +2854,9 @@ static int hijri__umm_al_qura_tabular(double target_jd, HijriDate *out) {
 HIJRIDEF int hijri_umm_al_qura_from_gregorian(int gy, int gm, int gd,
                                                HijriDate *out) {
   double target_jd = floor(hijri_jd_from_gregorian(gy, gm, (double)gd));
-  if (hijri__umm_al_qura_tabular(target_jd, out)) {
+  if (hijri__table_lookup(hijri__uq_month_length, HIJRI__UQ_YEAR_FIRST,
+                          HIJRI__UQ_ANCHOR_JD, HIJRI__UQ_TOTAL_DAYS, target_jd,
+                          out)) {
     return 1;
   }
   /* Before 1882-11-12 or after 2174-11-25: fall back to the astronomical
