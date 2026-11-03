@@ -438,10 +438,12 @@ Whether a primary technical specification for it is obtainable was
 researched in
 `docs/research/2026-09-07-khgt-sources.md`. No primary document was found
 that specifies the criterion precisely enough to implement without
-inference, so KHGT stays a research candidate under the criteria above, not
-a planned API.
+inference, so that note left KHGT a research candidate under the criteria
+above. Muhammadiyah's published calendar later settled it, as below.
 
-**Diyanet admitted (2026-10).** `hijri.h` v0.5.0 computes Turkey's calendar as `HIJRI_AUTHORITY_DIYANET`, a global rule rather than a single point: the 5 and 8 degree thresholds searched for anywhere on Earth before 00:00 UT, with the Americas exception Diyanet's bulletin states. Checked against Diyanet's published calendar it reproduces 184 of 186 month starts from 2021 to 2035. The bulletin is not a technical specification, so the search window and the reading of the Americas clause are the library's, chosen by that score and recorded in `docs/research/2026-10-25-diyanet-global-rule.md`. KHGT as Muhammadiyah applies it is not admitted.
+**Diyanet admitted (2026-10).** `hijri.h` v0.5.0 computes Turkey's calendar as `HIJRI_AUTHORITY_DIYANET`, a global rule rather than a single point: the 5 and 8 degree thresholds searched for anywhere on Earth before 00:00 UT, with the Americas exception Diyanet's bulletin states. Checked against Diyanet's published calendar it reproduces 184 of 186 month starts from 2021 to 2035. The bulletin is not a technical specification, so the search window and the reading of the Americas clause are the library's, chosen by that score and recorded in `docs/research/2026-10-25-diyanet-global-rule.md`.
+
+**KHGT admitted (2026-11).** `hijri.h` v0.6.0 has Muhammadiyah's calendar as `HIJRI_AUTHORITY_MUHAMMADIYAH_KHGT`. It reads the published table for 1447 to 1492 H and computes the stated rule outside it. The rule alone reproduces 496 of the 552 published months, which is why the table is what the entry returns where it exists. Why the calendar departs from its stated rule is unexplained. See `docs/research/2026-11-03-khgt-calendar.md`.
 
 ### Observation integration
 

@@ -7,7 +7,7 @@ and you are done. C11 and C++17, no build system, no package manager.
 | Header | Version | Provides | Depends on |
 |---|---|---|---|
 | [`prayertimes.h`](prayertimes.h) | `v0.2.4` | Prayer times, 21 calculation methods | `<math.h>` |
-| [`hijri.h`](hijri.h) | `v0.5.0` | Hijri calendar, crescent visibility models | `<math.h>` |
+| [`hijri.h`](hijri.h) | `v0.6.0` | Hijri calendar, crescent visibility models | `<math.h>` |
 | [`timezone.h`](timezone.h) | `v0.1.2` | IANA zone name → UTC offset, DST applied | OS timezone database |
 
 `prayertimes.h` and `hijri.h` are independent and dependency-free.
@@ -150,10 +150,10 @@ fixture-enforced. See
 [`docs/research/2026-08-01-muhammadiyah-reference.md`](docs/research/2026-08-01-muhammadiyah-reference.md).
 
 From 1447 H Muhammadiyah follows KHGT (Kalender Hijriah Global Tunggal,
-Istanbul 2016), a global criterion this library does not implement. Wujudul
-Hilal reproduces the Muhammadiyah calendar through 1446 H and no further.
-Selecting it for dates after that computes the criterion Muhammadiyah used
-previously, not the one it uses now.
+Istanbul 2016), which the registry has as `HIJRI_AUTHORITY_MUHAMMADIYAH_KHGT`.
+Wujudul Hilal reproduces the Muhammadiyah calendar through 1446 H and no
+further. Selecting it for dates after that computes the criterion Muhammadiyah
+used previously, not the one it uses now.
 
 **Authority registry.** `hijri_authority_get()` returns a calculation profile for a named authority: which rule, at which reference point, for which dates, and what it was checked against. `hijri_authority_from_gregorian()` converts a date under that profile.
 
@@ -178,8 +178,11 @@ if (status == HIJRI_AUTHORITY_IN_RULE_PERIOD) {
 | `HIJRI_AUTHORITY_UMM_AL_QURA` | published table | none | 198 of 198 months |
 | `HIJRI_AUTHORITY_MUHAMMADIYAH_WUJUDUL_HILAL` | Wujudul Hilal | Yogyakarta | 12 of 12 announced starts, through 1446 H |
 | `HIJRI_AUTHORITY_DIYANET` | global rule, 5° altitude and 8° elongation | none | 184 of 186 official calendar months |
+| `HIJRI_AUTHORITY_MUHAMMADIYAH_KHGT` | published table 1447 to 1492 H, then a global rule with geocentric 5° altitude and 8° elongation | none | 552 of 552 published months from the table, 496 of 552 from the rule alone |
 
 `HIJRI_AUTHORITY_DIYANET` computes the 2016 Istanbul rule Diyanet states in its own bulletin. Day D begins a month when the crescent reaches 5 degrees of altitude and 8 degrees of elongation somewhere on Earth with sunset before 00:00 UT of D, or on the Americas mainland provided the conjunction falls before dawn in Wellington. Checked against Diyanet's published calendar, every month start from 2021-01-14 to 2035-12-31 as printed on two Diyanet sites, it reproduces 184 of the 186. The rule has no end date. Because it searches the globe, a conversion costs about 9 ms. See [`docs/research/2026-10-25-diyanet-global-rule.md`](docs/research/2026-10-25-diyanet-global-rule.md) for the search and the score, and [`docs/research/2026-10-17-diyanet-calendar.md`](docs/research/2026-10-17-diyanet-calendar.md) for the published calendar.
+
+`HIJRI_AUTHORITY_MUHAMMADIYAH_KHGT` reads Muhammadiyah's published calendar from 2025-06-26 to 2070-02-11. Outside those dates it computes the rule the calendar states, the same search as Diyanet's with a geocentric altitude, at about 9 ms a conversion. Dates before 2025-06-26 return `HIJRI_AUTHORITY_OUTSIDE_RULE_PERIOD`. The rule alone reproduces 496 of the 552 published months, starting 51 a day late and 5 a day early, and why the calendar departs from its stated rule is not known, so treat a date past the table as about nine in ten. See [`docs/research/2026-11-03-khgt-calendar.md`](docs/research/2026-11-03-khgt-calendar.md).
 
 An entry is a calculation profile, not the authority. The result is the rule computed at one point and chained month to month, and each authority can and does depart from it by ruling. The counts above are read from the entry itself, and the test suite recomputes them from the fixtures, so the table in the header cannot drift from the tests. Only authorities with a fixture have an entry. The sourced period for each rule is in [`docs/research/2026-10-10-authority-rule-periods.md`](docs/research/2026-10-10-authority-rule-periods.md), and why one reference point stands in for a territory is in [`docs/research/2026-10-10-region-aggregation-measured.md`](docs/research/2026-10-10-region-aggregation-measured.md).
 

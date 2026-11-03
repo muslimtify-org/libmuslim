@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-/* hijri.h -- v0.5.0 -- stb-style single-file astronomical Hijri calendar library
+/* hijri.h -- v0.6.0 -- stb-style single-file astronomical Hijri calendar library
  *
  * The version above is this file's own. It is not the libmuslim release
  * tag, which is a calendar date such as 2026.08.18 and covers a snapshot

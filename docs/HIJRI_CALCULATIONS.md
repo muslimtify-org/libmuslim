@@ -130,6 +130,14 @@ The thresholds are stricter than MABIMS, and the criterion is meant to be checke
 
 For Diyanet the global search is built in. `HIJRI_AUTHORITY_DIYANET` searches the whole Earth for a point that passes before 00:00 UT, and also checks the Americas mainland, which Diyanet's bulletin allows provided the conjunction falls before dawn in Wellington. Which points it checks is the library's reading of the bulletin, not a fixed astronomical fact. That reading reproduces 184 of Diyanet's 186 published month starts from 2021 to 2035. See `docs/research/2026-10-25-diyanet-global-rule.md`. ECFR and the Fiqh Council of North America have no registry entry, so for them the sweep is still yours to run.
 
+### KHGT (Muhammadiyah, Indonesia, from 1447 H)
+
+```
+month starts  ⟺  geocentric altitude ≥ 5°  AND  geocentric elongation ≥ 8°
+```
+
+KHGT, Kalender Hijriah Global Tunggal, is the same global idea as the section above with both angles geocentric, so the Moon's altitude has no parallax applied. The predicate is `HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8`. Muhammadiyah publishes the resulting calendar for 1447 to 1492 H, and `HIJRI_AUTHORITY_MUHAMMADIYAH_KHGT` reads that table instead of computing it, for the reason Umm al-Qura's table is read: the stated rule, computed with this library's search, reproduces 496 of the 552 published months. Outside the table the entry computes the rule. Why the calendar departs from the rule is not known. See `docs/research/2026-11-03-khgt-calendar.md`.
+
 ### Egypt
 
 ```
