@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-/* hijri.h -- v0.6.0 -- stb-style single-file astronomical Hijri calendar library
+/* hijri.h -- v0.7.0 -- stb-style single-file astronomical Hijri calendar library
  *
  * The version above is this file's own. It is not the libmuslim release
  * tag, which is a calendar date such as 2026.08.18 and covers a snapshot
@@ -1056,7 +1056,7 @@ typedef enum {
   HIJRI_ANNOUNCED_COMPUTED_IN_RULE_PERIOD = 1,
   HIJRI_ANNOUNCED_COMPUTED_OUTSIDE_RULE_PERIOD = 2,
   /* An announcement decided the date, either directly or by shifting a
-   * month after it. */
+   * month before or after it. */
   HIJRI_ANNOUNCED_FROM_ANNOUNCEMENT = 3
 } HijriAnnouncedStatus;
 
@@ -1069,10 +1069,17 @@ typedef enum {
  * held to 29 or 30 days after the month before, so a month moved by an
  * announcement never makes the next one 28 or 31 days long. Once a month
  * start agrees with the computed calendar on both the day and the Hijri
- * month, the walk stops and the registry's own answer is returned.
+ * month, the walk stops and the registry's own answer is used.
  *
- * With no announced start on or before the date, including count == 0,
- * the result is exactly hijri_authority_from_gregorian's.
+ * The first announced start after the date holds the months before it the
+ * same way. Each starts on a day that leaves every month up to that entry
+ * 29 or 30 days long, so the day before an announced start is always the
+ * last day of the month before it. This applies to dates before every
+ * entry too, and can move such a date into the neighbouring month. That
+ * entry must name the right Hijri month, as the entry in effect must.
+ *
+ * With count == 0 the result is exactly hijri_authority_from_gregorian's,
+ * and so is any date whose month the next entry's window does not move.
  *
  * starts must be in ascending date order. It may be a null pointer when
  * count is 0, and is otherwise documented non-NULL with no runtime check,
