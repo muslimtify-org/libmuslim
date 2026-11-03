@@ -712,7 +712,10 @@ typedef enum {
   HIJRI_PREDICATE_WUJUDUL_HILAL,
   HIJRI_PREDICATE_LAG_AT_LEAST_5_MINUTES,
   HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8,
-  HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET
+  HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET,
+  /* The research thresholds with a geocentric altitude, as KHGT states them.
+   * HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8 is the topocentric form. */
+  HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8
 } HijriLocalPredicate;
 
 typedef struct {
@@ -770,6 +773,11 @@ typedef struct {
   /* jd_moonset_ut > jd_sunset_ut, as 0 or 1. 0 whenever jd_moonset_ut is
    * NAN, since the comparison never ran. */
   int moonset_after_sunset;
+  /* GEOCENTRIC and UNREFRACTED: the Moon's centre without the parallax
+   * moon_center_geometric_altitude_deg applies. The quantity
+   * HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8 thresholds at 5 deg.
+   * NAN if sunset_status is not HIJRI_EVENT_OK. */
+  double moon_center_geocentric_altitude_deg;
 } HijriEveningParameters;
 
 HIJRIDEF HijriEveningParameters
@@ -793,7 +801,8 @@ typedef enum {
   HIJRI_TERM_GEOCENTRIC_ELONGATION,
   HIJRI_TERM_TOPOCENTRIC_ELONGATION,
   HIJRI_TERM_MOON_AGE,
-  HIJRI_TERM_LAG_TIME
+  HIJRI_TERM_LAG_TIME,
+  HIJRI_TERM_MOON_GEOCENTRIC_ALTITUDE
 } HijriDecisionTerm;
 
 typedef struct {
@@ -1999,6 +2008,8 @@ static void hijri__evening_positions(HijriEveningParameters *p,
                                p->jd_sunset_ut, loc);
   p->moon_center_geometric_altitude_deg =
       hijri__altitude_deg(moon_ra_topo, moon_dec_topo, p->jd_sunset_ut, loc);
+  p->moon_center_geocentric_altitude_deg = hijri__altitude_deg(
+      moon.right_ascension_deg, moon.declination_deg, p->jd_sunset_ut, loc);
   p->moon_upper_limb_apparent_altitude_deg =
       p->moon_center_geometric_altitude_deg + semidiameter_deg +
       conv->refraction_at_horizon_deg;
@@ -2044,6 +2055,7 @@ hijri_compute_evening_parameters(int gy, int gm, int gd,
   p.moonset_status = p.sunset_status;
   p.sun_center_geometric_altitude_deg = NAN;
   p.moon_center_geometric_altitude_deg = NAN;
+  p.moon_center_geocentric_altitude_deg = NAN;
   p.moon_upper_limb_apparent_altitude_deg = NAN;
   p.geocentric_elongation_deg = NAN;
   p.topocentric_elongation_deg = NAN;
@@ -2243,6 +2255,10 @@ hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
     return p->conjunction_before_sunset &&
            p->moonset_status == HIJRI_EVENT_OK &&
            p->moonset_after_sunset;
+  case HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8:
+    return p->moon_center_geocentric_altitude_deg >=
+               HIJRI_RESEARCH_ALTITUDE_DEG &&
+           p->geocentric_elongation_deg >= HIJRI_RESEARCH_ELONGATION_DEG;
   default:
     return 0;
   }
@@ -2346,6 +2362,16 @@ hijri_predicate_margins(HijriLocalPredicate predicate,
     out.terms[1] = hijri__decision_term(HIJRI_TERM_LAG_TIME,
                                         HIJRI_UNIT_MINUTES,
                                         p->lag_time_minutes, 0.0, 1);
+    break;
+  case HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8:
+    out.count = 2;
+    out.terms[0] = hijri__decision_term(
+        HIJRI_TERM_MOON_GEOCENTRIC_ALTITUDE, HIJRI_UNIT_DEGREES,
+        p->moon_center_geocentric_altitude_deg, HIJRI_RESEARCH_ALTITUDE_DEG,
+        0);
+    out.terms[1] = hijri__decision_term(
+        HIJRI_TERM_GEOCENTRIC_ELONGATION, HIJRI_UNIT_DEGREES,
+        p->geocentric_elongation_deg, HIJRI_RESEARCH_ELONGATION_DEG, 0);
     break;
   default:
     break;

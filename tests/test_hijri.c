@@ -60,10 +60,12 @@ static HijriEveningParameters parameters(double center_altitude,
                                           int moonset_after) {
   HijriEveningParameters value = {
       0.0, 0.0, 0.0, HIJRI_EVENT_OK, HIJRI_EVENT_OK, 0.0, 0.0,
-      0.0, 0.0, 0.0, 0.0, 0.0, 0,              0};
+      0.0, 0.0, 0.0, 0.0, 0.0, 0,              0,
+      0.0};
   value.sunset_status = HIJRI_EVENT_OK;
   value.moonset_status = HIJRI_EVENT_OK;
   value.moon_center_geometric_altitude_deg = center_altitude;
+  value.moon_center_geocentric_altitude_deg = center_altitude;
   value.moon_upper_limb_apparent_altitude_deg = upper_limb_altitude;
   value.geocentric_elongation_deg = geocentric_elongation;
   value.topocentric_elongation_deg = topocentric_elongation;
@@ -671,7 +673,9 @@ static void test_orchestration(void) {
       {"lag_at_least_5_minutes", HIJRI_PREDICATE_LAG_AT_LEAST_5_MINUTES},
       {"altitude_5_elongation_8", HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8},
       {"conjunction_and_moonset",
-       HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET}};
+       HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET},
+      {"geocentric_altitude_5_elongation_8",
+       HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8}};
   size_t date_index;
   size_t predicate_index;
 
@@ -1504,6 +1508,70 @@ static void test_evening_field_contracts(void) {
             p.jd_relevant_conjunction_ut < p.jd_sunset_ut);
   check_int("field_moonset_after_sunset", p.moonset_after_sunset,
             p.jd_moonset_ut > p.jd_sunset_ut);
+}
+
+/* The geocentric predicate reads the geocentric altitude and no other, on
+ * both sides of each threshold, and the field holds that altitude: the
+ * Moon's unparallaxed position at sunset, above the topocentric altitude by
+ * less than the Moon's greatest horizontal parallax, and NAN with no sunset. */
+static void test_geocentric_altitude_predicate(void) {
+  const HijriLocalPredicate predicate =
+      HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8;
+  const double above = 1e-9;
+  HijriEveningParameters p = parameters(-40.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0);
+  HijriDecisionMargins m;
+
+  p.moon_center_geocentric_altitude_deg = HIJRI_RESEARCH_ALTITUDE_DEG;
+  p.geocentric_elongation_deg = HIJRI_RESEARCH_ELONGATION_DEG;
+  check_int("geocentric_predicate_on_both_thresholds",
+            hijri_local_predicate_evaluate(predicate, &p), 1);
+  m = hijri_predicate_margins(predicate, &p);
+  check_int("geocentric_margin_altitude_term", (int)m.terms[0].term,
+            (int)HIJRI_TERM_MOON_GEOCENTRIC_ALTITUDE);
+  check_close("geocentric_margin_altitude_zero", m.terms[0].margin, 0.0, 0.0);
+  check_close("geocentric_margin_elongation_zero", m.terms[1].margin, 0.0, 0.0);
+  p.moon_center_geocentric_altitude_deg = HIJRI_RESEARCH_ALTITUDE_DEG - above;
+  check_int("geocentric_predicate_altitude_below",
+            hijri_local_predicate_evaluate(predicate, &p), 0);
+  p.moon_center_geocentric_altitude_deg = HIJRI_RESEARCH_ALTITUDE_DEG + above;
+  check_int("geocentric_predicate_altitude_above",
+            hijri_local_predicate_evaluate(predicate, &p), 1);
+  p.geocentric_elongation_deg = HIJRI_RESEARCH_ELONGATION_DEG - above;
+  check_int("geocentric_predicate_elongation_below",
+            hijri_local_predicate_evaluate(predicate, &p), 0);
+  p.geocentric_elongation_deg = HIJRI_RESEARCH_ELONGATION_DEG + above;
+  check_int("geocentric_predicate_elongation_above",
+            hijri_local_predicate_evaluate(predicate, &p), 1);
+  /* A topocentric altitude that passes does not stand in for it. */
+  p.moon_center_geometric_altitude_deg = 40.0;
+  p.moon_center_geocentric_altitude_deg = HIJRI_RESEARCH_ALTITUDE_DEG - above;
+  check_int("geocentric_predicate_ignores_topocentric",
+            hijri_local_predicate_evaluate(predicate, &p), 0);
+
+  {
+    const HijriLocation jakarta = {-6.2088, 106.8456, 0.0, "Jakarta"};
+    const HijriLocation polar = {78.0, 15.0, 0.0, "Longyearbyen"};
+    const HijriEveningParameters evening = hijri_compute_evening_parameters(
+        2026, 3, 22, &jakarta, &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL);
+    const HijriEveningParameters no_sunset = hijri_compute_evening_parameters(
+        2026, 6, 21, &polar, &HIJRI_SUNSET_CONVENTION_ASTRONOMICAL);
+    const HijriMoonPosition moon =
+        hijri_moon_position(hijri_jd_tt_from_ut(evening.jd_sunset_ut));
+    const double parallax = evening.moon_center_geocentric_altitude_deg -
+                            evening.moon_center_geometric_altitude_deg;
+    check_close("geocentric_field_is_the_moon_position",
+                evening.moon_center_geocentric_altitude_deg,
+                hijri__altitude_deg(moon.right_ascension_deg,
+                                    moon.declination_deg, evening.jd_sunset_ut,
+                                    &jakarta),
+                0.0);
+    check_true("geocentric_field_above_topocentric_by_parallax",
+               parallax > 0.0 && parallax < 1.05);
+    check_int("geocentric_field_no_sunset_status", no_sunset.sunset_status,
+              HIJRI_EVENT_NEVER_SETS);
+    check_int("geocentric_field_no_sunset_nan",
+              isnan(no_sunset.moon_center_geocentric_altitude_deg) != 0, 1);
+  }
 }
 
 static void test_pedoman_worked_example(void) {
@@ -3030,6 +3098,8 @@ static int recombine_margins(HijriLocalPredicate predicate,
     return m->terms[0].passes && m->terms[1].passes;
   case HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET:
     return m->terms[0].passes && m->terms[1].passes;
+  case HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8:
+    return m->terms[0].passes && m->terms[1].passes;
   default:
     return 0;
   }
@@ -3354,6 +3424,14 @@ static void test_decision_margins(void) {
        {HIJRI_UNIT_HOURS, HIJRI_UNIT_MINUTES, HIJRI_UNIT_HOURS},
        {0.0, 0.0, 0.0},
        {1, 1, 0}},
+      {HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8,
+       "geocentric_altitude_5_elongation_8",
+       2,
+       {HIJRI_TERM_MOON_GEOCENTRIC_ALTITUDE, HIJRI_TERM_GEOCENTRIC_ELONGATION,
+        HIJRI_TERM_MOON_AGE},
+       {HIJRI_UNIT_DEGREES, HIJRI_UNIT_DEGREES, HIJRI_UNIT_HOURS},
+       {HIJRI_RESEARCH_ALTITUDE_DEG, HIJRI_RESEARCH_ELONGATION_DEG, 0.0},
+       {0, 0, 0}},
   };
   static const HijriLocation sites[] = {
       {-6.2088, 106.8456, 8.0, "jakarta"},
@@ -3376,6 +3454,8 @@ static void test_decision_margins(void) {
       parameters(HIJRI_RESEARCH_ALTITUDE_DEG, 0.0,
                  HIJRI_RESEARCH_ELONGATION_DEG, 0.0, 0.0, 0.0, 1, 1),
       parameters(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1, 1),
+      parameters(HIJRI_RESEARCH_ALTITUDE_DEG, 0.0,
+                 HIJRI_RESEARCH_ELONGATION_DEG, 0.0, 0.0, 0.0, 1, 1),
   };
   size_t predicate_index;
   size_t site_index;
@@ -3581,6 +3661,7 @@ int main(void) {
   test_crescent_equivalence_property();
   test_solar_position_pin();
   test_evening_field_contracts();
+  test_geocentric_altitude_predicate();
   test_pedoman_worked_example();
   test_kemenag_official_calendar();
   test_kemenag_published_quantities();
@@ -3596,10 +3677,10 @@ int main(void) {
   test_decision_margins();
   test_mabims_states_diverge();
   check_true("all_predicate_enums_represented",
-             HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET -
+             HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8 -
                          HIJRI_PREDICATE_MABIMS_1992 +
                      1 ==
-                 6);
+                 7);
   printf("Hijri tests: %d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }
