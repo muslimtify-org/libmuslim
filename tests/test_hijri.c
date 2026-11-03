@@ -3161,7 +3161,20 @@ static void test_authority_registry(void) {
  *   FAIL exact/announced_label_three_days_late actual=3 expected=-1
  *   FAIL exact/announced_label_month_label_one_late actual=3 expected=-1
  *
- * Reverting any of them restores 2713 checks with 0 failures. */
+ * Reverting any of them restores 2713 checks with 0 failures.
+ *
+ * Mutation record, run on 2026-11-03, for the window the next entry sets.
+ * Disabling both tests in hijri__announced_window (if (0 && start < lo) and
+ * if (0 && start > hi)) produced:
+ *   FAIL exact/announced_window_umm_late_status actual=1 expected=3
+ *   FAIL exact/announced_window_umm_late_2026_02_18 actual=1447-09-01 expected=1447-08-30
+ *   FAIL exact/announced_window_jakim_late_2026_02_19 actual=1447-09-01 expected=1447-08-30
+ *   FAIL exact/announced_window_umm_rejoin_2026_02_18 actual=1447-09-01 expected=1447-08-30
+ *   FAIL exact/announced_window_umm_walk_2025_07_27 actual=1447-01-31 expected=1447-01-30
+ *   FAIL exact/announced_window_umm_walk_2025_06_27 actual=1447-01-01 expected=1446-12-30
+ *   FAIL exact/announced_window_day_sequence_violations actual=8 expected=0
+ *
+ * Reverting it restores 3156 checks with 0 failures. */
 static void test_authority_announced(void) {
   /* Indices into KEMENAG_STARTS of the seven announced starts, with the
    * Hijri month each began. KEMENAG_STARTS[0] is 1 Rajab 1445. */
@@ -3369,6 +3382,120 @@ static void test_authority_announced(void) {
                BAD[b].name);
       check_true(name, got.year == -1);
     }
+  }
+
+  /* A later entry holds the months before it to 29 or 30 days. In each
+   * case the next entry disagrees with the registry, and the registry's own
+   * answer would number the day before it as day 1 too, or run a month to
+   * 31 days. */
+  {
+    static const HijriAnnouncedStart UMM_LATE[] = {{{2026, 2, 19}, 1447, 9}};
+    static const HijriAnnouncedStart JAKIM_LATE[] = {{{2026, 2, 20}, 1447, 9}};
+    static const HijriAnnouncedStart UMM_REJOIN[] = {{{2025, 6, 26}, 1447, 1},
+                                                    {{2026, 2, 19}, 1447, 9}};
+    static const HijriAnnouncedStart UMM_WALK[] = {{{2025, 5, 29}, 1446, 12},
+                                                  {{2025, 7, 28}, 1447, 2}};
+    static const HijriAnnouncedStart WRONG_LABEL[] = {
+        {{2025, 3, 2}, 1446, 10}};
+    HijriDate got = {-1, -1, -1};
+    int day, day_31 = 0;
+    check_int("announced_window_umm_late_status",
+              (int)hijri_authority_from_gregorian_announced(
+                  HIJRI_AUTHORITY_UMM_AL_QURA, UMM_LATE, 1, 2026, 2, 18, &got),
+              (int)HIJRI_ANNOUNCED_FROM_ANNOUNCEMENT);
+    check_date("announced_window_umm_late_2026_02_18", got, 1447, 8, 30);
+    hijri_authority_from_gregorian_announced(HIJRI_AUTHORITY_JAKIM, JAKIM_LATE,
+                                             1, 2026, 2, 19, &got);
+    check_date("announced_window_jakim_late_2026_02_19", got, 1447, 8, 30);
+    for (day = 0; day < 50; day++) {
+      int gy, gm;
+      double gd_frac;
+      hijri_gregorian_from_jd(
+          floor(hijri_jd_from_gregorian(2026, 1, 1.0)) + (double)day + 0.5,
+          &gy, &gm, &gd_frac);
+      hijri_authority_from_gregorian_announced(HIJRI_AUTHORITY_JAKIM,
+                                               JAKIM_LATE, 1, gy, gm,
+                                               (int)floor(gd_frac), &got);
+      if (got.day == 31) day_31++;
+    }
+    check_int("announced_window_jakim_late_no_day_31", day_31, 0);
+    hijri_authority_from_gregorian_announced(HIJRI_AUTHORITY_UMM_AL_QURA,
+                                             UMM_REJOIN, 2, 2026, 2, 18, &got);
+    check_date("announced_window_umm_rejoin_2026_02_18", got, 1447, 8, 30);
+    hijri_authority_from_gregorian_announced(HIJRI_AUTHORITY_UMM_AL_QURA,
+                                             UMM_WALK, 2, 2025, 7, 27, &got);
+    check_date("announced_window_umm_walk_2025_07_27", got, 1447, 1, 30);
+    hijri_authority_from_gregorian_announced(HIJRI_AUTHORITY_UMM_AL_QURA,
+                                             UMM_WALK, 2, 2025, 6, 27, &got);
+    check_date("announced_window_umm_walk_2025_06_27", got, 1446, 12, 30);
+    got.year = -1;
+    check_int("announced_window_wrong_label_before_entry",
+              (int)hijri_authority_from_gregorian_announced(
+                  HIJRI_AUTHORITY_KEMENAG, WRONG_LABEL, 1, 2025, 2, 1, &got),
+              (int)HIJRI_ANNOUNCED_INVALID_LIST);
+    check_true("announced_window_wrong_label_untouched", got.year == -1);
+  }
+
+  /* Every list above, day by day from 60 days before its first entry to 60
+   * days after its last: consecutive days count up by one inside a month, a
+   * new month starts on day 1, and every month that starts and ends inside
+   * the range runs 29 or 30 days. */
+  {
+    static const HijriAnnouncedStart EARLY[] = {{{2025, 1, 30}, 1446, 8}};
+    static const HijriAnnouncedStart TWO_EARLY[] = {{{2025, 2, 28}, 1446, 9}};
+    static const HijriAnnouncedStart TWO_LATE[] = {{{2025, 3, 4}, 1446, 9}};
+    static const HijriAnnouncedStart UMM_LATE[] = {{{2026, 2, 19}, 1447, 9}};
+    static const HijriAnnouncedStart JAKIM_LATE[] = {{{2026, 2, 20}, 1447, 9}};
+    static const HijriAnnouncedStart UMM_REJOIN[] = {{{2025, 6, 26}, 1447, 1},
+                                                    {{2026, 2, 19}, 1447, 9}};
+    static const HijriAnnouncedStart UMM_WALK[] = {{{2025, 5, 29}, 1446, 12},
+                                                  {{2025, 7, 28}, 1447, 2}};
+    const struct {
+      HijriAuthority authority;
+      const HijriAnnouncedStart *starts;
+      int count;
+    } LISTS[] = {{HIJRI_AUTHORITY_KEMENAG, announced, announced_count},
+                 {HIJRI_AUTHORITY_KEMENAG, EARLY, 1},
+                 {HIJRI_AUTHORITY_KEMENAG, TWO_EARLY, 1},
+                 {HIJRI_AUTHORITY_KEMENAG, TWO_LATE, 1},
+                 {HIJRI_AUTHORITY_UMM_AL_QURA, UMM_LATE, 1},
+                 {HIJRI_AUTHORITY_JAKIM, JAKIM_LATE, 1},
+                 {HIJRI_AUTHORITY_UMM_AL_QURA, UMM_REJOIN, 2},
+                 {HIJRI_AUTHORITY_UMM_AL_QURA, UMM_WALK, 2}};
+    int bad = 0;
+    size_t l;
+    for (l = 0; l < sizeof(LISTS) / sizeof(LISTS[0]); l++) {
+      const HijriAnnouncedStart *s = LISTS[l].starts;
+      double first = floor(hijri_jd_from_gregorian(
+          s[0].start.year, s[0].start.month, (double)s[0].start.day));
+      double last = floor(hijri_jd_from_gregorian(
+          s[LISTS[l].count - 1].start.year, s[LISTS[l].count - 1].start.month,
+          (double)s[LISTS[l].count - 1].start.day));
+      HijriDate prev = {0, 0, 0};
+      int run = 0, closed = 0;
+      double jd;
+      for (jd = first - 60.0; jd < last + 60.0; jd++) {
+        int gy, gm;
+        double gd_frac;
+        HijriDate got = {0, 0, 0};
+        hijri_gregorian_from_jd(jd + 0.5, &gy, &gm, &gd_frac);
+        hijri_authority_from_gregorian_announced(
+            LISTS[l].authority, s, LISTS[l].count, gy, gm,
+            (int)floor(gd_frac), &got);
+        if (jd > first - 60.0 && got.year == prev.year &&
+            got.month == prev.month) {
+          if (got.day != prev.day + 1) bad++;
+          run++;
+        } else {
+          if (jd > first - 60.0 && got.day != 1) bad++;
+          if (closed && (run < 29 || run > 30)) bad++;
+          if (jd > first - 60.0) closed = 1;
+          run = 1;
+        }
+        prev = got;
+      }
+    }
+    check_int("announced_window_day_sequence_violations", bad, 0);
   }
 
   /* An empty list returns exactly the registry's answer. */

@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-/* hijri.h -- v0.6.0 -- stb-style single-file astronomical Hijri calendar library
+/* hijri.h -- v0.7.0 -- stb-style single-file astronomical Hijri calendar library
  *
  * The version above is this file's own. It is not the libmuslim release
  * tag, which is a calendar date such as 2026.08.18 and covers a snapshot
@@ -1056,7 +1056,7 @@ typedef enum {
   HIJRI_ANNOUNCED_COMPUTED_IN_RULE_PERIOD = 1,
   HIJRI_ANNOUNCED_COMPUTED_OUTSIDE_RULE_PERIOD = 2,
   /* An announcement decided the date, either directly or by shifting a
-   * month after it. */
+   * month before or after it. */
   HIJRI_ANNOUNCED_FROM_ANNOUNCEMENT = 3
 } HijriAnnouncedStatus;
 
@@ -1069,15 +1069,24 @@ typedef enum {
  * held to 29 or 30 days after the month before, so a month moved by an
  * announcement never makes the next one 28 or 31 days long. Once a month
  * start agrees with the computed calendar on both the day and the Hijri
- * month, the walk stops and the registry's own answer is returned.
+ * month, the walk stops and the registry's own answer is used.
  *
- * With no announced start on or before the date, including count == 0,
- * the result is exactly hijri_authority_from_gregorian's.
+ * The first announced start after the date holds the months before it the
+ * same way. Each starts on a day that leaves every month up to that entry
+ * 29 or 30 days long, so the day before an announced start is always the
+ * last day of the month before it. This applies to dates before every
+ * entry too, and can move such a date into the neighbouring month. That
+ * entry must name the right Hijri month, as the entry in effect must.
+ *
+ * With count == 0 the result is exactly hijri_authority_from_gregorian's,
+ * and so is any date whose month the next entry's window does not move.
  *
  * starts must be in ascending date order. It may be a null pointer when
  * count is 0, and is otherwise documented non-NULL with no runtime check,
  * as is out. The cost grows with the months between the last announced
- * start and the date, until the walk rejoins the computed calendar. */
+ * start and the date, until the walk rejoins the computed calendar. A date
+ * before an announced start costs up to three registry conversions more,
+ * two for that entry's label check and one for its window. */
 HIJRIDEF HijriAnnouncedStatus hijri_authority_from_gregorian_announced(
     HijriAuthority authority, const HijriAnnouncedStart *starts, int count,
     int gy, int gm, int gd, HijriDate *out);
@@ -3292,6 +3301,117 @@ static HijriAuthorityStatus hijri__authority_on_jd(HijriAuthority authority,
                                         out);
 }
 
+/* Whether an entry names the Hijri month the calculation places within two
+ * days of its date: the computed start of that month lies in
+ * [start - 2, start + 2]. A wrong month label passes the gap checks, because
+ * they only relate entries to each other, and it would shift every date the
+ * entry reaches by a month. Two days is a chosen bound: the rulings in this
+ * repository's fixtures sit at most one day from the calculation. Returns 1
+ * when it does, 0 when it does not, and -1 when the registry cannot say. */
+static int hijri__announced_label_ok(HijriAuthority authority,
+                                     const HijriAnnouncedStart *a) {
+  HijriDate after, before;
+  double jd = hijri__announced_jd(a);
+  long index = hijri__hijri_month_index(a->hijri_year, a->hijri_month);
+  if (hijri__authority_on_jd(authority, jd + 2.0, &after) ==
+          HIJRI_AUTHORITY_UNRESOLVED ||
+      hijri__authority_on_jd(authority, jd - 3.0, &before) ==
+          HIJRI_AUTHORITY_UNRESOLVED) {
+    return -1;
+  }
+  return hijri__hijri_month_index(after.year, after.month) == index &&
+         hijri__hijri_month_index(before.year, before.month) == index - 1;
+}
+
+/* Holds the start of month `index` to the days that let every month from it
+ * up to the entry `next` run 29 or 30 days: with j months to go, between
+ * next - 30j and next - 29j. Sets *moved when it changes the start. Holding
+ * every month this way keeps each one 29 or 30 days long, as long as the
+ * starts it is given are 29 or 30 days apart. */
+static double hijri__announced_window(double start, long index,
+                                      const HijriAnnouncedStart *next,
+                                      int *moved) {
+  double months = (double)(hijri__hijri_month_index(next->hijri_year,
+                                                    next->hijri_month) -
+                           index);
+  double lo = hijri__announced_jd(next) - 30.0 * months;
+  double hi = hijri__announced_jd(next) - 29.0 * months;
+  if (start < lo) {
+    *moved = 1;
+    return lo;
+  }
+  if (start > hi) {
+    *moved = 1;
+    return hi;
+  }
+  return start;
+}
+
+/* The registry's start of the month that holds the day jd. */
+static int hijri__registry_month_start(HijriAuthority authority, double jd,
+                                       double *start) {
+  HijriDate date;
+  if (hijri__authority_on_jd(authority, jd, &date) ==
+      HIJRI_AUTHORITY_UNRESOLVED) {
+    return 0;
+  }
+  *start = jd - (double)(date.day - 1);
+  return 1;
+}
+
+static void hijri__announced_set(HijriDate *out, long index, double day) {
+  out->year = (int)hijri__floor_div(index, 12);
+  out->month = (int)(index - hijri__floor_div(index, 12) * 12) + 1;
+  out->day = (int)day + 1;
+}
+
+/* The registry's answer for target_jd, got with status, held to the window
+ * of the next entry. fixed_index and fixed_start name the latest month whose
+ * start the walk already settled, when has_fixed is set. The entry's label
+ * check places the computed start of its month within two days of it, so
+ * no start moves by a month and the answer is month c, c - 1 or c + 1. */
+static HijriAnnouncedStatus hijri__announced_before_next(
+    HijriAuthority authority, const HijriAnnouncedStart *next, int has_fixed,
+    long fixed_index, double fixed_start, double target_jd, HijriDate got,
+    HijriAuthorityStatus status, HijriDate *out) {
+  long c = hijri__hijri_month_index(got.year, got.month);
+  long next_index = hijri__hijri_month_index(next->hijri_year,
+                                             next->hijri_month);
+  double computed = target_jd - (double)(got.day - 1);
+  int moved = 0, unused = 0;
+  double start = hijri__announced_window(computed, c, next, &moved);
+
+  if (target_jd < start) {
+    double prev;
+    if (has_fixed && fixed_index == c - 1) {
+      prev = fixed_start;
+    } else if (!hijri__registry_month_start(authority, computed - 1.0,
+                                            &prev)) {
+      return HIJRI_ANNOUNCED_UNRESOLVED;
+    }
+    prev = hijri__announced_window(prev, c - 1, next, &unused);
+    hijri__announced_set(out, c - 1, target_jd - prev);
+    return HIJRI_ANNOUNCED_FROM_ANNOUNCEMENT;
+  }
+  if (c + 1 < next_index) {
+    double after;
+    if (!hijri__registry_month_start(authority, computed + 30.0, &after)) {
+      return HIJRI_ANNOUNCED_UNRESOLVED;
+    }
+    after = hijri__announced_window(after, c + 1, next, &unused);
+    if (target_jd >= after) {
+      hijri__announced_set(out, c + 1, target_jd - after);
+      return HIJRI_ANNOUNCED_FROM_ANNOUNCEMENT;
+    }
+  }
+  if (moved) {
+    hijri__announced_set(out, c, target_jd - start);
+    return HIJRI_ANNOUNCED_FROM_ANNOUNCEMENT;
+  }
+  *out = got;
+  return (HijriAnnouncedStatus)status;
+}
+
 HIJRIDEF HijriAnnouncedStatus hijri_authority_from_gregorian_announced(
     HijriAuthority authority, const HijriAnnouncedStart *starts, int count,
     int gy, int gm, int gd, HijriDate *out) {
@@ -3324,39 +3444,37 @@ HIJRIDEF HijriAnnouncedStatus hijri_authority_from_gregorian_announced(
   }
 
   if (last < 0) {
+    int label;
     status = hijri_authority_from_gregorian(authority, gy, gm, gd, &got);
     if (status == HIJRI_AUTHORITY_UNRESOLVED) {
       return HIJRI_ANNOUNCED_UNRESOLVED;
     }
-    *out = got;
-    return (HijriAnnouncedStatus)status;
+    if (count == 0) {
+      *out = got;
+      return (HijriAnnouncedStatus)status;
+    }
+    label = hijri__announced_label_ok(authority, &starts[0]);
+    if (label < 0) {
+      return HIJRI_ANNOUNCED_UNRESOLVED;
+    }
+    if (!label) {
+      return HIJRI_ANNOUNCED_INVALID_LIST;
+    }
+    return hijri__announced_before_next(authority, &starts[0], 0, 0, 0.0,
+                                        target_jd, got, status, out);
   }
   if (!hijri_authority_get(authority)) {
     return HIJRI_ANNOUNCED_UNRESOLVED;
   }
 
-  /* The entry in effect must name the Hijri month the calculation places
-   * within two days of its date: the computed start of that month lies in
-   * [start - 2, start + 2]. A wrong month label passes every check above,
-   * because the gaps only relate entries to each other, and it would shift
-   * every later date by a month. The gaps tie every other entry's label to
-   * this one, so checking it checks them all. Two days is a chosen bound:
-   * the rulings in this repository's fixtures sit at most one day from the
-   * calculation. */
+  /* The entry in effect must name the right Hijri month. The gaps tie every
+   * other entry's label to this one, so checking it checks them all. */
   {
-    HijriDate after, before;
-    double entry_jd = hijri__announced_jd(&starts[last]);
-    long entry_index = hijri__hijri_month_index(starts[last].hijri_year,
-                                                starts[last].hijri_month);
-    if (hijri__authority_on_jd(authority, entry_jd + 2.0, &after) ==
-            HIJRI_AUTHORITY_UNRESOLVED ||
-        hijri__authority_on_jd(authority, entry_jd - 3.0, &before) ==
-            HIJRI_AUTHORITY_UNRESOLVED) {
+    int label = hijri__announced_label_ok(authority, &starts[last]);
+    if (label < 0) {
       return HIJRI_ANNOUNCED_UNRESOLVED;
     }
-    if (hijri__hijri_month_index(after.year, after.month) != entry_index ||
-        hijri__hijri_month_index(before.year, before.month) !=
-            entry_index - 1) {
+    if (!label) {
       return HIJRI_ANNOUNCED_INVALID_LIST;
     }
   }
@@ -3394,12 +3512,14 @@ HIJRIDEF HijriAnnouncedStatus hijri_authority_from_gregorian_announced(
         next_start = cur_start + 30.0;
         clamped = 1;
       }
+      if (last + 1 < count) {
+        next_start = hijri__announced_window(next_start, next_index,
+                                             &starts[last + 1], &clamped);
+      }
     }
 
     if (target_jd < next_start) {
-      out->year = (int)hijri__floor_div(cur_index, 12);
-      out->month = (int)(cur_index - hijri__floor_div(cur_index, 12) * 12) + 1;
-      out->day = (int)(target_jd - cur_start) + 1;
+      hijri__announced_set(out, cur_index, target_jd - cur_start);
       return HIJRI_ANNOUNCED_FROM_ANNOUNCEMENT;
     }
 
@@ -3414,6 +3534,11 @@ HIJRIDEF HijriAnnouncedStatus hijri_authority_from_gregorian_announced(
         status = hijri_authority_from_gregorian(authority, gy, gm, gd, &got);
         if (status == HIJRI_AUTHORITY_UNRESOLVED) {
           return HIJRI_ANNOUNCED_UNRESOLVED;
+        }
+        if (last + 1 < count) {
+          return hijri__announced_before_next(authority, &starts[last + 1], 1,
+                                              cur_index, cur_start, target_jd,
+                                              got, status, out);
         }
         *out = got;
         return (HijriAnnouncedStatus)status;
