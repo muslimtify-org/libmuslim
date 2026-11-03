@@ -949,7 +949,9 @@ typedef enum {
   HIJRI_VALIDATION_OFFICIAL_CALENDAR_MONTHS,
   /* Individually announced month starts, a few month names per year. */
   HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS,
-  /* The entry IS a published table, checked against an independent copy. */
+  /* The entry IS a published table. Umm al-Qura's is checked against an
+   * independent copy. KHGT's is checked against its fixture, parsed from the
+   * same publisher's calendars, which guards against parse errors only. */
   HIJRI_VALIDATION_PUBLISHED_TABLE
 } HijriAuthorityValidation;
 
