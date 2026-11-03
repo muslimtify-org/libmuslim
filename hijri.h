@@ -923,18 +923,21 @@ typedef enum {
   /* Saudi civil calendar, read from the published table. */
   HIJRI_AUTHORITY_UMM_AL_QURA,
   /* Muhammadiyah while it used hisab hakiki wujudul hilal, through 1446 H.
-   * From 1447 H it follows KHGT, which this library does not implement. */
+   * From 1447 H it follows KHGT, HIJRI_AUTHORITY_MUHAMMADIYAH_KHGT. */
   HIJRI_AUTHORITY_MUHAMMADIYAH_WUJUDUL_HILAL,
   /* Turkey, Diyanet Isleri Baskanligi. The 2016 Istanbul global rule its
    * calendar is computed by, checked against its published calendar. */
   HIJRI_AUTHORITY_DIYANET,
+  /* Muhammadiyah's Kalender Hijriah Global Tunggal from 1447 H. Its published
+   * table for 1447 to 1492 H, and its stated global rule outside the table. */
+  HIJRI_AUTHORITY_MUHAMMADIYAH_KHGT,
   HIJRI_AUTHORITY_COUNT
 } HijriAuthority;
 
 typedef enum {
   /* A HijriLocalPredicate evaluated at the entry's reference point. */
   HIJRI_BASIS_LOCAL_PREDICATE,
-  /* A published table, Umm al-Qura's, which takes no location. */
+  /* A published table, which takes no location: Umm al-Qura's, or KHGT's. */
   HIJRI_BASIS_PUBLISHED_TABLE,
   /* A HijriLocalPredicate searched for anywhere on Earth under a global
    * rule, Diyanet's, which takes no location. */
@@ -965,10 +968,11 @@ typedef struct {
   /* The predicate evaluated, for HIJRI_BASIS_LOCAL_PREDICATE and
    * HIJRI_BASIS_GLOBAL_RULE. For Umm al-Qura it names the predicate the
    * reconstruction outside the table uses, and the conversion does not read
-   * it. */
+   * it. For KHGT it is what the global rule evaluates outside the table. */
   HijriLocalPredicate predicate;
   /* The single point the predicate is evaluated at. For Umm al-Qura it is
-   * Mecca and for Diyanet Ankara, and the conversion reads neither. */
+   * Mecca, for Diyanet Ankara and for KHGT Yogyakarta, and the conversion
+   * reads none of them. */
   HijriLocation reference;
   /* First and last Gregorian dates this library has a SOURCE for the rule
    * governing, inclusive. They err narrow: a date outside them may still
@@ -1000,7 +1004,8 @@ typedef enum {
   /* *out is filled, but this library has no source for the entry's rule
    * governing that date. The rule was computed anyway. For Muhammadiyah
    * after 1446 H this is the criterion it used previously, not the one it
-   * uses now. For Umm al-Qura it is the reconstruction, not the table. */
+   * uses now. For Umm al-Qura it is the reconstruction, not the table. For
+   * KHGT before 1447 H it is the rule before Muhammadiyah adopted it. */
   HIJRI_AUTHORITY_OUTSIDE_RULE_PERIOD = 2
 } HijriAuthorityStatus;
 
@@ -2231,7 +2236,7 @@ hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
    *
    * SUPERSEDED for Muhammadiyah: from 1447 H the Muhammadiyah calendar
    * follows KHGT (Kalender Hijriah Global Tunggal, Istanbul 2016), a global
-   * imkan-rukyat criterion this file does not implement. The Maklumat
+   * criterion, HIJRI_AUTHORITY_MUHAMMADIYAH_KHGT. The Maklumat
    * fixtures in tests/test_hijri.c therefore end at 1446 H and cannot be
    * extended under this predicate. The predicate below is still wujudul
    * hilal and still correct as such, reproducing the book's worked example
@@ -3100,6 +3105,37 @@ static int hijri__kind_umm_al_qura(const HijriAuthorityEntry *entry, int gy,
   return hijri_umm_al_qura_from_gregorian(gy, gm, gd, out);
 }
 
+/* KHGT's published table, in the format of hijri__uq_month_length. Parsed
+ * from Muhammadiyah's yearly calendars, as docs/research/2026-11-03-khgt-calendar.md
+ * records. */
+#define HIJRI__KHGT_YEAR_FIRST 1447
+#define HIJRI__KHGT_YEAR_COUNT 46
+/* floor(JD) of 2025-06-26, which is 1 Muharam 1447. */
+#define HIJRI__KHGT_ANCHOR_JD 2460852.0
+/* Sum of all month lengths below, so the table ends the day before this. */
+#define HIJRI__KHGT_TOTAL_DAYS 16302
+
+static const unsigned short hijri__khgt_month_length[HIJRI__KHGT_YEAR_COUNT] = {
+    0x0B6A, 0x0575, 0x02B6, 0x0937, 0x049B, 0x0553, 0x06AA, 0x06D5,
+    0x02DA, 0x095D, 0x049D, 0x0A4D, 0x0B25, 0x0D52, 0x0DA9, 0x05AD,
+    0x02B6, 0x0A56, 0x0D17, 0x0693, 0x0749, 0x0754, 0x0B6A, 0x0575,
+    0x02B6, 0x0A56, 0x0D4A, 0x0DA2, 0x0DD2, 0x05D5, 0x02DA, 0x095D,
+    0x02AD, 0x0555, 0x0ACA, 0x0B55, 0x036C, 0x0976, 0x02B6, 0x0A57,
+    0x052B, 0x0695, 0x06CA, 0x0AD5, 0x04EA, 0x0A5D,
+};
+
+/* KHGT's table, and its stated global rule outside it. */
+static int hijri__kind_khgt(const HijriAuthorityEntry *entry, int gy, int gm,
+                            int gd, HijriDate *out) {
+  double target_jd = floor(hijri_jd_from_gregorian(gy, gm, (double)gd));
+  if (hijri__table_lookup(hijri__khgt_month_length, HIJRI__KHGT_YEAR_FIRST,
+                          HIJRI__KHGT_ANCHOR_JD, HIJRI__KHGT_TOTAL_DAYS,
+                          target_jd, out)) {
+    return 1;
+  }
+  return hijri__kind_global_rule(entry, gy, gm, gd, out);
+}
+
 /* ---- Authority registry ------------------------------------------------
  * Rows are positional and in HijriAuthority order, because the C++17 build
  * of this file cannot use array designators. tests/test_hijri.c asserts
@@ -3156,6 +3192,15 @@ static const HijriAuthorityEntry hijri__authority_table[HIJRI_AUTHORITY_COUNT] =
      {39.9334, 32.8597, 938.0, "Ankara"},
      {2021, 1, 14}, {0, 0, 0},
      HIJRI_VALIDATION_OFFICIAL_CALENDAR_MONTHS, 184, 186},
+    /* rule_from is the first day of the published table. The counts are the
+     * table against the months Muhammadiyah prints. How often the rule alone
+     * agrees is pinned in test_khgt_published_calendar. Yogyakarta is the
+     * Wujudul Hilal row's point, and the conversion does not read it. */
+    {"Muhammadiyah, KHGT", HIJRI_BASIS_PUBLISHED_TABLE,
+     HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8,
+     {-(7.0 + 48.0 / 60.0), 110.0 + 21.0 / 60.0, 90.0, "Yogyakarta"},
+     {2025, 6, 26}, {0, 0, 0},
+     HIJRI_VALIDATION_PUBLISHED_TABLE, 552, 552},
 };
 
 /* Each authority's kind, positional in HijriAuthority order like the table
@@ -3169,6 +3214,7 @@ static const hijri__authority_convert_fn
         hijri__kind_umm_al_qura,     /* UMM_AL_QURA */
         hijri__kind_local_predicate, /* MUHAMMADIYAH_WUJUDUL_HILAL */
         hijri__kind_global_rule,     /* DIYANET */
+        hijri__kind_khgt,            /* MUHAMMADIYAH_KHGT */
 };
 
 HIJRIDEF const HijriAuthorityEntry *hijri_authority_get(HijriAuthority authority) {
