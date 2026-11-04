@@ -355,4 +355,4 @@ unambiguous, and an unknown convention is recorded as a gap rather than guessed.
 
 ## License
 
-MIT. Copyright 2025-2026 muslimtify-org.
+Licensed under the [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0)
