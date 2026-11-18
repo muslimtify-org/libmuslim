@@ -916,6 +916,27 @@ HIJRIDEF int hijri_umm_al_qura_covers(int gy, int gm, int gd);
  * for it has been admitted, not because it was overlooked. See ROADMAP.md,
  * "Additional named policies".
  *
+ * Which entry to use, by country. Measured scores are in README.md and
+ * docs/research, and are not repeated here so they cannot go stale.
+ *
+ *   Indonesia      HIJRI_AUTHORITY_KEMENAG (government), or
+ *                  HIJRI_AUTHORITY_MUHAMMADIYAH_KHGT (Muhammadiyah)
+ *   Malaysia       HIJRI_AUTHORITY_JAKIM
+ *   Singapore      HIJRI_AUTHORITY_MUIS
+ *   Brunei         HIJRI_AUTHORITY_BRUNEI_KHEU
+ *   Saudi Arabia   HIJRI_AUTHORITY_UMM_AL_QURA
+ *   Turkey         HIJRI_AUTHORITY_DIYANET
+ *   Egypt          HIJRI_AUTHORITY_EGYPT_DAR_AL_IFTA
+ *   UAE, Qatar,    HIJRI_AUTHORITY_UMM_AL_QURA. They follow the Saudi
+ *   Kuwait,        Supreme Court, which now and then starts a month a
+ *   Bahrain        day after the table.
+ *   Oman, Jordan   no entry. Measured, and neither Saudi calendar fits.
+ *
+ * For any country, its own announced month starts passed to
+ * hijri_authority_from_gregorian_announced take precedence over the
+ * entry, and are the only exact answer where a country decides by
+ * sighting.
+ *
  * One reference point stands in for a territory-wide rule. That was
  * measured, not assumed: across a grid covering Indonesia the verdict
  * matched Sabang alone on every evening checked. See
