@@ -187,6 +187,20 @@ if (status == HIJRI_AUTHORITY_IN_RULE_PERIOD) {
 
 `HIJRI_AUTHORITY_EGYPT_DAR_AL_IFTA` computes the condition Dar al-Ifta al-Misriyya states in its fatwa 12825 of 16 June 2016, at Cairo: the Moon sets after the Sun, and that moonset falls 15 hours 40 minutes or more after the conjunction. Dar al-Ifta decides each month by sighting, and it has accepted sightings this condition rules out, so against the 94 month starts it announced from Ramadan 1436 to Jumada al-Akhira 1448 the entry supports 60 and starts the other 34 a day late, never early. Pass Dar al-Ifta's announcements to `hijri_authority_from_gregorian_announced` for dates they cover. See [`docs/research/2026-11-18-egypt-dar-al-ifta.md`](docs/research/2026-11-18-egypt-dar-al-ifta.md).
 
+**Countries without their own entry.** Egypt, which has one, is listed for comparison. Ramadan, Shawwal and Dhu al-Hijjah starts from 1436 to 1447 H, as each country announced them, scored against the Umm al-Qura table and against the Saudi Supreme Court's rulings. A country uses `HIJRI_AUTHORITY_UMM_AL_QURA` when the table gives day 1 on at least 90% of its starts.
+
+| Country | Umm al-Qura table | Saudi court | Use |
+|---|---|---|---|
+| UAE | 26 of 27 | 27 of 27 | `HIJRI_AUTHORITY_UMM_AL_QURA` |
+| Qatar | 24 of 25 | 25 of 25 | `HIJRI_AUTHORITY_UMM_AL_QURA` |
+| Kuwait | 18 of 19 | 19 of 19 | `HIJRI_AUTHORITY_UMM_AL_QURA` |
+| Bahrain | 12 of 13 | 13 of 13 | `HIJRI_AUTHORITY_UMM_AL_QURA` |
+| Oman | 16 of 32 | 18 of 32 | no entry, sights for itself and is often a day later |
+| Jordan | 19 of 26 | 20 of 26 | no entry |
+| Egypt | 30 of 36 | 33 of 36 | its own entry, `HIJRI_AUTHORITY_EGYPT_DAR_AL_IFTA`, listed for comparison. The table, at 30, predicts these three months better than the entry, at 22 |
+
+The four Gulf states started every sourced month on the Saudi court's day. The table misses only the months where the court itself started a day after the table, 3 of its 36 here. For those months, and for any country above, pass the country's announced starts to `hijri_authority_from_gregorian_announced`. Most of these dates come from press reports of the announcement, since several official sites could not be fetched. See [`docs/research/2026-11-18-gulf-levant-saudi-alignment.md`](docs/research/2026-11-18-gulf-levant-saudi-alignment.md) for every date, its source and the scoring program.
+
 An entry is a calculation profile, not the authority. The result is the rule computed at one point and chained month to month, and each authority can and does depart from it by ruling. The counts above are read from the entry itself, and the test suite recomputes them from the fixtures, so the table in the header cannot drift from the tests. Only authorities with a fixture have an entry. The sourced period for each rule is in [`docs/research/2026-10-10-authority-rule-periods.md`](docs/research/2026-10-10-authority-rule-periods.md), and why one reference point stands in for a territory is in [`docs/research/2026-10-10-region-aggregation-measured.md`](docs/research/2026-10-10-region-aggregation-measured.md).
 
 **Announced month starts.** An authority rules on a month, and the ruling can differ from the calculation. `hijri_authority_from_gregorian_announced()` takes the caller's list of announced starts and applies it over the registry. A month an announcement moves keeps the month after it at 29 or 30 days, and once a month start agrees with the calculation again the registry's own answer is returned. The next announced start after a date holds the months before it the same way, so the day before an announced start is always the last day of the month before it, also for dates before every entry.
