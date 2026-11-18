@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-/* hijri.h -- v0.7.0 -- stb-style single-file astronomical Hijri calendar library
+/* hijri.h -- v0.8.0 -- stb-style single-file astronomical Hijri calendar library
  *
  * The version above is this file's own. It is not the libmuslim release
  * tag, which is a calendar date such as 2026.08.18 and covers a snapshot
@@ -705,6 +705,11 @@ hijri_find_relevant_conjunction(double jd_evening, double *result_jd);
 #define HIJRI_LAG_THRESHOLD_MINUTES        5.0
 #define HIJRI_RESEARCH_ALTITUDE_DEG        5.0
 #define HIJRI_RESEARCH_ELONGATION_DEG      8.0
+/* Dar al-Ifta al-Misriyya, fatwa 12825 (16 June 2016): the Moon sets after
+ * the Sun, and that moonset falls 15 hours 40 minutes or more after the
+ * conjunction. See docs/research/2026-11-18-egypt-dar-al-ifta.md. */
+#define HIJRI_EGYPT_LAG_MINUTES            0.0
+#define HIJRI_EGYPT_AGE_AT_MOONSET_HOURS   (15.0 + 40.0 / 60.0)
 
 typedef enum {
   HIJRI_PREDICATE_MABIMS_1992,
@@ -715,7 +720,12 @@ typedef enum {
   HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET,
   /* The research thresholds with a geocentric altitude, as KHGT states them.
    * HIJRI_PREDICATE_ALTITUDE_5_ELONGATION_8 is the topocentric form. */
-  HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8
+  HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8,
+  /* Dar al-Ifta's condition for accepting a sighting in Egypt: moonset after
+   * sunset, and 15 h 40 min or more from the conjunction to that moonset.
+   * The fatwa also requires the crescent to be seen, which no calculation
+   * can supply, so this is the astronomical half of the rule only. */
+  HIJRI_PREDICATE_EGYPT_DAR_AL_IFTA
 } HijriLocalPredicate;
 
 typedef struct {
@@ -802,7 +812,10 @@ typedef enum {
   HIJRI_TERM_TOPOCENTRIC_ELONGATION,
   HIJRI_TERM_MOON_AGE,
   HIJRI_TERM_LAG_TIME,
-  HIJRI_TERM_MOON_GEOCENTRIC_ALTITUDE
+  HIJRI_TERM_MOON_GEOCENTRIC_ALTITUDE,
+  /* Hours from the relevant conjunction to moonset: moon_age_hours plus
+   * lag_time_minutes / 60. NAN whenever either is NAN. */
+  HIJRI_TERM_MOON_AGE_AT_MOONSET
 } HijriDecisionTerm;
 
 typedef struct {
@@ -931,6 +944,10 @@ typedef enum {
   /* Muhammadiyah's Kalender Hijriah Global Tunggal from 1447 H. Its published
    * table for 1447 to 1492 H, and its stated global rule outside the table. */
   HIJRI_AUTHORITY_MUHAMMADIYAH_KHGT,
+  /* Egypt, Dar al-Ifta al-Misriyya. The astronomical condition of its 2016
+   * fatwa at Cairo, checked against its announced month starts. Egypt
+   * decides by sighting, so read validated_supported before trusting it. */
+  HIJRI_AUTHORITY_EGYPT_DAR_AL_IFTA,
   HIJRI_AUTHORITY_COUNT
 } HijriAuthority;
 
@@ -2275,6 +2292,11 @@ hijri_local_predicate_evaluate(HijriLocalPredicate predicate,
     return p->moon_center_geocentric_altitude_deg >=
                HIJRI_RESEARCH_ALTITUDE_DEG &&
            p->geocentric_elongation_deg >= HIJRI_RESEARCH_ELONGATION_DEG;
+  case HIJRI_PREDICATE_EGYPT_DAR_AL_IFTA:
+    return p->moonset_status == HIJRI_EVENT_OK &&
+           p->lag_time_minutes > HIJRI_EGYPT_LAG_MINUTES &&
+           p->moon_age_hours + p->lag_time_minutes / 60.0 >=
+               HIJRI_EGYPT_AGE_AT_MOONSET_HOURS;
   default:
     return 0;
   }
@@ -2388,6 +2410,17 @@ hijri_predicate_margins(HijriLocalPredicate predicate,
     out.terms[1] = hijri__decision_term(
         HIJRI_TERM_GEOCENTRIC_ELONGATION, HIJRI_UNIT_DEGREES,
         p->geocentric_elongation_deg, HIJRI_RESEARCH_ELONGATION_DEG, 0);
+    break;
+  case HIJRI_PREDICATE_EGYPT_DAR_AL_IFTA:
+    out.count = 2;
+    out.terms[0] = hijri__decision_term(HIJRI_TERM_LAG_TIME,
+                                        HIJRI_UNIT_MINUTES,
+                                        p->lag_time_minutes,
+                                        HIJRI_EGYPT_LAG_MINUTES, 1);
+    out.terms[1] = hijri__decision_term(
+        HIJRI_TERM_MOON_AGE_AT_MOONSET, HIJRI_UNIT_HOURS,
+        p->moon_age_hours + p->lag_time_minutes / 60.0,
+        HIJRI_EGYPT_AGE_AT_MOONSET_HOURS, 0);
     break;
   default:
     break;
@@ -3212,6 +3245,15 @@ static const HijriAuthorityEntry hijri__authority_table[HIJRI_AUTHORITY_COUNT] =
      {-(7.0 + 48.0 / 60.0), 110.0 + 21.0 / 60.0, 90.0, "Yogyakarta"},
      {2025, 6, 26}, {0, 0, 0},
      HIJRI_VALIDATION_PUBLISHED_TABLE, 552, 552},
+    /* rule_from is the date of fatwa 12825, the most recent dated Dar
+     * al-Ifta page stating a threshold. Dar al-Ifta announces after sighting,
+     * and it has announced months this condition rules out at Cairo, so the
+     * counts are the condition against the announcements, not a claim that
+     * Dar al-Ifta applies it. See docs/research/2026-11-18-egypt-dar-al-ifta.md. */
+    {"Dar al-Ifta, Egypt", HIJRI_BASIS_LOCAL_PREDICATE,
+     HIJRI_PREDICATE_EGYPT_DAR_AL_IFTA, {30.0444, 31.2357, 23.0, "Cairo"},
+     {2016, 6, 16}, {0, 0, 0},
+     HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS, 60, 94},
 };
 
 /* Each authority's kind, positional in HijriAuthority order like the table
@@ -3226,6 +3268,7 @@ static const hijri__authority_convert_fn
         hijri__kind_local_predicate, /* MUHAMMADIYAH_WUJUDUL_HILAL */
         hijri__kind_global_rule,     /* DIYANET */
         hijri__kind_khgt,            /* MUHAMMADIYAH_KHGT */
+        hijri__kind_local_predicate, /* EGYPT_DAR_AL_IFTA */
 };
 
 HIJRIDEF const HijriAuthorityEntry *hijri_authority_get(HijriAuthority authority) {

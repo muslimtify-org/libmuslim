@@ -675,7 +675,8 @@ static void test_orchestration(void) {
       {"conjunction_and_moonset",
        HIJRI_PREDICATE_CONJUNCTION_AND_MOONSET},
       {"geocentric_altitude_5_elongation_8",
-       HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8}};
+       HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8},
+      {"egypt_dar_al_ifta", HIJRI_PREDICATE_EGYPT_DAR_AL_IFTA}};
   size_t date_index;
   size_t predicate_index;
 
@@ -2044,6 +2045,117 @@ static void count_start_support(const int (*starts)[3], size_t total,
   }
 }
 
+/* Egypt: every month start Dar al-Ifta al-Misriyya announced that a source
+ * gives, Ramadan 1436 to Jumada al-Akhira 1448.
+ *
+ * Provenance: Dar al-Ifta's own statements on dar-alifta.org from Rajab 1437,
+ * and press reports of its announcements for 1436 H. Each date, its source
+ * and its quoted wording are in docs/research/2026-11-18-egypt-dar-al-ifta.md.
+ * Months no source gives are left out, never inferred.
+ *
+ * The entry computes only the astronomical condition of fatwa 12825 at
+ * Cairo, and Dar al-Ifta announces after sighting, so the count is the
+ * condition against the announcements. It never starts a month early here.
+ *
+ * Mutation record, run on 2026-11-18:
+ * 1. HIJRI_EGYPT_LAG_MINUTES raised from 0.0 to 1.0. Observed:
+ *      FAIL exact/egypt_lag_half_minute_passes actual=0 expected=1
+ *      FAIL synthetic/egypt_margin_terms_pass expected=true
+ *      FAIL exact/margins_boundary_egypt_dar_al_ifta_term1_zero actual=0.016666666667 expected=0.000000000000 diff=0.016666666667 tol=0.000000000000
+ *      Hijri tests: 3496 checks, 3 failures
+ * 2. HIJRI_EGYPT_AGE_AT_MOONSET_HOURS raised from 15 h 40 min to 16 h 40 min.
+ *    Observed:
+ *      FAIL exact/egypt_supported_matches_entry actual=56 expected=60
+ *      FAIL exact/egypt_age_above_2015_07_16 actual=0 expected=1
+ *      FAIL exact/authority_egypt_supported_matches_fixture actual=56 expected=60
+ *      Hijri tests: 3496 checks, 3 failures
+ * Reverting either restores 3496 checks with 0 failures. */
+static const int EGYPT_STARTS[][3] = {
+    {2015, 6, 18}, {2015, 7, 17}, {2015, 9, 15}, {2016, 4, 8},
+    {2016, 5, 8}, {2016, 6, 6}, {2016, 7, 6}, {2016, 9, 3},
+    {2016, 10, 31}, {2016, 11, 30}, {2017, 3, 29}, {2017, 4, 27},
+    {2017, 5, 27}, {2017, 6, 25}, {2017, 7, 24}, {2017, 8, 23},
+    {2017, 10, 21}, {2017, 11, 20}, {2018, 4, 17}, {2018, 5, 17},
+    {2018, 6, 15}, {2018, 8, 12}, {2018, 9, 11}, {2018, 11, 9},
+    {2019, 3, 8}, {2019, 4, 7}, {2019, 5, 6}, {2019, 6, 5},
+    {2019, 7, 4}, {2019, 8, 2}, {2019, 9, 30}, {2019, 12, 27},
+    {2020, 2, 25}, {2020, 4, 24}, {2020, 5, 24}, {2020, 7, 22},
+    {2020, 9, 18}, {2021, 2, 13}, {2021, 3, 14}, {2021, 4, 13},
+    {2021, 5, 13}, {2021, 6, 12}, {2021, 7, 11}, {2021, 9, 8},
+    {2022, 2, 2}, {2022, 3, 4}, {2022, 4, 2}, {2022, 5, 2},
+    {2022, 6, 1}, {2022, 6, 30}, {2022, 8, 28}, {2022, 9, 27},
+    {2022, 12, 25}, {2023, 1, 23}, {2023, 2, 21}, {2023, 3, 23},
+    {2023, 4, 21}, {2023, 6, 19}, {2023, 7, 19}, {2023, 8, 17},
+    {2023, 10, 16}, {2023, 11, 15}, {2024, 1, 13}, {2024, 2, 11},
+    {2024, 3, 11}, {2024, 4, 10}, {2024, 6, 7}, {2024, 7, 7},
+    {2024, 8, 6}, {2024, 9, 4}, {2025, 1, 1}, {2025, 1, 31},
+    {2025, 3, 1}, {2025, 3, 31}, {2025, 4, 29}, {2025, 5, 28},
+    {2025, 6, 26}, {2025, 7, 26}, {2025, 8, 24}, {2025, 9, 23},
+    {2025, 10, 23}, {2025, 11, 22}, {2025, 12, 21}, {2026, 1, 20},
+    {2026, 2, 19}, {2026, 3, 20}, {2026, 4, 19}, {2026, 5, 18},
+    {2026, 6, 16}, {2026, 7, 15}, {2026, 8, 14}, {2026, 9, 13},
+    {2026, 10, 12}, {2026, 11, 11}};
+static void test_egypt_official_calendar(void) {
+  const HijriAuthorityEntry *e =
+      hijri_authority_get(HIJRI_AUTHORITY_EGYPT_DAR_AL_IFTA);
+  const size_t total = sizeof(EGYPT_STARTS) / sizeof(EGYPT_STARTS[0]);
+  HijriAnnouncedStart announced[1] = {{{2025, 12, 21}, 1447, 7}};
+  HijriEveningParameters p;
+  HijriDecisionMargins m;
+  HijriDate got;
+  int support, early;
+
+  check_true("egypt_entry_present", e != 0);
+  if (e == 0) {
+    return;
+  }
+  count_start_support(EGYPT_STARTS, total, &e->reference, e->predicate,
+                      &support, &early);
+  check_int("egypt_supported_matches_entry", support, e->validated_supported);
+  check_int("egypt_total_matches_entry", (int)total, e->validated_total);
+  check_int("egypt_never_early", early, 0);
+
+  /* Real Cairo evenings on each side of the age threshold. */
+  check_int("egypt_age_above_2015_07_16",
+            hijri_evaluate_evening(2015, 7, 16, &e->reference, e->predicate)
+                .month_starts_next_day,
+            1);
+  check_int("egypt_age_below_2017_06_24",
+            hijri_evaluate_evening(2017, 6, 24, &e->reference, e->predicate)
+                .month_starts_next_day,
+            0);
+  /* No real evening falls within a minute of the lag threshold once the
+   * Moon is old enough, so the lag edge is fabricated. */
+  p = parameters(0.0, 0.0, 0.0, 0.0, 20.0, 0.5, 1, 1);
+  check_int("egypt_lag_half_minute_passes",
+            hijri_local_predicate_evaluate(e->predicate, &p), 1);
+  m = hijri_predicate_margins(e->predicate, &p);
+  check_int("egypt_margin_terms", m.count, 2);
+  check_true("egypt_margin_terms_pass",
+             m.terms[0].passes && m.terms[1].passes);
+  check_close("egypt_margin_age_at_moonset", m.terms[1].value,
+              20.0 + 0.5 / 60.0, 1e-12);
+  p.lag_time_minutes = 0.0;
+  check_int("egypt_lag_zero_fails",
+            hijri_local_predicate_evaluate(e->predicate, &p), 0);
+
+  /* An announcement the condition misses moves the date. Dar al-Ifta began
+   * Rajab 1447 on 2025-12-21, a day before the condition allows. */
+  check_int("egypt_computed_status_2025_12_21",
+            (int)hijri_authority_from_gregorian(
+                HIJRI_AUTHORITY_EGYPT_DAR_AL_IFTA, 2025, 12, 21, &got),
+            (int)HIJRI_AUTHORITY_IN_RULE_PERIOD);
+  check_true("egypt_computed_2025_12_21",
+             got.year == 1447 && got.month == 6 && got.day == 30);
+  check_int("egypt_announced_status_2025_12_21",
+            (int)hijri_authority_from_gregorian_announced(
+                HIJRI_AUTHORITY_EGYPT_DAR_AL_IFTA, announced, 1, 2025, 12,
+                21, &got),
+            (int)HIJRI_ANNOUNCED_FROM_ANNOUNCEMENT);
+  check_true("egypt_announced_2025_12_21",
+             got.year == 1447 && got.month == 7 && got.day == 1);
+}
+
 /* Singapore: the MUIS calendar, every month start of 2024 and 2025, plus the
  * two announced starts of 2026.
  *
@@ -2791,7 +2903,11 @@ static void test_authority_registry(void) {
        HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8,
        -(7.0 + 48.0 / 60.0), 110.0 + 21.0 / 60.0, 90.0,
        {2025, 6, 26}, {0, 0, 0},
-       HIJRI_VALIDATION_PUBLISHED_TABLE, 552, 552}};
+       HIJRI_VALIDATION_PUBLISHED_TABLE, 552, 552},
+      {HIJRI_AUTHORITY_EGYPT_DAR_AL_IFTA, "egypt", HIJRI_BASIS_LOCAL_PREDICATE,
+       HIJRI_PREDICATE_EGYPT_DAR_AL_IFTA, 30.0444, 31.2357, 23.0,
+       {2016, 6, 16}, {0, 0, 0},
+       HIJRI_VALIDATION_ANNOUNCED_MONTH_STARTS, 60, 94}};
   /* The fixture table behind each local-predicate entry. */
   static const struct {
     HijriAuthority authority;
@@ -2808,7 +2924,9 @@ static void test_authority_registry(void) {
       {HIJRI_AUTHORITY_BRUNEI_KHEU, "brunei", BRUNEI_STARTS,
        sizeof(BRUNEI_STARTS) / sizeof(BRUNEI_STARTS[0])},
       {HIJRI_AUTHORITY_MUHAMMADIYAH_WUJUDUL_HILAL, "muhammadiyah",
-       MUH_STARTS, sizeof(MUH_STARTS) / sizeof(MUH_STARTS[0])}};
+       MUH_STARTS, sizeof(MUH_STARTS) / sizeof(MUH_STARTS[0])},
+      {HIJRI_AUTHORITY_EGYPT_DAR_AL_IFTA, "egypt", EGYPT_STARTS,
+       sizeof(EGYPT_STARTS) / sizeof(EGYPT_STARTS[0])}};
   /* A date, the authority asked, and the status it must return. Each bound
    * is tested on its own day and on the day outside it. */
   static const struct {
@@ -2858,11 +2976,15 @@ static void test_authority_registry(void) {
       {"khgt_day_before", HIJRI_AUTHORITY_MUHAMMADIYAH_KHGT, 2025, 6, 25,
        HIJRI_AUTHORITY_OUTSIDE_RULE_PERIOD},
       {"khgt_open_end", HIJRI_AUTHORITY_MUHAMMADIYAH_KHGT, 2071, 1, 1,
-       HIJRI_AUTHORITY_IN_RULE_PERIOD}};
+       HIJRI_AUTHORITY_IN_RULE_PERIOD},
+      {"egypt_first_day", HIJRI_AUTHORITY_EGYPT_DAR_AL_IFTA, 2016, 6, 16,
+       HIJRI_AUTHORITY_IN_RULE_PERIOD},
+      {"egypt_day_before", HIJRI_AUTHORITY_EGYPT_DAR_AL_IFTA, 2016, 6, 15,
+       HIJRI_AUTHORITY_OUTSIDE_RULE_PERIOD}};
   char name[96];
   size_t index;
 
-  check_int("authority_count", (int)HIJRI_AUTHORITY_COUNT, 8);
+  check_int("authority_count", (int)HIJRI_AUTHORITY_COUNT, 9);
   check_int("authority_expected_rows",
             (int)(sizeof(EXPECTED) / sizeof(EXPECTED[0])),
             (int)HIJRI_AUTHORITY_COUNT);
@@ -3110,7 +3232,9 @@ static void test_authority_registry(void) {
          hijri__kind_local_predicate},
         {"diyanet", HIJRI_AUTHORITY_DIYANET, hijri__kind_global_rule},
         {"muhammadiyah_khgt", HIJRI_AUTHORITY_MUHAMMADIYAH_KHGT,
-         hijri__kind_khgt}};
+         hijri__kind_khgt},
+        {"egypt", HIJRI_AUTHORITY_EGYPT_DAR_AL_IFTA,
+         hijri__kind_local_predicate}};
     check_int("authority_kind_rows", (int)(sizeof KINDS / sizeof KINDS[0]),
               (int)HIJRI_AUTHORITY_COUNT);
     for (index = 0; index < sizeof KINDS / sizeof KINDS[0]; index++) {
@@ -3604,6 +3728,8 @@ static int recombine_margins(HijriLocalPredicate predicate,
     return m->terms[0].passes && m->terms[1].passes;
   case HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8:
     return m->terms[0].passes && m->terms[1].passes;
+  case HIJRI_PREDICATE_EGYPT_DAR_AL_IFTA:
+    return m->terms[0].passes && m->terms[1].passes;
   default:
     return 0;
   }
@@ -3936,6 +4062,14 @@ static void test_decision_margins(void) {
        {HIJRI_UNIT_DEGREES, HIJRI_UNIT_DEGREES, HIJRI_UNIT_HOURS},
        {HIJRI_RESEARCH_ALTITUDE_DEG, HIJRI_RESEARCH_ELONGATION_DEG, 0.0},
        {0, 0, 0}},
+      {HIJRI_PREDICATE_EGYPT_DAR_AL_IFTA,
+       "egypt_dar_al_ifta",
+       2,
+       {HIJRI_TERM_LAG_TIME, HIJRI_TERM_MOON_AGE_AT_MOONSET,
+        HIJRI_TERM_MOON_AGE},
+       {HIJRI_UNIT_MINUTES, HIJRI_UNIT_HOURS, HIJRI_UNIT_HOURS},
+       {HIJRI_EGYPT_LAG_MINUTES, HIJRI_EGYPT_AGE_AT_MOONSET_HOURS, 0.0},
+       {1, 0, 0}},
   };
   static const HijriLocation sites[] = {
       {-6.2088, 106.8456, 8.0, "jakarta"},
@@ -3960,6 +4094,8 @@ static void test_decision_margins(void) {
       parameters(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1, 1),
       parameters(HIJRI_RESEARCH_ALTITUDE_DEG, 0.0,
                  HIJRI_RESEARCH_ELONGATION_DEG, 0.0, 0.0, 0.0, 1, 1),
+      parameters(0.0, 0.0, 0.0, 0.0, HIJRI_EGYPT_AGE_AT_MOONSET_HOURS,
+                 HIJRI_EGYPT_LAG_MINUTES, 1, 1),
   };
   size_t predicate_index;
   size_t site_index;
@@ -4170,6 +4306,7 @@ int main(void) {
   test_kemenag_official_calendar();
   test_kemenag_published_quantities();
   test_muhammadiyah_official_calendar();
+  test_egypt_official_calendar();
   test_muis_official_calendar();
   test_malaysia_official_calendar();
   test_brunei_official_calendar();
@@ -4182,10 +4319,9 @@ int main(void) {
   test_decision_margins();
   test_mabims_states_diverge();
   check_true("all_predicate_enums_represented",
-             HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8 -
-                         HIJRI_PREDICATE_MABIMS_1992 +
+             HIJRI_PREDICATE_EGYPT_DAR_AL_IFTA - HIJRI_PREDICATE_MABIMS_1992 +
                      1 ==
-                 7);
+                 8);
   printf("Hijri tests: %d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }
