@@ -415,7 +415,7 @@ another authoritative reproducible dataset are available.
 
 ### Additional named policies
 
-Egyptian, ECFR, FCNA/ISNA, or other authority policies remain research candidates, not planned APIs, until primary technical specifications are available. Turkey's was admitted on Diyanet's own bulletin and published calendar, as recorded below.
+ECFR, FCNA/ISNA, or other authority policies remain research candidates, not planned APIs, until primary technical specifications are available. Turkey's was admitted on Diyanet's own bulletin and published calendar, and Egypt's on Dar al-Ifta's own fatwas and announcements, as recorded below.
 
 **Admission criteria:**
 
@@ -444,6 +444,8 @@ above. Muhammadiyah's published calendar later settled it, as below.
 **Diyanet admitted (2026-10).** `hijri.h` v0.5.0 computes Turkey's calendar as `HIJRI_AUTHORITY_DIYANET`, a global rule rather than a single point: the 5 and 8 degree thresholds searched for anywhere on Earth before 00:00 UT, with the Americas exception Diyanet's bulletin states. Checked against Diyanet's published calendar it reproduces 184 of 186 month starts from 2021 to 2035. The bulletin is not a technical specification, so the search window and the reading of the Americas clause are the library's, chosen by that score and recorded in `docs/research/2026-10-25-diyanet-global-rule.md`.
 
 **KHGT admitted (2026-11).** `hijri.h` v0.6.0 has Muhammadiyah's calendar as `HIJRI_AUTHORITY_MUHAMMADIYAH_KHGT`. It reads the published table for 1447 to 1492 H and computes the stated rule outside it. The rule alone reproduces 496 of the 552 published months, which is why the table is what the entry returns where it exists. Why the calendar departs from its stated rule is unexplained. See `docs/research/2026-11-03-khgt-calendar.md`.
+
+**Egypt admitted (2026-11).** `hijri.h` v0.8.0 has `HIJRI_AUTHORITY_EGYPT_DAR_AL_IFTA`, the condition of Dar al-Ifta's fatwa 12825 (2016) at Cairo: moonset after sunset and at least 15 h 40 min from the conjunction to moonset. Against 94 month starts Dar al-Ifta announced from 1436 to 1448 H it supports 60, never early. Dar al-Ifta decides by sighting and has accepted sightings this condition rules out, so the entry is the stated condition, not a model of the decisions. See `docs/research/2026-11-18-egypt-dar-al-ifta.md`.
 
 ### Observation integration
 

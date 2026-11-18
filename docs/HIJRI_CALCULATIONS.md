@@ -138,13 +138,13 @@ month starts  ⟺  geocentric altitude ≥ 5°  AND  geocentric elongation ≥ 8
 
 KHGT, Kalender Hijriah Global Tunggal, is the same global idea as the section above with both angles geocentric, so the Moon's altitude has no parallax applied. The predicate is `HIJRI_PREDICATE_GEOCENTRIC_ALTITUDE_5_ELONGATION_8`. Muhammadiyah publishes the resulting calendar for 1447 to 1492 H, and `HIJRI_AUTHORITY_MUHAMMADIYAH_KHGT` reads that table instead of computing it, for the reason Umm al-Qura's table is read: the stated rule, computed with this library's search, reproduces 496 of the 552 published months. Outside the table the entry computes the rule. Why the calendar departs from the rule is not known. See `docs/research/2026-11-03-khgt-calendar.md`.
 
-### Egypt
+### Egypt (Dar al-Ifta)
 
 ```
-month starts  ⟺  lag time ≥ 5 minutes
+month starts  ⟺  moonset after sunset  AND  conjunction to moonset ≥ 15 h 40 min
 ```
 
-A pure moonset-timing rule.
+Dar al-Ifta al-Misriyya announces each month after sighting. Its fatwa 12825 of 16 June 2016 accepts a sighting only when the Moon sets after the Sun and that moonset falls 15 hours 40 minutes or more after the conjunction. `HIJRI_AUTHORITY_EGYPT_DAR_AL_IFTA` computes that condition at Cairo with `HIJRI_PREDICATE_EGYPT_DAR_AL_IFTA`. Against 94 month starts Dar al-Ifta announced from Ramadan 1436 to Jumada al-Akhira 1448 it supports 60 and is never early, because Dar al-Ifta has accepted sightings the condition rules out. See `docs/research/2026-11-18-egypt-dar-al-ifta.md`.
 
 ## 8. Step 6: quantitative visibility models (Yallop, Odeh)
 
